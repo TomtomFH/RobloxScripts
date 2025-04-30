@@ -6,6 +6,7 @@ local Money = {}
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+local humanoid = character:WaitForChild("Humanoid")
 
 local UiLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/Lib.lua", true))()
 
@@ -33,6 +34,7 @@ CreateToggle("Farming", "Auto Collect Money", function()
     for _, part in ipairs(Money) do
         if part:GetAttribute("Spawned") == true then
             humanoidRootPart.CFrame = part.CFrame * CFrame.new(0, 3, 0)
+            humanoid.PlatformStand = false
             task.wait(0.1)
         end
     end

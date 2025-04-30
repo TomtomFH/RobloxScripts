@@ -298,7 +298,7 @@ function CreateToggle(tabName, toggleText, actionFunction)
     end)
 end
 
-local function CreateButton(tabName, buttonText, actionFunction)
+function CreateButton(tabName, buttonText, actionFunction)
     local tab = Tabs[tabName]
     if not tab then return end
     local button = Instance.new("TextButton", tab)
@@ -339,7 +339,7 @@ local function CreateButton(tabName, buttonText, actionFunction)
 	end)
 end
 
-local function CreateLabel(tabName, labelText)
+function CreateLabel(tabName, labelText)
     local tab = Tabs[tabName]
     if not tab then return end
     local frame = Instance.new("Frame", tab)
@@ -370,7 +370,7 @@ local function CreateLabel(tabName, labelText)
 	label.Position = UDim2.new(0, 20, 0, 7)
 end
 
-local function DestroyMenu(menuName)
+function DestroyMenu(menuName)
     local menuGui = game.Players.LocalPlayer.PlayerGui:FindFirstChild(LibName)
     if menuGui then
         menuGui:Destroy()

@@ -16,7 +16,7 @@ local Menus = {}
 local Sidebars = {}
 local PageLayouts = {}
 
-local function CreateMenu(menuName)
+function CreateMenu(menuName)
     local UI = Instance.new("ScreenGui", game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"))
     UI.Name = LibName
     UI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling

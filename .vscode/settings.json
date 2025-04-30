@@ -1,0 +1,10 @@
+{
+    "robloxLsp.diagnostics.globals": [
+        "CreateMenu",
+        "CreateGroup",
+        "CreateTab",
+        "CreateToggle",
+        "CreateButton",
+        "CreateLabel"
+    ]
+}

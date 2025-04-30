@@ -7,24 +7,24 @@ local function loadScript()
     end)
 
     if not success then
-        local notification = game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "Error",
-            Text = "Unable to load",
-            Icon = "",
-            Duration = 5
-        })
-
-        local retry = game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "Retry",
-            Text = "Try again?",
-            Icon = "",
-            Duration = 5,
-            Button1Text = "OK",
-            Button2Text = "Try Again",
-            Button1Callback = function() end,
-            Button2Callback = function()
+        local bindable = Instance.new("BindableFunction")
+        
+        function bindable.OnInvoke(response)
+            if response == "OK" then
+                print("OK chosen")
+            elseif response == "Try Again" then
+                print("Try Again chosen")
                 loadScript()
             end
+        end
+
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Error",
+            Text = "Unable to load",
+            Duration = 5,
+            Callback = bindable,
+            Button1 = "OK",
+            Button2 = "Try Again"
         })
     end
 end

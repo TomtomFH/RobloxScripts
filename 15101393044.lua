@@ -111,4 +111,17 @@
 -- 	screenGui:Destroy()
 -- end)
 
-print("is this working")
+-- Load the script and get the module with functions
+local UiLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/main.lua", true))()
+
+-- Now you can use UiLib to call the functions
+UiLib.CreateMenu("My Custom Menu")
+UiLib.CreateGroup("My Custom Menu", "Group 1")
+UiLib.CreateTab("My Custom Menu", "Group 1", "Tab 1")
+UiLib.CreateToggle("Tab 1", "Enable Feature", function()
+    print("Feature Enabled")
+end)
+UiLib.CreateButton("Tab 1", "Click Me", function()
+    print("Button Clicked!")
+end)
+UiLib.CreateLabel("Tab 1", "This is a label!")

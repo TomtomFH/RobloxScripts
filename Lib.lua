@@ -293,7 +293,7 @@ function CreateToggle(tabName, toggleText, actionFunction)
             if state.Value then
                 actionFunction()
             end
-            wait()
+            task.wait()
         end
     end)
 end

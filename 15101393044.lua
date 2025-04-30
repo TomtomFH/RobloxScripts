@@ -125,3 +125,5 @@ CreateButton("Tab 1", "Click Me", function()
     print("Button Clicked!")
 end)
 CreateLabel("Tab 1", "This is a label!")
+
+print("is this working")

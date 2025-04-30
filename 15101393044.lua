@@ -34,7 +34,8 @@ CreateToggle("Farming", "Auto Collect Money", function()
     for _, part in ipairs(Money) do
         if part:GetAttribute("Spawned") == true then
             humanoidRootPart.CFrame = part.CFrame * CFrame.new(0, 3, 0)
-            humanoid.PlatformStand = false
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
             task.wait(0.1)
         end
     end

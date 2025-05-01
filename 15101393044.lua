@@ -1,3 +1,5 @@
+-- DRESS TO IMPRESS (https://www.roblox.com/games/15101393044/)
+
 local workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -25,16 +27,20 @@ CreateTab("DTI", "Main", "Farming")
 CreateButton("Farming", "Hide Name", function()
     HideName()
 end)
-CreateToggle("Farming", "Auto Hide Name", function()
-    HideName()
-    task.wait(1)
-end)
-CreateToggle("Farming", "Auto Collect Money", function()
-    for _, part in ipairs(Money) do
-        if part:GetAttribute("Spawned") == true then
-            humanoidRootPart.CFrame = part.CFrame * CFrame.new(0, 3, 0)
-            task.wait(0.1)
-        end
+CreateToggle("Farming", "Auto Hide Name", function(state)
+    while state.Value do
+        HideName()
+        task.wait(1)
     end
-    task.wait(0.1)
+end)
+CreateToggle("Farming", "Auto Collect Money", function(state)
+    while state.Value do
+        for _, part in ipairs(Money) do
+            if part:GetAttribute("Spawned") == true then
+                humanoidRootPart.CFrame = part.CFrame * CFrame.new(0, 3, 0)
+                task.wait(0.1)
+            end
+        end
+        task.wait(0.1)
+    end
 end)

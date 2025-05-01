@@ -283,19 +283,14 @@ function CreateToggle(tabName, toggleText, actionFunction)
         state.Value = not state.Value
         local color = state.Value and Color3.fromRGB(0, 115, 200) or Color3.fromRGB(116, 116, 116)
         local pos = state.Value and UDim2.new(0, 500, 0, 17) or UDim2.new(0, 475, 0, 17)
-
+    
         TweenService:Create(indicator, TweenInfo.new(0.25), {Position = pos, BackgroundColor3 = color}):Play()
         TweenService:Create(bg, TweenInfo.new(0.25), {BackgroundColor3 = color}):Play()
-    end)
-
-    task.spawn(function()
-        while true do
-            if state.Value then
-                actionFunction()
-            end
-            task.wait()
-        end
-    end)
+    
+        task.spawn(function()
+            actionFunction(state, button)
+        end)
+    end)    
 end
 
 function CreateButton(tabName, buttonText, actionFunction)
@@ -313,7 +308,6 @@ function CreateButton(tabName, buttonText, actionFunction)
 	button.Name = buttonText
 	button.BorderColor3 = Color3.fromRGB(0, 0, 0)
 	button.Text = ""
-	button.LayoutOrder = order
 
 	local corner = Instance.new("UICorner", button)
 
@@ -350,7 +344,6 @@ function CreateLabel(tabName, labelText)
 	frame.Size = UDim2.new(0, 550, 0, 50)
 	frame.Name = labelText
 	frame.BorderColor3 = Color3.fromRGB(0, 0, 0)
-	frame.LayoutOrder = order
 
 	local corner = Instance.new("UICorner", frame)
 
@@ -392,13 +385,15 @@ Tab:
 CreateTab("Menu Name", "Group Text", "Tab Name")
 
 Toggle:
-CreateToggle("Tab Name", "Toggle Text", function()
-    print("Toggle function")
+CreateToggle("Tab Name", "Toggle Text", function(state)
+    while state.Value do
+        print("Toggle Enabled")
+    end
 end)
 
 Button:
 CreateButton("Tab Name", "Button Text", function()
-    print("Button function")
+    print("Button Activated")
 end)
 
 Label:

@@ -15,14 +15,3 @@ CreateToggle("Farming", "Auto Infinite Farm Range", function(state)
         task.wait(1)
     end
 end)
-CreateToggle("Farming", "Auto Bring Buttons", function(state)
-    while state.Value do
-        for _,v in workspace.Upgrades.Buttons:GetChildren() do
-            if v:FindFirstChild("Button") then
-                v.Button.CanCollide = false
-                v.Button.CFrame = character.HumanoidRootPart.CFrame
-            end
-        end
-        task.wait(1)
-    end
-end)

@@ -742,6 +742,8 @@ local function startAutoSellMythicalEggs()
         autoSellMythicalEggsLoop = false
     end)
 end
+
+local function startAutoSellLegendaryEggs()
     if autoSellLegendaryEggsLoop then
         print("[AutoSellEggs] Loop already running")
         return

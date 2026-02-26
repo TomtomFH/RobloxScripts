@@ -955,19 +955,6 @@ mythicalCard.MouseButton1Click:Connect(function()
     end
 end)
 
--- CREATE CATCHING TAB UI
-CreateButton("Catching", "Catch Best Pet", function()
-    if bestPet then
-        catchPet(bestPet, "best")
-    end
-end)
-
-CreateButton("Catching", "Catch Mythical+ Pet", function()
-    if bestMythical then
-        catchPet(bestMythical, "mythical")
-    end
-end)
-
 -- CREATE AUTO FEATURES TAB UI
 CreateToggle("Auto Features", "AutoBreed", function(state)
     autoBreedEnabled = state.Value

@@ -291,21 +291,15 @@ local ignoreMinRPSForExclusive = true
 
 -- Toggle states
 local autoCatchBest = false
-local autoCatchMythical = false
-local autoCatchMissing = false
-local autoCatchBestLoop = false
-local autoCatchMythicalLoop = false
-local autoCatchMissingLoop = false
-local catchLocks = {
-    best = false,
-    mythical = false,
-    missing = false
-}
-local autoBreedEnabled = false
+local autoCatchMythical = true
+local autoCatchMissing = true
+local autoCatchMasterLoop = false
+local catchLock = false
+local autoBreedEnabled = true
 local autoBreedLoop = false
-local autoRemoveEggsEnabled = false
+local autoRemoveEggsEnabled = true
 local autoRemoveEggsLoop = false
-local autoSellLegendaryEggsEnabled = false
+local autoSellLegendaryEggsEnabled = true
 local autoSellLegendaryEggsLoop = false
 local autoSellMythicalEggsEnabled = false
 local autoSellMythicalEggsLoop = false
@@ -967,21 +961,21 @@ local function shouldCatchPet(pet)
     return false
 end
 
-local function catchPet(pet, lockKey)
-    if not pet or catchLocks[lockKey] then
+local function catchPet(pet)
+    if not pet or catchLock then
         return
     end
 
-    catchLocks[lockKey] = true
+    catchLock = true
     task.spawn(function()
         local character = player.Character
         if not character then
-            catchLocks[lockKey] = false
+            catchLock = false
             return
         end
         local hrp = character:FindFirstChild("HumanoidRootPart")
         if not hrp then
-            catchLocks[lockKey] = false
+            catchLock = false
             return
         end
 
@@ -1004,58 +998,33 @@ local function catchPet(pet, lockKey)
         local lassoMinigameHandler = require(StarterPlayer.StarterPlayerScripts.Controllers.Visuals.lassoController.lassoMinigameHandler)
         lassoMinigameHandler.Start(pet)
 
-        catchLocks[lockKey] = false
+        catchLock = false
     end)
 end
 
-local function startAutoCatchBest()
-    if autoCatchBestLoop then
+local function startAutoCatchMaster()
+    if autoCatchMasterLoop then
         return
     end
 
-    autoCatchBestLoop = true
+    autoCatchMasterLoop = true
     task.spawn(function()
-        while autoCatchBest do
-            if bestPet and shouldCatchPet(bestPet) then
-                catchPet(bestPet, "best")
+        while autoCatchBest or autoCatchMythical or autoCatchMissing do
+            -- Priority: Mythical+ > Missing > Best Overall
+            if autoCatchMythical and bestMythical and shouldCatchPet(bestMythical) then
+                catchPet(bestMythical)
+                task.wait(1)
+            elseif autoCatchMissing and bestMissing and shouldCatchPet(bestMissing) then
+                catchPet(bestMissing)
+                task.wait(1)
+            elseif autoCatchBest and bestPet and shouldCatchPet(bestPet) then
+                catchPet(bestPet)
+                task.wait(1)
+            else
+                task.wait(0.2)
             end
-            task.wait(0.8)
         end
-        autoCatchBestLoop = false
-    end)
-end
-
-local function startAutoCatchMythical()
-    if autoCatchMythicalLoop then
-        return
-    end
-
-    autoCatchMythicalLoop = true
-    task.spawn(function()
-        while autoCatchMythical do
-            if bestMythical and shouldCatchPet(bestMythical) then
-                catchPet(bestMythical, "mythical")
-            end
-            task.wait(0.8)
-        end
-        autoCatchMythicalLoop = false
-    end)
-end
-
-local function startAutoCatchMissing()
-    if autoCatchMissingLoop then
-        return
-    end
-
-    autoCatchMissingLoop = true
-    task.spawn(function()
-        while autoCatchMissing do
-            if bestMissing and shouldCatchPet(bestMissing) then
-                catchPet(bestMissing, "missing")
-            end
-            task.wait(0.8)
-        end
-        autoCatchMissingLoop = false
+        autoCatchMasterLoop = false
     end)
 end
 
@@ -1064,7 +1033,9 @@ bestPetAutoToggle.MouseButton1Click:Connect(function()
     if autoCatchBest then
         bestPetAutoToggle.Text = "Auto Catch: ON"
         bestPetAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
-        startAutoCatchBest()
+        if not autoCatchMasterLoop then
+            startAutoCatchMaster()
+        end
     else
         bestPetAutoToggle.Text = "Auto Catch: OFF"
         bestPetAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
@@ -1076,7 +1047,9 @@ mythicalAutoToggle.MouseButton1Click:Connect(function()
     if autoCatchMythical then
         mythicalAutoToggle.Text = "Auto Catch: ON"
         mythicalAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
-        startAutoCatchMythical()
+        if not autoCatchMasterLoop then
+            startAutoCatchMaster()
+        end
     else
         mythicalAutoToggle.Text = "Auto Catch: OFF"
         mythicalAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
@@ -1088,7 +1061,9 @@ missingAutoToggle.MouseButton1Click:Connect(function()
     if autoCatchMissing then
         missingAutoToggle.Text = "Auto Catch: ON"
         missingAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
-        startAutoCatchMissing()
+        if not autoCatchMasterLoop then
+            startAutoCatchMaster()
+        end
     else
         missingAutoToggle.Text = "Auto Catch: OFF"
         missingAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
@@ -1097,19 +1072,19 @@ end)
 
 bestCard.MouseButton1Click:Connect(function()
     if bestPet then
-        catchPet(bestPet, "best")
+        catchPet(bestPet)
     end
 end)
 
 mythicalCard.MouseButton1Click:Connect(function()
     if bestMythical then
-        catchPet(bestMythical, "mythical")
+        catchPet(bestMythical)
     end
 end)
 
 missingCard.MouseButton1Click:Connect(function()
     if bestMissing then
-        catchPet(bestMissing, "missing")
+        catchPet(bestMissing)
     end
 end)
 
@@ -1158,7 +1133,7 @@ CreateToggle("Auto Features", "AutoBreed", function(state)
     else
         notify("AutoBreed disabled")
     end
-end)
+end, true)
 
 CreateToggle("Auto Features", "AutoRemove Eggs", function(state)
     autoRemoveEggsEnabled = state.Value
@@ -1168,7 +1143,7 @@ CreateToggle("Auto Features", "AutoRemove Eggs", function(state)
     else
         notify("AutoRemove Eggs disabled")
     end
-end)
+end, true)
 
 CreateToggle("Auto Features", "AutoBuy Food", function(state)
     autoBuyFoodEnabled = state.Value
@@ -1198,7 +1173,7 @@ CreateToggle("Auto Sell", "AutoSell Legendary Eggs", function(state)
     else
         notify("AutoSell Legendary Eggs disabled")
     end
-end)
+end, true)
 
 CreateToggle("Auto Sell", "AutoSell Mythical Eggs", function(state)
     autoSellMythicalEggsEnabled = state.Value
@@ -1234,7 +1209,17 @@ CreateButton("Pet Warning", "Close Menu", function()
 end)
 
 -- Initialize auto features
+startAutoCatchMaster()
+startAutoBreed()
+startAutoRemoveEggs()
+startAutoSellLegendaryEggs()
 setupAutoBuyFood()
 setupAutoBuyMerchant()
+
+-- Update toggle button visuals for enabled features
+mythicalAutoToggle.Text = "Auto Catch: ON"
+mythicalAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
+missingAutoToggle.Text = "Auto Catch: ON"
+missingAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
 
 print("✓ Pet Scanner loaded with UI Library!")

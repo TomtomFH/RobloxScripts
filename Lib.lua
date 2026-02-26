@@ -363,6 +363,116 @@ function CreateLabel(tabName, labelText)
 	label.Position = UDim2.new(0, 20, 0, 7)
 end
 
+function CreateValueLabel(tabName, labelText)
+    local tab = Tabs[tabName]
+    if not tab then return end
+
+    local frame = Instance.new("Frame", tab)
+    frame.Active = false
+    frame.BorderSizePixel = 0
+    frame.BackgroundColor3 = Color3.fromRGB(18, 18, 21)
+    frame.Selectable = false
+    frame.Size = UDim2.new(0, 550, 0, 50)
+    frame.Name = labelText
+    frame.BorderColor3 = Color3.fromRGB(0, 0, 0)
+
+    Instance.new("UICorner", frame)
+
+    local label = Instance.new("TextLabel", frame)
+    label.TextWrapped = true
+    label.BorderSizePixel = 0
+    label.TextSize = 15
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    label.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.BackgroundTransparency = 1
+    label.Size = UDim2.new(0, 500, 0, 35)
+    label.BorderColor3 = Color3.fromRGB(0, 0, 0)
+    label.Text = labelText
+    label.Name = labelText
+    label.Position = UDim2.new(0, 20, 0, 7)
+
+    return label, frame
+end
+
+function CreateContainer(tabName, height, transparent)
+    local tab = Tabs[tabName]
+    if not tab then return end
+
+    local frame = Instance.new("Frame", tab)
+    frame.Active = false
+    frame.BorderSizePixel = 0
+    frame.BackgroundColor3 = Color3.fromRGB(18, 18, 21)
+    frame.BackgroundTransparency = transparent and 1 or 0
+    frame.Selectable = false
+    frame.Size = UDim2.new(0, 550, 0, height or 50)
+    frame.BorderColor3 = Color3.fromRGB(0, 0, 0)
+
+    Instance.new("UICorner", frame)
+
+    return frame
+end
+
+function CreateInput(tabName, labelText, defaultText, buttonText, actionFunction)
+    local tab = Tabs[tabName]
+    if not tab then return end
+
+    local frame = Instance.new("Frame", tab)
+    frame.Active = false
+    frame.BorderSizePixel = 0
+    frame.BackgroundColor3 = Color3.fromRGB(18, 18, 21)
+    frame.Selectable = false
+    frame.Size = UDim2.new(0, 550, 0, 50)
+    frame.BorderColor3 = Color3.fromRGB(0, 0, 0)
+
+    Instance.new("UICorner", frame)
+
+    local label = Instance.new("TextLabel", frame)
+    label.BorderSizePixel = 0
+    label.TextSize = 15
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.BackgroundTransparency = 1
+    label.Size = UDim2.new(0, 200, 0, 35)
+    label.Position = UDim2.new(0, 20, 0, 7)
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+    label.Text = labelText
+
+    local textBox = Instance.new("TextBox", frame)
+    textBox.BorderSizePixel = 0
+    textBox.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    textBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    textBox.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+    textBox.TextSize = 15
+    textBox.Size = UDim2.new(0, 140, 0, 32)
+    textBox.Position = UDim2.new(0, 220, 0, 9)
+    textBox.Text = defaultText or ""
+    textBox.ClearTextOnFocus = false
+
+    Instance.new("UICorner", textBox)
+
+    local button = Instance.new("TextButton", frame)
+    button.BorderSizePixel = 0
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 15
+    button.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
+    button.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+    button.Size = UDim2.new(0, 120, 0, 32)
+    button.Position = UDim2.new(0, 370, 0, 9)
+    button.Text = buttonText or "Apply"
+
+    Instance.new("UICorner", button)
+
+    button.MouseButton1Click:Connect(function()
+        task.spawn(function()
+            actionFunction(textBox, button, frame)
+        end)
+    end)
+
+    return textBox, button, frame
+end
+
 function DestroyMenu(menuName)
     local menuGui = game.Players.LocalPlayer.PlayerGui:FindFirstChild(LibName)
     if menuGui then

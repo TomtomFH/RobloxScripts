@@ -983,13 +983,18 @@ mythicalCard.MouseButton1Click:Connect(function()
 end)
 
 -- CREATE CATCHING SETTINGS UI
-CreateLabel("Catching", "Catch Minimum RPS")
+local minRPSLabel = CreateValueLabel("Catching", "Catch Minimum RPS: Disabled")
 
 local minCatchRPSInput = CreateInput("Catching", "Minimum RPS", tostring(minCatchRPS), "Apply", function(textBox)
     local value = tonumber(textBox.Text)
     if value then
         minCatchRPS = value
-        notify("Minimum Catch RPS set to " .. minCatchRPS)
+        if minCatchRPS == 0 then
+            minRPSLabel.Text = "Catch Minimum RPS: Disabled"
+        else
+            minRPSLabel.Text = "Catch Minimum RPS: " .. minCatchRPS
+        end
+        notify("Minimum Catch RPS set to " .. (minCatchRPS == 0 and "disabled" or minCatchRPS))
     else
         notify("Invalid minimum RPS value", true)
     end

@@ -135,7 +135,7 @@ CreateTab("Catch And Tame", "Main", "Catching")
 CreateTab("Catch And Tame", "Main", "Auto Features")
 CreateTab("Catch And Tame", "Main", "Auto Sell")
 CreateTab("Catch And Tame", "Main", "Pet Warning")
-CreateTab("Catch And Tame", "Main", "Misc")
+CreateTab("Catch And Tame", "Main", "Save Cycling")
 
 local uiRoot = player.PlayerGui:WaitForChild("TomtomFHUI")
 local warningLabel = Instance.new("TextLabel")
@@ -1317,9 +1317,9 @@ local function formatSeconds(seconds)
 end
 
 -- CREATE MISC TAB UI
-local saveCycleIntervalLabel = CreateValueLabel("Misc", "Save Cycle Interval: " .. formatSeconds(saveCycleInterval))
+local saveCycleIntervalLabel = CreateValueLabel("Save Cycling", "Save Cycle Interval: " .. formatSeconds(saveCycleInterval))
 
-local saveCycleIntervalInput = CreateInput("Misc", "Interval (seconds)", tostring(saveCycleInterval), "Apply", function(textBox)
+local saveCycleIntervalInput = CreateInput("Save Cycling", "Interval (seconds)", tostring(saveCycleInterval), "Apply", function(textBox)
     local value = tonumber(textBox.Text)
     if value and value > 0 then
         saveCycleInterval = value
@@ -1330,7 +1330,7 @@ local saveCycleIntervalInput = CreateInput("Misc", "Interval (seconds)", tostrin
     end
 end)
 
-local saveCycleStatusLabel = CreateValueLabel("Misc", "Save slot: --, next cycle: --")
+local saveCycleStatusLabel = CreateValueLabel("Save Cycling", "Save slot: --, next cycle: --")
 
 -- Update save cycle status every second
 task.spawn(function()
@@ -1346,7 +1346,7 @@ task.spawn(function()
     end
 end)
 
-CreateToggle("Misc", "Auto Cycle Saves", function(state)
+CreateToggle("Save Cycling", "Auto Cycle Saves", function(state)
     autoCycleSavesEnabled = state.Value
     if autoCycleSavesEnabled then
         notify("Auto Cycle Saves enabled")

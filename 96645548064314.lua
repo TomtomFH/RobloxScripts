@@ -265,21 +265,15 @@ local function getPetInfo(pet, rpsValue)
         "\n🧬 Mutations: " .. mutations
 end
 
--- Utility function to check if a pet with specific mutations has been discovered
+-- Utility function to check if a pet has been discovered (any variant)
 local function isPetDiscovered(petName, petMutations)
+    -- If pet name doesn't exist in index at all, it's undiscovered
     if not petName or not playerPetIndex[petName] then
         return false
     end
     
-    -- If pet name exists in index, check if this specific mutation combo exists
-    local indexedPet = playerPetIndex[petName]
-    if not petMutations or petMutations == "None" then
-        -- No mutations - check if base pet (no mutations) was discovered
-        return indexedPet[""] == true or next(indexedPet) ~= nil  -- If any entry exists, pet was found
-    end
-    
-    -- Check if specific mutation combo exists in index
-    return indexedPet[petMutations] == true
+    -- Pet name exists in index, meaning at least one variant has been discovered
+    return true
 end
 
 -- Variables for tracking pets

@@ -115,6 +115,7 @@ CreateMenu("Pet Scanner")
 CreateGroup("Pet Scanner", "Main")
 CreateTab("Pet Scanner", "Main", "Catching")
 CreateTab("Pet Scanner", "Main", "Auto Features")
+CreateTab("Pet Scanner", "Main", "Auto Sell")
 CreateTab("Pet Scanner", "Main", "Pet Warning")
 
 local uiRoot = player.PlayerGui:WaitForChild("TomtomFHUI")
@@ -266,6 +267,8 @@ local autoRemoveEggsEnabled = false
 local autoRemoveEggsLoop = false
 local autoSellLegendaryEggsEnabled = false
 local autoSellLegendaryEggsLoop = false
+local autoSellMythicalEggsEnabled = false
+local autoSellMythicalEggsLoop = false
 local autoBuyFoodEnabled = true
 local autoBuyFoodSetup = false
 local autoBuyMerchantEnabled = true
@@ -657,8 +660,8 @@ local function refreshInventoryUI()
     end
 end
 
-local function autoSellLegendaryEggsOnce()
-    print("[AutoSellEggs] Run cycle")
+local function autoSellEggsOnce(rarity, enabledVar)
+    print("[AutoSellEggs] Run cycle for " .. rarity)
     local remotes = ReplicatedStorage:WaitForChild("Remotes")
     local getEggInventory = remotes:WaitForChild("getEggInventory")
     local sellEgg = remotes:WaitForChild("sellEgg")
@@ -680,7 +683,7 @@ local function autoSellLegendaryEggsOnce()
     end
 
     local didSellInPass = true
-    while autoSellLegendaryEggsEnabled and didSellInPass do
+    while enabledVar and didSellInPass do
         print("[AutoSellEggs] Fetching inventory...")
         local eggs = getEggInventory:InvokeServer()
         if type(eggs) ~= "table" then
@@ -690,10 +693,10 @@ local function autoSellLegendaryEggsOnce()
 
         didSellInPass = false
         for guid, egg in pairs(eggs) do
-            if not autoSellLegendaryEggsEnabled then
+            if not enabledVar then
                 break
             end
-            if egg and egg.rarity == "Legendary" then
+            if egg and egg.rarity == rarity then
                 print(string.format("[AutoSellEggs] Selling %s | name=%s", tostring(guid), tostring(egg.eggName)))
                 local ok = trySellEgg(guid)
                 if ok then
@@ -709,16 +712,36 @@ local function autoSellLegendaryEggsOnce()
             task.wait(0.2)
             refreshInventoryUI()
         else
-            print("[AutoSellEggs] No Legendary eggs found")
+            print("[AutoSellEggs] No " .. rarity .. " eggs found")
         end
     end
     
     if totalSold > 0 then
-        notify(string.format("Sold %d Legendary egg%s", totalSold, totalSold > 1 and "s" or ""))
+        notify(string.format("Sold %d %s egg%s", totalSold, rarity, totalSold > 1 and "s" or ""))
     end
 end
 
-local function startAutoSellLegendaryEggs()
+local function autoSellLegendaryEggsOnce()
+    autoSellEggsOnce("Legendary", autoSellLegendaryEggsEnabled)
+end
+
+local function startAutoSellMythicalEggs()
+    if autoSellMythicalEggsLoop then
+        print("[AutoSellEggs] Mythical loop already running")
+        return
+    end
+
+    autoSellMythicalEggsLoop = true
+    task.spawn(function()
+        print("[AutoSellEggs] Mythical loop started")
+        while autoSellMythicalEggsEnabled do
+            autoSellEggsOnce("Mythical", autoSellMythicalEggsEnabled)
+            task.wait(5)
+        end
+        print("[AutoSellEggs] Mythical loop stopped")
+        autoSellMythicalEggsLoop = false
+    end)
+end
     if autoSellLegendaryEggsLoop then
         print("[AutoSellEggs] Loop already running")
         return
@@ -1059,13 +1082,23 @@ CreateToggle("Auto Features", "AutoBuy Merchant", function(state)
     setupAutoBuyMerchant()
 end, true)
 
-CreateToggle("Auto Features", "AutoSell Legendary Eggs", function(state)
+CreateToggle("Auto Sell", "AutoSell Legendary Eggs", function(state)
     autoSellLegendaryEggsEnabled = state.Value
     if autoSellLegendaryEggsEnabled then
         notify("AutoSell Legendary Eggs enabled")
         startAutoSellLegendaryEggs()
     else
         notify("AutoSell Legendary Eggs disabled")
+    end
+end)
+
+CreateToggle("Auto Sell", "AutoSell Mythical Eggs", function(state)
+    autoSellMythicalEggsEnabled = state.Value
+    if autoSellMythicalEggsEnabled then
+        notify("AutoSell Mythical Eggs enabled")
+        startAutoSellMythicalEggs()
+    else
+        notify("AutoSell Mythical Eggs disabled")
     end
 end)
 

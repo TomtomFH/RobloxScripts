@@ -304,9 +304,10 @@ local warningActive = false
 local appliedThreshold = 1000
 
 -- Catch minimum RPS settings
-local minCatchRPS = 0
+local minCatchRPS = 1000
 local ignoreMinRPSForSecret = true
 local ignoreMinRPSForExclusive = true
+local ignoreMinRPSForMissing = true
 
 -- Toggle states
 local autoCatchBest = false
@@ -980,6 +981,24 @@ local function shouldCatchPet(pet)
     return false
 end
 
+local function shouldCatchMissingPet(pet)
+    if not pet then return false end
+    
+    local petRPS = pet:GetAttribute("RPS") or 0
+    
+    -- If ignoring min RPS for missing, always catch
+    if ignoreMinRPSForMissing then
+        return true
+    end
+    
+    -- Otherwise check minimum RPS requirement
+    if petRPS >= minCatchRPS then
+        return true
+    end
+    
+    return false
+end
+
 local function catchPet(pet)
     if not pet or catchLock then
         return
@@ -1033,7 +1052,7 @@ local function startAutoCatchMaster()
             if autoCatchMythical and bestMythical and shouldCatchPet(bestMythical) then
                 catchPet(bestMythical)
                 task.wait(1)
-            elseif autoCatchMissing and bestMissing and shouldCatchPet(bestMissing) then
+            elseif autoCatchMissing and bestMissing and shouldCatchMissingPet(bestMissing) then
                 catchPet(bestMissing)
                 task.wait(1)
             elseif autoCatchBest and bestPet and shouldCatchPet(bestPet) then
@@ -1108,7 +1127,7 @@ missingCard.MouseButton1Click:Connect(function()
 end)
 
 -- CREATE CATCHING SETTINGS UI
-local minRPSLabel = CreateValueLabel("Catching", "Catch Minimum RPS: Disabled")
+local minRPSLabel = CreateValueLabel("Catching", "Catch Minimum RPS: 1000")
 
 local minCatchRPSInput = CreateInput("Catching", "Minimum RPS", tostring(minCatchRPS), "Apply", function(textBox)
     local value = tonumber(textBox.Text)
@@ -1140,6 +1159,15 @@ CreateToggle("Catching", "Ignore Min RPS for Exclusive", function(state)
         notify("Will catch Exclusive pets regardless of min RPS")
     else
         notify("Exclusive pets must meet minimum RPS")
+    end
+end, true)
+
+CreateToggle("Catching", "Ignore Min RPS for Missing", function(state)
+    ignoreMinRPSForMissing = state.Value
+    if ignoreMinRPSForMissing then
+        notify("Will catch Missing pets regardless of min RPS")
+    else
+        notify("Missing pets must meet minimum RPS")
     end
 end, true)
 

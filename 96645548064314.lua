@@ -129,12 +129,13 @@ task.spawn(function()
 end)
 
 -- Create UI Menu
-CreateMenu("Pet Scanner")
-CreateGroup("Pet Scanner", "Main")
-CreateTab("Pet Scanner", "Main", "Catching")
-CreateTab("Pet Scanner", "Main", "Auto Features")
-CreateTab("Pet Scanner", "Main", "Auto Sell")
-CreateTab("Pet Scanner", "Main", "Pet Warning")
+CreateMenu("Catch And Tame")
+CreateGroup("Catch And Tame", "Main")
+CreateTab("Catch And Tame", "Main", "Catching")
+CreateTab("Catch And Tame", "Main", "Auto Features")
+CreateTab("Catch And Tame", "Main", "Auto Sell")
+CreateTab("Catch And Tame", "Main", "Pet Warning")
+CreateTab("Catch And Tame", "Main", "Misc")
 
 local uiRoot = player.PlayerGui:WaitForChild("TomtomFHUI")
 local warningLabel = Instance.new("TextLabel")
@@ -329,6 +330,13 @@ local autoBuyFoodSetup = false
 local autoBuyMerchantEnabled = true
 local autoBuyMerchantSetup = false
 local merchantPurchaseDelay = 0.1
+
+-- Auto-cycle saves settings
+local autoCycleSavesEnabled = false
+local autoCycleSavesLoop = false
+local saveCycleInterval = 150  -- 2 min 30 sec in seconds
+local currentSaveSlot = 0  -- 0 = unknown, will be set when cycling starts
+local saveCycleStartTime = 0  -- Track when current cycle started
 
 local function scanPets()
     local character = player.Character
@@ -829,6 +837,36 @@ local function startAutoSellMythicalEggs()
     end)
 end
 
+local function startAutoCycleSaves()
+    if autoCycleSavesLoop then
+        return
+    end
+
+    autoCycleSavesLoop = true
+    task.spawn(function()
+        while autoCycleSavesEnabled do
+            local getSaveInfo = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("getSaveInfo")
+            
+            for slot = 1, 4 do
+                if not autoCycleSavesEnabled then
+                    break
+                end
+                
+                saveCycleStartTime = tick()  -- Mark cycle start
+                local args = { slot, true }
+                pcall(function()
+                    getSaveInfo:InvokeServer(unpack(args))
+                end)
+                
+                currentSaveSlot = slot
+                notify(string.format("Switched to save slot %d", slot))
+                task.wait(saveCycleInterval)
+            end
+        end
+        autoCycleSavesLoop = false
+    end)
+end
+
 local function startAutoSellLegendaryEggs()
     if autoSellLegendaryEggsLoop then
         print("[AutoSellEggs] Loop already running")
@@ -1253,7 +1291,67 @@ end)
 appliedThresholdLabel = CreateValueLabel("Pet Warning", "Applied Threshold: " .. appliedThreshold)
 
 CreateButton("Pet Warning", "Close Menu", function()
-    DestroyMenu("Pet Scanner")
+    DestroyMenu("Catch And Tame")
+end)
+
+-- Helper function to format seconds to human-readable time
+local function formatSeconds(seconds)
+    local hours = math.floor(seconds / 3600)
+    local minutes = math.floor((seconds % 3600) / 60)
+    local secs = seconds % 60
+    
+    local parts = {}
+    if hours > 0 then
+        table.insert(parts, hours .. "h")
+    end
+    if minutes > 0 then
+        table.insert(parts, minutes .. "m")
+    end
+    if secs > 0 or #parts == 0 then
+        table.insert(parts, secs .. "s")
+    end
+    
+    return table.concat(parts, " ")
+end
+
+-- CREATE MISC TAB UI
+local saveCycleIntervalLabel = CreateValueLabel("Misc", "Save Cycle Interval: " .. formatSeconds(saveCycleInterval))
+
+local saveCycleIntervalInput = CreateInput("Misc", "Interval (seconds)", tostring(saveCycleInterval), "Apply", function(textBox)
+    local value = tonumber(textBox.Text)
+    if value and value > 0 then
+        saveCycleInterval = value
+        saveCycleIntervalLabel.Text = "Save Cycle Interval: " .. formatSeconds(saveCycleInterval)
+        notify("Save cycle interval set to " .. formatSeconds(saveCycleInterval))
+    else
+        notify("Invalid interval value", true)
+    end
+end)
+
+local saveCycleStatusLabel = CreateValueLabel("Misc", "Save slot: --, next cycle: --")
+
+-- Update save cycle status every second
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if autoCycleSavesEnabled and currentSaveSlot > 0 and saveCycleStartTime > 0 then
+            local elapsed = tick() - saveCycleStartTime
+            local remaining = math.max(0, saveCycleInterval - elapsed)
+            saveCycleStatusLabel.Text = string.format("Save slot: %d, next cycle: %s", currentSaveSlot, formatSeconds(math.ceil(remaining)))
+        else
+            saveCycleStatusLabel.Text = "Save slot: --, next cycle: --"
+        end
+    end
+end)
+
+CreateToggle("Misc", "Auto Cycle Saves", function(state)
+    autoCycleSavesEnabled = state.Value
+    if autoCycleSavesEnabled then
+        notify("Auto Cycle Saves enabled")
+        startAutoCycleSaves()
+    else
+        notify("Auto Cycle Saves disabled")
+    end
 end)
 
 -- Initialize auto features

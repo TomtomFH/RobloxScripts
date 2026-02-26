@@ -115,7 +115,7 @@ CreateMenu("Pet Scanner")
 CreateGroup("Pet Scanner", "Main")
 CreateTab("Pet Scanner", "Main", "Catching")
 CreateTab("Pet Scanner", "Main", "Auto Features")
-CreateTab("Pet Scanner", "Main", "Settings")
+CreateTab("Pet Scanner", "Main", "Pet Warning")
 
 local uiRoot = player.PlayerGui:WaitForChild("TomtomFHUI")
 local warningLabel = Instance.new("TextLabel")
@@ -956,30 +956,6 @@ mythicalCard.MouseButton1Click:Connect(function()
 end)
 
 -- CREATE CATCHING TAB UI
-CreateToggle("Catching", "Auto Catch Best", function(state)
-    autoCatchBest = state.Value
-    if autoCatchBest then
-        bestPetAutoToggle.Text = "Auto Catch: ON"
-        bestPetAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
-        startAutoCatchBest()
-    else
-        bestPetAutoToggle.Text = "Auto Catch: OFF"
-        bestPetAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-    end
-end)
-
-CreateToggle("Catching", "Auto Catch Mythical+", function(state)
-    autoCatchMythical = state.Value
-    if autoCatchMythical then
-        mythicalAutoToggle.Text = "Auto Catch: ON"
-        mythicalAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
-        startAutoCatchMythical()
-    else
-        mythicalAutoToggle.Text = "Auto Catch: OFF"
-        mythicalAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-    end
-end)
-
 CreateButton("Catching", "Catch Best Pet", function()
     if bestPet then
         catchPet(bestPet, "best")
@@ -1024,11 +1000,11 @@ CreateToggle("Auto Features", "AutoSell Legendary Eggs", function(state)
     end
 end)
 
--- CREATE SETTINGS TAB UI
-CreateLabel("Settings", "RPS Threshold")
+-- CREATE PET WARNING TAB UI
+CreateLabel("Pet Warning", "RPS Threshold")
 
 local appliedThresholdLabel = nil
-local thresholdInput = CreateInput("Settings", "Threshold Value", tostring(appliedThreshold), "Apply", function(textBox)
+local thresholdInput = CreateInput("Pet Warning", "Threshold Value", tostring(appliedThreshold), "Apply", function(textBox)
     local value = tonumber(textBox.Text)
     if value then
         appliedThreshold = value
@@ -1041,9 +1017,9 @@ local thresholdInput = CreateInput("Settings", "Threshold Value", tostring(appli
     end
 end)
 
-appliedThresholdLabel = CreateValueLabel("Settings", "Applied Threshold: " .. appliedThreshold)
+appliedThresholdLabel = CreateValueLabel("Pet Warning", "Applied Threshold: " .. appliedThreshold)
 
-CreateButton("Settings", "Close Menu", function()
+CreateButton("Pet Warning", "Close Menu", function()
     DestroyMenu("Pet Scanner")
 end)
 

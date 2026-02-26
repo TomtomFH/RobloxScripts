@@ -224,7 +224,18 @@ function CreateTab(menuName, groupName, tabName)
         tab.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
     end
     
-    tab.ChildAdded:Connect(updateTabCanvasSize)
+    tab.ChildAdded:Connect(function(child)
+        if child:IsA("GuiObject") then
+            child:GetPropertyChangedSignal("Size"):Connect(updateTabCanvasSize)
+        end
+        updateTabCanvasSize()
+    end)
+    
+    for _, child in ipairs(tab:GetChildren()) do
+        if child:IsA("GuiObject") then
+            child:GetPropertyChangedSignal("Size"):Connect(updateTabCanvasSize)
+        end
+    end
     
     updateTabCanvasSize()    
 

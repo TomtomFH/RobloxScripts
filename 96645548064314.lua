@@ -51,12 +51,29 @@ end
 
 -- Load pets config
 local petsConfig = {}
+local playerPetIndex = {}
 local function loadPetsConfig()
     pcall(function()
         petsConfig = require(ReplicatedStorage:WaitForChild("Configs"):WaitForChild("Pets"))
     end)
 end
+
+local function loadPlayerPetIndex()
+    pcall(function()
+        local getPlayerIndex = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("getPlayerIndex")
+        playerPetIndex = getPlayerIndex:InvokeServer() or {}
+    end)
+end
 task.spawn(loadPetsConfig)
+loadPlayerPetIndex()
+
+-- Refresh player pet index periodically
+task.spawn(function()
+    while true do
+        task.wait(3)
+        loadPlayerPetIndex()
+    end
+end)
 
 -- Setup minigame auto-complete hook
 local CurrentMinigameInstance = nil
@@ -135,7 +152,7 @@ Instance.new("UICorner", warningLabel).CornerRadius = UDim.new(0, 8)
 
 local infoLabel = CreateValueLabel("Catching", "Scanning...")
 
-local cardsRow = CreateContainer("Catching", 150, true)
+local cardsRow = CreateContainer("Catching", 330, true)
 
 local function createPetCard(parent, titleText, titleColor, position)
     local card = Instance.new("TextButton")
@@ -211,6 +228,14 @@ local mythicalCard, mythicalImage, mythicalInfo, mythicalAutoToggle = createPetC
 )
 mythicalInfo.Text = "No Mythical+ pet found"
 
+local missingCard, missingImage, missingInfo, missingAutoToggle = createPetCard(
+    cardsRow,
+    "Best Missing",
+    Color3.fromRGB(100, 200, 255),
+    UDim2.new(0, 0, 0, 165)
+)
+missingInfo.Text = "No missing pets found"
+
 -- Helper function to set pet image
 local function setPetImage(imageLabel, petName)
     if petsConfig and petsConfig[petName] and petsConfig[petName].Image then
@@ -240,9 +265,27 @@ local function getPetInfo(pet, rpsValue)
         "\n🧬 Mutations: " .. mutations
 end
 
+-- Utility function to check if a pet with specific mutations has been discovered
+local function isPetDiscovered(petName, petMutations)
+    if not petName or not playerPetIndex[petName] then
+        return false
+    end
+    
+    -- If pet name exists in index, check if this specific mutation combo exists
+    local indexedPet = playerPetIndex[petName]
+    if not petMutations or petMutations == "None" then
+        -- No mutations - check if base pet (no mutations) was discovered
+        return indexedPet[""] == true or next(indexedPet) ~= nil  -- If any entry exists, pet was found
+    end
+    
+    -- Check if specific mutation combo exists in index
+    return indexedPet[petMutations] == true
+end
+
 -- Variables for tracking pets
 local bestPet = nil
 local bestMythical = nil
+local bestMissing = nil
 local previousBestRPS = -math.huge
 local warningActive = false
 local appliedThreshold = 1000
@@ -255,11 +298,14 @@ local ignoreMinRPSForExclusive = true
 -- Toggle states
 local autoCatchBest = false
 local autoCatchMythical = false
+local autoCatchMissing = false
 local autoCatchBestLoop = false
 local autoCatchMythicalLoop = false
+local autoCatchMissingLoop = false
 local catchLocks = {
     best = false,
-    mythical = false
+    mythical = false,
+    missing = false
 }
 local autoBreedEnabled = false
 local autoBreedLoop = false
@@ -350,12 +396,14 @@ local function scanPets()
     -- Scan world pets for best overall and best mythical+
     local bestOverall, bestOverallRPS = nil, -math.huge
     local newBestMythical, bestMythicalRPS = nil, -math.huge
+    local newBestMissing, bestMissingRPS = nil, -math.huge
     local rarityPriority = { Secret = 3, Exclusive = 2, Mythical = 1 }
 
     for _, folder in pairs(folders) do
         for _, pet in pairs(folder:GetChildren()) do
             local rps = pet:GetAttribute("RPS")
             local rarity = pet:GetAttribute("Rarity")
+            local petName = pet:GetAttribute("Name")
             if rps then
                 if rps > bestOverallRPS then
                     bestOverallRPS = rps
@@ -369,6 +417,17 @@ local function scanPets()
                     if priority > currentPriority or (priority == currentPriority and rps > bestMythicalRPS) then
                         bestMythicalRPS = rps
                         newBestMythical = pet
+                    end
+                end
+                
+                -- Check for best missing (not discovered with specific mutations)
+                if petName then
+                    local petMutations = pet:GetAttribute("MutationList") or "None"
+                    if not isPetDiscovered(petName, petMutations) then
+                        if rps > bestMissingRPS then
+                            bestMissingRPS = rps
+                            newBestMissing = pet
+                        end
                     end
                 end
             end
@@ -431,6 +490,24 @@ local function scanPets()
         end
         if mythicalImage then
             mythicalImage.Image = "rbxasset://textures/Ui/GuiImagePlaceholder.png"
+        end
+    end
+
+    -- Update best missing display
+    bestMissing = newBestMissing
+    if bestMissing then
+        if missingInfo then
+            missingInfo.Text = getPetInfo(bestMissing, bestMissingRPS)
+        end
+        if missingImage then
+            setPetImage(missingImage, bestMissing:GetAttribute("Name"))
+        end
+    else
+        if missingInfo then
+            missingInfo.Text = "No missing pets found"
+        end
+        if missingImage then
+            missingImage.Image = "rbxasset://textures/Ui/GuiImagePlaceholder.png"
         end
     end
 end
@@ -971,6 +1048,23 @@ local function startAutoCatchMythical()
     end)
 end
 
+local function startAutoCatchMissing()
+    if autoCatchMissingLoop then
+        return
+    end
+
+    autoCatchMissingLoop = true
+    task.spawn(function()
+        while autoCatchMissing do
+            if bestMissing and shouldCatchPet(bestMissing) then
+                catchPet(bestMissing, "missing")
+            end
+            task.wait(0.8)
+        end
+        autoCatchMissingLoop = false
+    end)
+end
+
 bestPetAutoToggle.MouseButton1Click:Connect(function()
     autoCatchBest = not autoCatchBest
     if autoCatchBest then
@@ -995,6 +1089,18 @@ mythicalAutoToggle.MouseButton1Click:Connect(function()
     end
 end)
 
+missingAutoToggle.MouseButton1Click:Connect(function()
+    autoCatchMissing = not autoCatchMissing
+    if autoCatchMissing then
+        missingAutoToggle.Text = "Auto Catch: ON"
+        missingAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
+        startAutoCatchMissing()
+    else
+        missingAutoToggle.Text = "Auto Catch: OFF"
+        missingAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    end
+end)
+
 bestCard.MouseButton1Click:Connect(function()
     if bestPet then
         catchPet(bestPet, "best")
@@ -1004,6 +1110,12 @@ end)
 mythicalCard.MouseButton1Click:Connect(function()
     if bestMythical then
         catchPet(bestMythical, "mythical")
+    end
+end)
+
+missingCard.MouseButton1Click:Connect(function()
+    if bestMissing then
+        catchPet(bestMissing, "missing")
     end
 end)
 

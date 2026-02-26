@@ -230,14 +230,14 @@ local function getPetInfo(pet, rpsValue)
     local strength = pet:GetAttribute("Strength") or 0
     local rarity = pet:GetAttribute("Rarity") or "Unknown"
     local sizeName = pet:GetAttribute("SizeName") or "Unknown"
-    local mutation = pet:GetAttribute("Mutation") or "None"
+    local mutations = pet:GetAttribute("MutationList") or "None"
 
     return name ..
         "\n💲 RPS: " .. rpsValue ..
         "\n💪 STR: " .. strength ..
         "\n⭐ Rarity: " .. rarity ..
         "\n📏 Size: " .. sizeName ..
-        "\n🧬 Mutation: " .. mutation
+        "\n🧬 Mutations: " .. mutations
 end
 
 -- Variables for tracking pets

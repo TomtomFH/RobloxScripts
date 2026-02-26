@@ -138,7 +138,7 @@ local cardsRow = CreateContainer("Catching", 150, true)
 
 local function createPetCard(parent, titleText, titleColor, position)
     local card = Instance.new("TextButton")
-    card.Size = UDim2.new(0.5, -5, 0, 140)
+    card.Size = UDim2.new(0.5, -5, 0, 160)
     card.Position = position
     card.BackgroundColor3 = Color3.fromRGB(18, 18, 21)
     card.BorderSizePixel = 0
@@ -169,7 +169,7 @@ local function createPetCard(parent, titleText, titleColor, position)
     Instance.new("UICorner", image).CornerRadius = UDim.new(0, 6)
 
     local info = Instance.new("TextLabel", card)
-    info.Size = UDim2.new(0.65, -10, 0, 70)
+    info.Size = UDim2.new(0.65, -10, 0, 90)
     info.Position = UDim2.new(0, 80, 0, 35)
     info.BackgroundTransparency = 1
     info.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -177,7 +177,7 @@ local function createPetCard(parent, titleText, titleColor, position)
     info.TextYAlignment = Enum.TextYAlignment.Top
     info.TextXAlignment = Enum.TextXAlignment.Left
     info.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
-    info.TextSize = 12
+    info.TextSize = 11
     info.Text = "No pet found"
     info.Parent = card
 

@@ -246,6 +246,11 @@ local previousBestRPS = -math.huge
 local warningActive = false
 local appliedThreshold = 1000
 
+-- Catch minimum RPS settings
+local minCatchRPS = 0
+local ignoreMinRPSForSecret = true
+local ignoreMinRPSForExclusive = true
+
 -- Toggle states
 local autoCatchBest = false
 local autoCatchMythical = false
@@ -844,6 +849,28 @@ local function setupAutoBuyMerchant()
     requestMerchant:FireServer()
 end
 
+local function shouldCatchPet(pet)
+    if not pet then return false end
+    
+    local petRPS = pet:GetAttribute("RPS") or 0
+    local petRarity = pet:GetAttribute("Rarity") or "Common"
+    
+    -- Check if we should ignore minimum RPS for this rarity
+    if ignoreMinRPSForSecret and petRarity == "Secret" then
+        return true
+    end
+    if ignoreMinRPSForExclusive and petRarity == "Exclusive" then
+        return true
+    end
+    
+    -- Check minimum RPS requirement
+    if petRPS >= minCatchRPS then
+        return true
+    end
+    
+    return false
+end
+
 local function catchPet(pet, lockKey)
     if not pet or catchLocks[lockKey] then
         return
@@ -893,7 +920,7 @@ local function startAutoCatchBest()
     autoCatchBestLoop = true
     task.spawn(function()
         while autoCatchBest do
-            if bestPet then
+            if bestPet and shouldCatchPet(bestPet) then
                 catchPet(bestPet, "best")
             end
             task.wait(0.8)
@@ -910,7 +937,7 @@ local function startAutoCatchMythical()
     autoCatchMythicalLoop = true
     task.spawn(function()
         while autoCatchMythical do
-            if bestMythical then
+            if bestMythical and shouldCatchPet(bestMythical) then
                 catchPet(bestMythical, "mythical")
             end
             task.wait(0.8)
@@ -954,6 +981,37 @@ mythicalCard.MouseButton1Click:Connect(function()
         catchPet(bestMythical, "mythical")
     end
 end)
+
+-- CREATE CATCHING SETTINGS UI
+CreateLabel("Catching", "Catch Minimum RPS")
+
+local minCatchRPSInput = CreateInput("Catching", "Minimum RPS", tostring(minCatchRPS), "Apply", function(textBox)
+    local value = tonumber(textBox.Text)
+    if value then
+        minCatchRPS = value
+        notify("Minimum Catch RPS set to " .. minCatchRPS)
+    else
+        notify("Invalid minimum RPS value", true)
+    end
+end)
+
+CreateToggle("Catching", "Ignore Min RPS for Secret", function(state)
+    ignoreMinRPSForSecret = state.Value
+    if ignoreMinRPSForSecret then
+        notify("Will catch Secret pets regardless of min RPS")
+    else
+        notify("Secret pets must meet minimum RPS")
+    end
+end, true)
+
+CreateToggle("Catching", "Ignore Min RPS for Exclusive", function(state)
+    ignoreMinRPSForExclusive = state.Value
+    if ignoreMinRPSForExclusive then
+        notify("Will catch Exclusive pets regardless of min RPS")
+    else
+        notify("Exclusive pets must meet minimum RPS")
+    end
+end, true)
 
 -- CREATE AUTO FEATURES TAB UI
 CreateToggle("Auto Features", "AutoBreed", function(state)

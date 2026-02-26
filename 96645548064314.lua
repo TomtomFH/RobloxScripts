@@ -5,7 +5,8 @@ local breedingPairs = {
     { "Axolotl", "Red Panda" },
     { "Red Panda", "Kitsune" },
     { "Galaxy Kitsune", "Galaxy Axolotl" },
-    { "Galaxy Axolotl", "Galaxy Axolotl" }
+    { "Galaxy Axolotl", "Galaxy Axolotl" },
+    { "Lightning Dragon", "Cerberus" }
 }
 
 -- Catch CPS setting (progress updates per second)

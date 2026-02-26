@@ -246,7 +246,7 @@ function CreateTab(menuName, groupName, tabName)
     Tabs[tabName] = tab
 end
 
-function CreateToggle(tabName, toggleText, actionFunction)
+function CreateToggle(tabName, toggleText, actionFunction, initialState)
     local tab = Tabs[tabName]
     if not tab then return end
 
@@ -289,14 +289,22 @@ function CreateToggle(tabName, toggleText, actionFunction)
 
     local state = Instance.new("BoolValue", button)
     state.Name = "State"
+    state.Value = initialState or false
+
+    local function updateVisuals()
+        local color = state.Value and Color3.fromRGB(0, 115, 200) or Color3.fromRGB(116, 116, 116)
+        local pos = state.Value and UDim2.new(0, 500, 0, 17) or UDim2.new(0, 475, 0, 17)
+        TweenService:Create(indicator, TweenInfo.new(0.25), {Position = pos, BackgroundColor3 = color}):Play()
+        TweenService:Create(bg, TweenInfo.new(0.25), {BackgroundColor3 = color}):Play()
+    end
+
+    if initialState then
+        updateVisuals()
+    end
 
     button.MouseButton1Click:Connect(function()
         state.Value = not state.Value
-        local color = state.Value and Color3.fromRGB(0, 115, 200) or Color3.fromRGB(116, 116, 116)
-        local pos = state.Value and UDim2.new(0, 500, 0, 17) or UDim2.new(0, 475, 0, 17)
-    
-        TweenService:Create(indicator, TweenInfo.new(0.25), {Position = pos, BackgroundColor3 = color}):Play()
-        TweenService:Create(bg, TweenInfo.new(0.25), {BackgroundColor3 = color}):Play()
+        updateVisuals()
     
         task.spawn(function()
             actionFunction(state, button)

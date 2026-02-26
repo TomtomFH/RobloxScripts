@@ -972,31 +972,50 @@ end)
 CreateToggle("Auto Features", "AutoBreed", function(state)
     autoBreedEnabled = state.Value
     if autoBreedEnabled then
+        notify("AutoBreed enabled")
         startAutoBreed()
+    else
+        notify("AutoBreed disabled")
     end
 end)
 
 CreateToggle("Auto Features", "AutoRemove Eggs", function(state)
     autoRemoveEggsEnabled = state.Value
     if autoRemoveEggsEnabled then
+        notify("AutoRemove Eggs enabled")
         startAutoRemoveEggs()
+    else
+        notify("AutoRemove Eggs disabled")
     end
 end)
 
 CreateToggle("Auto Features", "AutoBuy Food", function(state)
     autoBuyFoodEnabled = state.Value
+    if autoBuyFoodEnabled then
+        notify("AutoBuy Food enabled")
+    else
+        notify("AutoBuy Food disabled")
+    end
     setupAutoBuyFood()
-end)
+end, true)
 
 CreateToggle("Auto Features", "AutoBuy Merchant", function(state)
     autoBuyMerchantEnabled = state.Value
+    if autoBuyMerchantEnabled then
+        notify("AutoBuy Merchant enabled")
+    else
+        notify("AutoBuy Merchant disabled")
+    end
     setupAutoBuyMerchant()
-end)
+end, true)
 
 CreateToggle("Auto Features", "AutoSell Legendary Eggs", function(state)
     autoSellLegendaryEggsEnabled = state.Value
     if autoSellLegendaryEggsEnabled then
+        notify("AutoSell Legendary Eggs enabled")
         startAutoSellLegendaryEggs()
+    else
+        notify("AutoSell Legendary Eggs disabled")
     end
 end)
 

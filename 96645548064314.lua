@@ -1330,7 +1330,7 @@ local saveCycleIntervalInput = CreateInput("Save Cycling", "Interval (seconds)",
     end
 end)
 
-local saveCycleStatusLabel = CreateValueLabel("Save Cycling", "Save slot: --, next cycle: --")
+local saveCycleStatusLabel = CreateValueLabel("Save Cycling", "Save slot: --, next slot: --, next cycle: --")
 
 -- Update save cycle status every second
 task.spawn(function()
@@ -1339,9 +1339,15 @@ task.spawn(function()
         if autoCycleSavesEnabled and currentSaveSlot > 0 and saveCycleStartTime > 0 then
             local elapsed = tick() - saveCycleStartTime
             local remaining = math.max(0, currentCycleInterval - elapsed)
-            saveCycleStatusLabel.Text = string.format("Save slot: %d, next cycle: %s", currentSaveSlot, formatSeconds(math.ceil(remaining)))
+            local nextSlot = (currentSaveSlot % 4) + 1
+            saveCycleStatusLabel.Text = string.format(
+                "Save slot: %d, next slot: %d, next cycle: %s",
+                currentSaveSlot,
+                nextSlot,
+                formatSeconds(math.ceil(remaining))
+            )
         else
-            saveCycleStatusLabel.Text = "Save slot: --, next cycle: --"
+            saveCycleStatusLabel.Text = "Save slot: --, next slot: --, next cycle: --"
         end
     end
 end)

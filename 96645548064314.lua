@@ -337,6 +337,7 @@ local autoCycleSavesLoop = false
 local saveCycleInterval = 150  -- 2 min 30 sec in seconds
 local currentSaveSlot = 0  -- 0 = unknown, will be set when cycling starts
 local saveCycleStartTime = 0  -- Track when current cycle started
+local currentCycleInterval = 0  -- Track the interval for the current cycle
 
 local function scanPets()
     local character = player.Character
@@ -853,6 +854,7 @@ local function startAutoCycleSaves()
                 end
                 
                 saveCycleStartTime = tick()  -- Mark cycle start
+                currentCycleInterval = saveCycleInterval  -- Capture interval at cycle start
                 local args = { slot, true }
                 pcall(function()
                     getSaveInfo:InvokeServer(unpack(args))
@@ -1336,7 +1338,7 @@ task.spawn(function()
         task.wait(1)
         if autoCycleSavesEnabled and currentSaveSlot > 0 and saveCycleStartTime > 0 then
             local elapsed = tick() - saveCycleStartTime
-            local remaining = math.max(0, saveCycleInterval - elapsed)
+            local remaining = math.max(0, currentCycleInterval - elapsed)
             saveCycleStatusLabel.Text = string.format("Save slot: %d, next cycle: %s", currentSaveSlot, formatSeconds(math.ceil(remaining)))
         else
             saveCycleStatusLabel.Text = "Save slot: --, next cycle: --"

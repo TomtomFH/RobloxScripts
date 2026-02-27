@@ -1451,10 +1451,4 @@ if autoBuyMerchantEnabled then
     setupAutoBuyMerchant()
 end
 
--- Update toggle button visuals for enabled features
-mythicalAutoToggle.Text = "Auto Catch: ON"
-mythicalAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
-missingAutoToggle.Text = "Auto Catch: ON"
-missingAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
-
 print("✓ Pet Scanner loaded with UI Library!")

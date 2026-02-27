@@ -55,6 +55,7 @@ local Tabs = {}
 local Menus = {}
 local Sidebars = {}
 local PageLayouts = {}
+local TabButtons = {}  -- Store tab buttons for highlighting
 
 function CreateMenu(menuName)
     local UI = Instance.new("ScreenGui", game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"))
@@ -159,6 +160,7 @@ function CreateMenu(menuName)
     Sidebars[menuName] = SideBar
     Menus[menuName] = Pages
     PageLayouts[menuName] = UIPageLayout
+    TabButtons[menuName] = {}  -- Initialize tab buttons storage for this menu
 end
 
 function CreateGroup(menuName, groupName)
@@ -221,6 +223,8 @@ function CreateTab(menuName, groupName, tabName)
     button.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
     button.Text = tabName
     button.Name = tabName
+    
+    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 4)
 
     local page = Instance.new("Frame", menu)
     page.BorderSizePixel = 0
@@ -279,9 +283,34 @@ function CreateTab(menuName, groupName, tabName)
     
     updateTabCanvasSize()    
 
+    -- Store button reference for highlighting
+    table.insert(TabButtons[menuName], button)
+    
+    -- Function to update all tab button highlights
+    local function setActiveTab(activeButton)
+        for _, btn in ipairs(TabButtons[menuName]) do
+            if btn == activeButton then
+                -- Highlight active tab
+                btn.TextColor3 = Color3.fromRGB(0, 170, 255)
+                btn.BackgroundTransparency = 0.9
+                btn.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
+            else
+                -- Normal state for inactive tabs
+                btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                btn.BackgroundTransparency = 1
+            end
+        end
+    end
+
     button.MouseButton1Click:Connect(function()
         pageLayout:JumpTo(page)
+        setActiveTab(button)
     end)
+    
+    -- If this is the first tab, make it active by default
+    if #TabButtons[menuName] == 1 then
+        setActiveTab(button)
+    end
 
     Tabs[tabName] = tab
 end

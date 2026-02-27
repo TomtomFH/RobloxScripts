@@ -57,6 +57,8 @@ local Sidebars = {}
 local PageLayouts = {}
 local TabButtons = {}  -- Store tab buttons for highlighting
 local TabHighlights = {}  -- Store highlight frames for each menu
+local SetActiveTabHandlers = {}  -- Store active tab update handlers per menu
+local CurrentPageConnections = {}  -- Track CurrentPage listeners per menu
 
 function CreateMenu(menuName)
     local UI = Instance.new("ScreenGui", game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"))
@@ -336,6 +338,23 @@ function CreateTab(menuName, groupName, tabName)
                 btn.TextColor3 = Color3.fromRGB(255, 255, 255)
             end
         end
+    end
+
+    SetActiveTabHandlers[menuName] = setActiveTab
+
+    if not CurrentPageConnections[menuName] then
+        CurrentPageConnections[menuName] = pageLayout:GetPropertyChangedSignal("CurrentPage"):Connect(function()
+            local currentPage = pageLayout.CurrentPage
+            local activeHandler = SetActiveTabHandlers[menuName]
+            if not currentPage or not activeHandler then return end
+
+            for _, btn in ipairs(TabButtons[menuName]) do
+                if btn.Name == currentPage.Name then
+                    activeHandler(btn)
+                    break
+                end
+            end
+        end)
     end
 
     button.MouseButton1Click:Connect(function()
@@ -638,6 +657,13 @@ function DestroyMenu(menuName)
     Menus[menuName] = nil
     Sidebars[menuName] = nil
     PageLayouts[menuName] = nil
+    TabButtons[menuName] = nil
+    TabHighlights[menuName] = nil
+    SetActiveTabHandlers[menuName] = nil
+    if CurrentPageConnections[menuName] then
+        CurrentPageConnections[menuName]:Disconnect()
+        CurrentPageConnections[menuName] = nil
+    end
 end
 
 --[[

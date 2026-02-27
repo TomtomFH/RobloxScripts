@@ -39,6 +39,7 @@ local autoSellMythicalEggsEnabled = false  -- Auto-sell Mythical eggs
 
 -- Save Cycling Settings
 local autoCycleSavesEnabled = false  -- Auto-cycle through save slots
+local autoCollectPetCashEnabled = false  -- Collect pet cash before switching saves
 local saveCycleInterval = 375  -- Interval between save switches (seconds) - 6m 15s
 
 -- ============================================================
@@ -907,12 +908,19 @@ local function startAutoCycleSaves()
     task.spawn(function()
         while autoCycleSavesEnabled do
             local getSaveInfo = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("getSaveInfo")
+            local collectAllPetCash = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("collectAllPetCash")
             
             for slot = 1, 4 do
                 if not autoCycleSavesEnabled then
                     break
                 end
                 
+                if autoCollectPetCashEnabled then
+                    pcall(function()
+                        collectAllPetCash:FireServer()
+                    end)
+                end
+
                 saveCycleStartTime = tick()  -- Mark cycle start
                 currentCycleInterval = saveCycleInterval  -- Capture interval at cycle start
                 local args = { slot, true }
@@ -1430,6 +1438,15 @@ CreateToggle("Save Cycling", "Auto Cycle Saves", function(state)
         notify("Auto Cycle Saves disabled")
     end
 end, autoCycleSavesEnabled)
+
+CreateToggle("Save Cycling", "Collect Pet Cash Before Switch", function(state)
+    autoCollectPetCashEnabled = state.Value
+    if autoCollectPetCashEnabled then
+        notify("Will collect pet cash before switching saves")
+    else
+        notify("Pet cash collection before switch disabled")
+    end
+end, autoCollectPetCashEnabled)
 
 -- Initialize auto features (only those enabled in settings)
 if autoCatchBest or autoCatchMythical or autoCatchMissing then

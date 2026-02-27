@@ -16,25 +16,25 @@ local breedingPairs = {
 -- Catch Settings
 local catchCps = 40  -- Progress updates per second during minigame
 local minCatchRPS = 1000  -- Minimum RPS required to catch (0 = disabled)
-local ignoreMinRPSForSecret = true  -- Catch Secret pets regardless of min RPS
-local ignoreMinRPSForExclusive = true  -- Catch Exclusive pets regardless of min RPS
-local ignoreMinRPSForMissing = true  -- Catch missing pets regardless of min RPS
+local ignoreMinRPSForSecret = false  -- Catch Secret pets regardless of min RPS
+local ignoreMinRPSForExclusive = false  -- Catch Exclusive pets regardless of min RPS
+local ignoreMinRPSForMissing = false  -- Catch missing pets regardless of min RPS
 local appliedThreshold = 1000  -- RPS threshold for "new best pet" warning
 
 -- Auto-Catch Default States
 local autoCatchBest = false  -- Auto-catch best overall pet
-local autoCatchMythical = true  -- Auto-catch best Mythical+ pet
-local autoCatchMissing = true  -- Auto-catch best missing pet
+local autoCatchMythical = false  -- Auto-catch best Mythical+ pet
+local autoCatchMissing = false  -- Auto-catch best missing pet
 
 -- Auto Features Default States
-local autoBreedEnabled = true  -- Auto-breed configured pairs
-local autoRemoveEggsEnabled = true  -- Auto-remove eggs from pen
-local autoBuyFoodEnabled = true  -- Auto-buy food when available
-local autoBuyMerchantEnabled = true  -- Auto-buy from traveling merchant
+local autoBreedEnabled = false  -- Auto-breed configured pairs
+local autoRemoveEggsEnabled = false  -- Auto-remove eggs from pen
+local autoBuyFoodEnabled = false  -- Auto-buy food when available
+local autoBuyMerchantEnabled = false  -- Auto-buy from traveling merchant
 local merchantPurchaseDelay = 0.1  -- Delay between merchant purchases (seconds)
 
 -- Auto Sell Default States
-local autoSellLegendaryEggsEnabled = true  -- Auto-sell Legendary eggs
+local autoSellLegendaryEggsEnabled = false  -- Auto-sell Legendary eggs
 local autoSellMythicalEggsEnabled = false  -- Auto-sell Mythical eggs
 
 -- Save Cycling Settings

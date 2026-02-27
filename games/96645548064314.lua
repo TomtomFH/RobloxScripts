@@ -817,7 +817,6 @@ local function refreshInventoryUI()
 end
 
 local function autoSellEggsOnce(rarity, enabledVar)
-    print("[AutoSellEggs] Run cycle for " .. rarity)
     local remotes = ReplicatedStorage:WaitForChild("Remotes")
     local getEggInventory = remotes:WaitForChild("getEggInventory")
     local sellEgg = remotes:WaitForChild("sellEgg")
@@ -829,10 +828,8 @@ local function autoSellEggsOnce(rarity, enabledVar)
         for attempt = 1, maxAttempts do
             local ok = sellEgg:InvokeServer(guid, false)
             if ok then
-                print(string.format("[AutoSellEggs] Sold %s", tostring(guid)))
                 return true
             end
-            print(string.format("[AutoSellEggs] Retry %s attempt %d", tostring(guid), attempt))
             task.wait(0.15 * attempt)
         end
         return false
@@ -840,10 +837,8 @@ local function autoSellEggsOnce(rarity, enabledVar)
 
     local didSellInPass = true
     while enabledVar and didSellInPass do
-        print("[AutoSellEggs] Fetching inventory...")
         local eggs = getEggInventory:InvokeServer()
         if type(eggs) ~= "table" then
-            print("[AutoSellEggs] Inventory fetch failed")
             return
         end
 
@@ -853,7 +848,6 @@ local function autoSellEggsOnce(rarity, enabledVar)
                 break
             end
             if egg and egg.rarity == rarity then
-                print(string.format("[AutoSellEggs] Selling %s | name=%s", tostring(guid), tostring(egg.eggName)))
                 local ok = trySellEgg(guid)
                 if ok then
                     didSellInPass = true
@@ -864,11 +858,8 @@ local function autoSellEggsOnce(rarity, enabledVar)
         end
 
         if didSellInPass then
-            print("[AutoSellEggs] Refreshing inventory UI")
             task.wait(0.2)
             refreshInventoryUI()
-        else
-            print("[AutoSellEggs] No " .. rarity .. " eggs found")
         end
     end
     

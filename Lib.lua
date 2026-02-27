@@ -345,8 +345,11 @@ function CreateToggle(tabName, toggleText, actionFunction, initialState)
         TweenService:Create(bg, TweenInfo.new(0.25), {BackgroundColor3 = color}):Play()
     end
 
-    if initialState then
+    if state.Value then
         updateVisuals()
+        task.spawn(function()
+            actionFunction(state, button)
+        end)
     end
 
     button.MouseButton1Click:Connect(function()

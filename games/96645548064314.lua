@@ -272,14 +272,34 @@ local missingCard, missingImage, missingInfo, missingAutoToggle = createPetCard(
 )
 missingInfo.Text = "No missing pets found"
 
--- Initialize auto-catch button states to match settings
--- All should be OFF by default
-bestPetAutoToggle.Text = "Auto Catch: OFF"
-bestPetAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-mythicalAutoToggle.Text = "Auto Catch: OFF"
-mythicalAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-missingAutoToggle.Text = "Auto Catch: OFF"
-missingAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+-- Load auto-catch button states from config
+local autoCatchBestConfigKey = "Catching_Auto Catch Best"
+local autoCatchMythicalConfigKey = "Catching_Auto Catch Mythical"
+local autoCatchMissingConfigKey = "Catching_Auto Catch Missing"
+
+if Config[autoCatchBestConfigKey] then
+    autoCatchBest = Config[autoCatchBestConfigKey]
+end
+if Config[autoCatchMythicalConfigKey] then
+    autoCatchMythical = Config[autoCatchMythicalConfigKey]
+end
+if Config[autoCatchMissingConfigKey] then
+    autoCatchMissing = Config[autoCatchMissingConfigKey]
+end
+
+-- Update button visuals based on loaded config
+if autoCatchBest then
+    bestPetAutoToggle.Text = "Auto Catch: ON"
+    bestPetAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
+end
+if autoCatchMythical then
+    mythicalAutoToggle.Text = "Auto Catch: ON"
+    mythicalAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
+end
+if autoCatchMissing then
+    missingAutoToggle.Text = "Auto Catch: ON"
+    missingAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
+end
 
 -- Helper function to set pet image
 local function setPetImage(imageLabel, petName)
@@ -1138,6 +1158,8 @@ end
 
 bestPetAutoToggle.MouseButton1Click:Connect(function()
     autoCatchBest = not autoCatchBest
+    Config[autoCatchBestConfigKey] = autoCatchBest
+    SaveConfig()
     if autoCatchBest then
         bestPetAutoToggle.Text = "Auto Catch: ON"
         bestPetAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
@@ -1152,6 +1174,8 @@ end)
 
 mythicalAutoToggle.MouseButton1Click:Connect(function()
     autoCatchMythical = not autoCatchMythical
+    Config[autoCatchMythicalConfigKey] = autoCatchMythical
+    SaveConfig()
     if autoCatchMythical then
         mythicalAutoToggle.Text = "Auto Catch: ON"
         mythicalAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
@@ -1166,6 +1190,8 @@ end)
 
 missingAutoToggle.MouseButton1Click:Connect(function()
     autoCatchMissing = not autoCatchMissing
+    Config[autoCatchMissingConfigKey] = autoCatchMissing
+    SaveConfig()
     if autoCatchMissing then
         missingAutoToggle.Text = "Auto Catch: ON"
         missingAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)

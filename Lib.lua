@@ -553,7 +553,12 @@ function CreateInput(tabName, labelText, defaultText, buttonText, actionFunction
             actionFunction(textBox, button, frame)
         end)
     end)
-
+    -- If there was a saved value, call the action function to initialize game variables
+    if savedText ~= nil and actionFunction then
+        task.spawn(function()
+            actionFunction(textBox, button, frame)
+        end)
+    end
     return textBox, button, frame
 end
 

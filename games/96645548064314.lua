@@ -277,9 +277,6 @@ missingInfo.Text = "No missing pets found"
 local autoCatchBestConfigKey = "Catching_Auto Catch Best"
 local autoCatchMythicalConfigKey = "Catching_Auto Catch Mythical"
 local autoCatchMissingConfigKey = "Catching_Auto Catch Missing"
-local minCatchRPSConfigKey = "Catching_Minimum RPS"
-local appliedThresholdConfigKey = "Pet Warning_Threshold"
-local saveCycleIntervalConfigKey = "Save Cycling_Interval"
 
 -- Safely load config values (Config may not exist on first run)
 if Config and type(Config) == "table" then
@@ -291,15 +288,6 @@ if Config and type(Config) == "table" then
     end
     if Config[autoCatchMissingConfigKey] then
         autoCatchMissing = Config[autoCatchMissingConfigKey]
-    end
-    if Config[minCatchRPSConfigKey] then
-        minCatchRPS = Config[minCatchRPSConfigKey]
-    end
-    if Config[appliedThresholdConfigKey] then
-        appliedThreshold = Config[appliedThresholdConfigKey]
-    end
-    if Config[saveCycleIntervalConfigKey] then
-        saveCycleInterval = Config[saveCycleIntervalConfigKey]
     end
 end
 
@@ -1248,9 +1236,6 @@ local minCatchRPSInput = CreateInput("Catching", "Minimum RPS", tostring(minCatc
     local value = tonumber(textBox.Text)
     if value then
         minCatchRPS = value
-        if not Config or type(Config) ~= "table" then Config = {} end
-        Config[minCatchRPSConfigKey] = minCatchRPS
-        SaveConfig()
         if minCatchRPS == 0 then
             minRPSLabel.Text = "Catch Minimum RPS: Disabled"
         else
@@ -1358,9 +1343,6 @@ local thresholdInput = CreateInput("Pet Warning", "Threshold Value", tostring(ap
     local value = tonumber(textBox.Text)
     if value then
         appliedThreshold = value
-        if not Config or type(Config) ~= "table" then Config = {} end
-        Config[appliedThresholdConfigKey] = appliedThreshold
-        SaveConfig()
         if appliedThresholdLabel then
             appliedThresholdLabel.Text = "Applied Threshold: " .. appliedThreshold
         end
@@ -1406,9 +1388,6 @@ local saveCycleIntervalInput = CreateInput("Save Cycling", "Interval (seconds)",
         if not Config or type(Config) ~= "table" then Config = {} end
         Config[saveCycleIntervalConfigKey] = saveCycleInterval
         SaveConfig()
-        saveCycleIntervalLabel.Text = "Save Cycle Interval: " .. formatSeconds(saveCycleInterval)
-        notify("Save cycle interval set to " .. formatSeconds(saveCycleInterval))
-    else
         notify("Invalid interval value", true)
     end
 end)

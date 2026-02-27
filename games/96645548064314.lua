@@ -1326,23 +1326,23 @@ CreateToggle("Auto Features", "AutoBuy Merchant", function(state)
     setupAutoBuyMerchant()
 end, autoBuyMerchantEnabled)
 
-CreateToggle("Auto Sell", "AutoSell Legendary Eggs", function(state)
+CreateToggle("Auto Sell", "Legendary Eggs", function(state)
     autoSellLegendaryEggsEnabled = state.Value
     if autoSellLegendaryEggsEnabled then
-        notify("AutoSell Legendary Eggs enabled")
+        notify("Legendary Eggs enabled")
         startAutoSellLegendaryEggs()
     else
-        notify("AutoSell Legendary Eggs disabled")
+        notify("Legendary Eggs disabled")
     end
 end, autoSellLegendaryEggsEnabled)
 
-CreateToggle("Auto Sell", "AutoSell Mythical Eggs", function(state)
+CreateToggle("Auto Sell", "Mythical Eggs", function(state)
     autoSellMythicalEggsEnabled = state.Value
     if autoSellMythicalEggsEnabled then
-        notify("AutoSell Mythical Eggs enabled")
+        notify("Mythical Eggs enabled")
         startAutoSellMythicalEggs()
     else
-        notify("AutoSell Mythical Eggs disabled")
+        notify("Mythical Eggs disabled")
     end
 end, autoSellMythicalEggsEnabled)
 

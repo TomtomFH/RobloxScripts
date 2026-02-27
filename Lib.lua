@@ -566,6 +566,16 @@ end
 
 --[[
 
+TomtomFH UI Library Documentation
+
+FEATURES:
+- Automatic config saving per game (saves toggle states and input values)
+- Config files stored as: workspace/TomtomFHUI/TomtomFHUI_{PlaceId}.json
+- Settings load automatically on script restart
+- Press Left Ctrl to toggle UI visibility
+
+USAGE:
+
 Menu:
 CreateMenu("Menu Name")
 
@@ -575,20 +585,34 @@ CreateGroup("Menu Name", "Group Text")
 Tab:
 CreateTab("Menu Name", "Group Text", "Tab Name")
 
-Toggle:
+Toggle (with automatic config saving):
 CreateToggle("Tab Name", "Toggle Text", function(state)
-    while state.Value do
+    if state.Value then
         print("Toggle Enabled")
+    else
+        print("Toggle Disabled")
     end
-end)
+end, false)  -- false = initial state (optional, defaults to false)
 
 Button:
 CreateButton("Tab Name", "Button Text", function()
     print("Button Activated")
 end)
 
+Input (with automatic config saving):
+CreateInput("Tab Name", "Label Text", "Default Value", "Button Text", function(textBox, button, frame)
+    local value = textBox.Text
+    print("Input value:", value)
+end)
+
 Label:
 CreateLabel("Tab Name", "Label Text")
+
+Value Label (for displaying dynamic values):
+CreateValueLabel("Tab Name", "Initial Text")
+
+Container:
+CreateContainer("Tab Name")
 
 Destroy Menu:
 DestroyMenu("Menu Name")

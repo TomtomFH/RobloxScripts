@@ -272,6 +272,20 @@ local missingCard, missingImage, missingInfo, missingAutoToggle = createPetCard(
 )
 missingInfo.Text = "No missing pets found"
 
+-- Initialize auto-catch button states from settings
+if autoCatchBest then
+    bestPetAutoToggle.Text = "Auto Catch: ON"
+    bestPetAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
+end
+if autoCatchMythical then
+    mythicalAutoToggle.Text = "Auto Catch: ON"
+    mythicalAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
+end
+if autoCatchMissing then
+    missingAutoToggle.Text = "Auto Catch: ON"
+    missingAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
+end
+
 -- Helper function to set pet image
 local function setPetImage(imageLabel, petName)
     if petsConfig and petsConfig[petName] and petsConfig[petName].Image then
@@ -1212,7 +1226,7 @@ CreateToggle("Catching", "Ignore Min RPS for Secret", function(state)
     else
         notify("Secret pets must meet minimum RPS")
     end
-end, true)
+end, ignoreMinRPSForSecret)
 
 CreateToggle("Catching", "Ignore Min RPS for Exclusive", function(state)
     ignoreMinRPSForExclusive = state.Value
@@ -1221,7 +1235,7 @@ CreateToggle("Catching", "Ignore Min RPS for Exclusive", function(state)
     else
         notify("Exclusive pets must meet minimum RPS")
     end
-end, true)
+end, ignoreMinRPSForExclusive)
 
 CreateToggle("Catching", "Ignore Min RPS for Missing", function(state)
     ignoreMinRPSForMissing = state.Value
@@ -1230,7 +1244,7 @@ CreateToggle("Catching", "Ignore Min RPS for Missing", function(state)
     else
         notify("Missing pets must meet minimum RPS")
     end
-end, true)
+end, ignoreMinRPSForMissing)
 
 -- CREATE AUTO FEATURES TAB UI
 CreateToggle("Auto Features", "AutoBreed", function(state)
@@ -1241,7 +1255,7 @@ CreateToggle("Auto Features", "AutoBreed", function(state)
     else
         notify("AutoBreed disabled")
     end
-end, true)
+end, autoBreedEnabled)
 
 CreateToggle("Auto Features", "AutoRemove Eggs", function(state)
     autoRemoveEggsEnabled = state.Value
@@ -1251,7 +1265,7 @@ CreateToggle("Auto Features", "AutoRemove Eggs", function(state)
     else
         notify("AutoRemove Eggs disabled")
     end
-end, true)
+end, autoRemoveEggsEnabled)
 
 CreateToggle("Auto Features", "AutoBuy Food", function(state)
     autoBuyFoodEnabled = state.Value
@@ -1261,7 +1275,7 @@ CreateToggle("Auto Features", "AutoBuy Food", function(state)
         notify("AutoBuy Food disabled")
     end
     setupAutoBuyFood()
-end, true)
+end, autoBuyFoodEnabled)
 
 CreateToggle("Auto Features", "AutoBuy Merchant", function(state)
     autoBuyMerchantEnabled = state.Value
@@ -1271,7 +1285,7 @@ CreateToggle("Auto Features", "AutoBuy Merchant", function(state)
         notify("AutoBuy Merchant disabled")
     end
     setupAutoBuyMerchant()
-end, true)
+end, autoBuyMerchantEnabled)
 
 CreateToggle("Auto Sell", "AutoSell Legendary Eggs", function(state)
     autoSellLegendaryEggsEnabled = state.Value
@@ -1281,7 +1295,7 @@ CreateToggle("Auto Sell", "AutoSell Legendary Eggs", function(state)
     else
         notify("AutoSell Legendary Eggs disabled")
     end
-end, true)
+end, autoSellLegendaryEggsEnabled)
 
 CreateToggle("Auto Sell", "AutoSell Mythical Eggs", function(state)
     autoSellMythicalEggsEnabled = state.Value
@@ -1291,7 +1305,7 @@ CreateToggle("Auto Sell", "AutoSell Mythical Eggs", function(state)
     else
         notify("AutoSell Mythical Eggs disabled")
     end
-end)
+end, autoSellMythicalEggsEnabled)
 
 -- CREATE PET WARNING TAB UI
 CreateLabel("Pet Warning", "RPS Threshold")
@@ -1380,15 +1394,27 @@ CreateToggle("Save Cycling", "Auto Cycle Saves", function(state)
     else
         notify("Auto Cycle Saves disabled")
     end
-end)
+end, autoCycleSavesEnabled)
 
--- Initialize auto features
-startAutoCatchMaster()
-startAutoBreed()
-startAutoRemoveEggs()
-startAutoSellLegendaryEggs()
-setupAutoBuyFood()
-setupAutoBuyMerchant()
+-- Initialize auto features (only those enabled in settings)
+if autoCatchBest or autoCatchMythical or autoCatchMissing then
+    startAutoCatchMaster()
+end
+if autoBreedEnabled then
+    startAutoBreed()
+end
+if autoRemoveEggsEnabled then
+    startAutoRemoveEggs()
+end
+if autoSellLegendaryEggsEnabled then
+    startAutoSellLegendaryEggs()
+end
+if autoBuyFoodEnabled then
+    setupAutoBuyFood()
+end
+if autoBuyMerchantEnabled then
+    setupAutoBuyMerchant()
+end
 
 -- Update toggle button visuals for enabled features
 mythicalAutoToggle.Text = "Auto Catch: ON"

@@ -9,7 +9,8 @@ local breedingPairs = {
     -- Cross-breeding pairs
     { "Red Panda", "Kitsune" },
     { "Red Panda", "Axolotl" },
-    { "Lightning Dragon", "Cosmic Griffin" },
+    { "Lightning Dragon", "Cerberus" },
+    { "Griffin", "Cosmic Griffin" },
     { "Hydra", "Cosmic Griffin" },
     { "Galaxy Kitsune", "Galaxy Axolotl" },
     -- Self-breeding pairs (for when you have multiple of the same pet)

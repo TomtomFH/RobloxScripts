@@ -14,19 +14,19 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScript
 
 - **Catch And Tame**
 	- Place ID: 96645548064314
-	- Script: 96645548064314.lua
+	- Script: games/96645548064314.lua
 	- https://www.roblox.com/games/96645548064314/
 - **Dress To Impress**
 	- Place ID: 15101393044
-	- Script: 15101393044.lua
+	- Script: games/15101393044.lua
 	- https://www.roblox.com/games/15101393044/
 - **Ultimate Tree Incremental**
 	- Place ID: 105344022671234
-	- Script: 105344022671234.lua
+	- Script: games/105344022671234.lua
 	- https://www.roblox.com/games/105344022671234/
 - **Egg Incremental**
 	- Place ID: 137034315542002
-	- Script: 137034315542002.lua
+	- Script: games/137034315542002.lua
 	- https://www.roblox.com/games/137034315542002/
 
 ## Notes

@@ -1,6 +1,6 @@
 local placeId = game.PlaceId
 local baseUrl = "https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/"
-local url = baseUrl..placeId..".lua"
+local url = baseUrl.."games/"..placeId..".lua"
 
 -- Fetch and print version
 local function printVersion()

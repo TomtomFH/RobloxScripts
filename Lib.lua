@@ -56,6 +56,7 @@ local Menus = {}
 local Sidebars = {}
 local PageLayouts = {}
 local TabButtons = {}  -- Store tab buttons for highlighting
+local TabHighlights = {}  -- Store highlight frames for each menu
 
 function CreateMenu(menuName)
     local UI = Instance.new("ScreenGui", game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"))
@@ -127,6 +128,20 @@ function CreateMenu(menuName)
     SideBar.BorderColor3 = Color3.fromRGB(0, 0, 0)
     SideBar.Name = "SideBar"
     SideBar.BackgroundTransparency = 1
+    SideBar.ClipsDescendants = false
+    SideBar.ZIndex = 1
+
+    -- Create highlight frame for tab selection
+    local TabHighlight = Instance.new("Frame", SideBar)
+    TabHighlight.Name = "TabHighlight"
+    TabHighlight.Size = UDim2.new(0, 170, 0, 25)
+    TabHighlight.Position = UDim2.new(0, 0, 0, 0)
+    TabHighlight.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
+    TabHighlight.BackgroundTransparency = 0.85
+    TabHighlight.BorderSizePixel = 0
+    TabHighlight.ZIndex = 0
+    TabHighlight.Visible = false
+    Instance.new("UICorner", TabHighlight).CornerRadius = UDim.new(0, 6)
 
     local UIListLayout2 = Instance.new("UIListLayout", SideBar)
     UIListLayout2.Padding = UDim.new(0, 15)
@@ -161,6 +176,7 @@ function CreateMenu(menuName)
     Menus[menuName] = Pages
     PageLayouts[menuName] = UIPageLayout
     TabButtons[menuName] = {}  -- Initialize tab buttons storage for this menu
+    TabHighlights[menuName] = TabHighlight  -- Store highlight frame reference
 end
 
 function CreateGroup(menuName, groupName)
@@ -211,6 +227,7 @@ function CreateTab(menuName, groupName, tabName)
     local pageLayout = PageLayouts[menuName]
     local menu = Menus[menuName]
     local group = Groups[groupName]
+    local highlight = TabHighlights[menuName]
     if not group and menu and pageLayout then return end
 
     local button = Instance.new("TextButton", group)
@@ -223,8 +240,7 @@ function CreateTab(menuName, groupName, tabName)
     button.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
     button.Text = tabName
     button.Name = tabName
-    
-    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 4)
+    button.ZIndex = 2
 
     local page = Instance.new("Frame", menu)
     page.BorderSizePixel = 0
@@ -288,16 +304,32 @@ function CreateTab(menuName, groupName, tabName)
     
     -- Function to update all tab button highlights
     local function setActiveTab(activeButton)
+        if not highlight then return end
+        
+        -- Calculate the position of the active button relative to the sidebar
+        local buttonPos = activeButton.AbsolutePosition
+        local sidebarPos = activeButton.Parent.Parent.AbsolutePosition
+        local relativeY = buttonPos.Y - sidebarPos.Y
+        
+        -- Show highlight if hidden
+        if not highlight.Visible then
+            highlight.Visible = true
+            highlight.Position = UDim2.new(0, 0, 0, relativeY)
+        end
+        
+        -- Tween highlight to the active button position
+        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        local tween = TweenService:Create(highlight, tweenInfo, {
+            Position = UDim2.new(0, 0, 0, relativeY)
+        })
+        tween:Play()
+        
+        -- Update text colors
         for _, btn in ipairs(TabButtons[menuName]) do
             if btn == activeButton then
-                -- Highlight active tab
                 btn.TextColor3 = Color3.fromRGB(0, 170, 255)
-                btn.BackgroundTransparency = 0.9
-                btn.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
             else
-                -- Normal state for inactive tabs
                 btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-                btn.BackgroundTransparency = 1
             end
         end
     end
@@ -309,7 +341,9 @@ function CreateTab(menuName, groupName, tabName)
     
     -- If this is the first tab, make it active by default
     if #TabButtons[menuName] == 1 then
-        setActiveTab(button)
+        task.defer(function()
+            setActiveTab(button)
+        end)
     end
 
     Tabs[tabName] = tab

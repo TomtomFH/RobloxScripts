@@ -6,11 +6,21 @@
 
 -- Breeding Configuration
 local breedingPairs = {
-    { "Axolotl", "Red Panda" },
+    -- Cross-breeding pairs
     { "Red Panda", "Kitsune" },
+    { "Red Panda", "Axolotl" },
+    { "Lightning Dragon", "Cosmic Griffin" },
+    { "Hydra", "Cosmic Griffin" },
     { "Galaxy Kitsune", "Galaxy Axolotl" },
-    { "Galaxy Axolotl", "Galaxy Axolotl" },
-    { "Lightning Dragon", "Cerberus" }
+    -- Self-breeding pairs (for when you have multiple of the same pet)
+    { "Red Panda", "Red Panda" },
+    { "Kitsune", "Kitsune" },
+    { "Axolotl", "Axolotl" },
+    { "Lightning Dragon", "Lightning Dragon" },
+    { "Cosmic Griffin", "Cosmic Griffin" },
+    { "Hydra", "Hydra" },
+    { "Galaxy Kitsune", "Galaxy Kitsune" },
+    { "Galaxy Axolotl", "Galaxy Axolotl" }
 }
 
 -- Catch Settings
@@ -1385,9 +1395,9 @@ local saveCycleIntervalInput = CreateInput("Save Cycling", "Interval (seconds)",
     local value = tonumber(textBox.Text)
     if value and value > 0 then
         saveCycleInterval = value
-        if not Config or type(Config) ~= "table" then Config = {} end
-        Config[saveCycleIntervalConfigKey] = saveCycleInterval
-        SaveConfig()
+        saveCycleIntervalLabel.Text = "Save Cycle Interval: " .. formatSeconds(saveCycleInterval)
+        notify("Save cycle interval set to " .. formatSeconds(saveCycleInterval))
+    else
         notify("Invalid interval value", true)
     end
 end)

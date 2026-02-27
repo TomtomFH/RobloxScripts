@@ -128,14 +128,13 @@ function CreateMenu(menuName)
     SideBar.BorderColor3 = Color3.fromRGB(0, 0, 0)
     SideBar.Name = "SideBar"
     SideBar.BackgroundTransparency = 1
-    SideBar.ClipsDescendants = false
-    SideBar.ZIndex = 1
+    SideBar.ClipsDescendants = true
 
-    -- Create highlight frame for tab selection
-    local TabHighlight = Instance.new("Frame", SideBar)
+    -- Create highlight frame for tab selection (parented to Background, not SideBar)
+    local TabHighlight = Instance.new("Frame", Background)
     TabHighlight.Name = "TabHighlight"
     TabHighlight.Size = UDim2.new(0, 170, 0, 25)
-    TabHighlight.Position = UDim2.new(0, 0, 0, 0)
+    TabHighlight.Position = UDim2.new(0, 0, 0, 50)
     TabHighlight.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
     TabHighlight.BackgroundTransparency = 0.85
     TabHighlight.BorderSizePixel = 0
@@ -306,10 +305,15 @@ function CreateTab(menuName, groupName, tabName)
     local function setActiveTab(activeButton)
         if not highlight then return end
         
-        -- Calculate the position of the active button relative to the sidebar
-        local buttonPos = activeButton.AbsolutePosition
-        local sidebarPos = activeButton.Parent.Parent.AbsolutePosition
-        local relativeY = buttonPos.Y - sidebarPos.Y
+        -- Wait a frame for layout to update
+        task.wait()
+        
+        -- Get absolute positions
+        local backgroundPos = activeButton.Parent.Parent.Parent.AbsolutePosition.Y  -- Background's Y position
+        local buttonPos = activeButton.AbsolutePosition.Y  -- Button's absolute Y position
+        
+        -- Calculate position relative to Background
+        local relativeY = buttonPos - backgroundPos
         
         -- Show highlight if hidden
         if not highlight.Visible then
@@ -342,6 +346,7 @@ function CreateTab(menuName, groupName, tabName)
     -- If this is the first tab, make it active by default
     if #TabButtons[menuName] == 1 then
         task.defer(function()
+            task.wait(0.1)  -- Wait a bit longer for layout
             setActiveTab(button)
         end)
     end

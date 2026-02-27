@@ -272,19 +272,14 @@ local missingCard, missingImage, missingInfo, missingAutoToggle = createPetCard(
 )
 missingInfo.Text = "No missing pets found"
 
--- Initialize auto-catch button states from settings
-if autoCatchBest then
-    bestPetAutoToggle.Text = "Auto Catch: ON"
-    bestPetAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
-end
-if autoCatchMythical then
-    mythicalAutoToggle.Text = "Auto Catch: ON"
-    mythicalAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
-end
-if autoCatchMissing then
-    missingAutoToggle.Text = "Auto Catch: ON"
-    missingAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
-end
+-- Initialize auto-catch button states to match settings
+-- All should be OFF by default
+bestPetAutoToggle.Text = "Auto Catch: OFF"
+bestPetAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+mythicalAutoToggle.Text = "Auto Catch: OFF"
+mythicalAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+missingAutoToggle.Text = "Auto Catch: OFF"
+missingAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
 
 -- Helper function to set pet image
 local function setPetImage(imageLabel, petName)

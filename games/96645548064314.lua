@@ -874,18 +874,15 @@ end
 
 local function startAutoSellMythicalEggs()
     if autoSellMythicalEggsLoop then
-        print("[AutoSellEggs] Mythical loop already running")
         return
     end
 
     autoSellMythicalEggsLoop = true
     task.spawn(function()
-        print("[AutoSellEggs] Mythical loop started")
         while autoSellMythicalEggsEnabled do
             autoSellEggsOnce("Mythical", autoSellMythicalEggsEnabled)
             task.wait(5)
         end
-        print("[AutoSellEggs] Mythical loop stopped")
         autoSellMythicalEggsLoop = false
     end)
 end
@@ -930,18 +927,15 @@ end
 
 local function startAutoSellLegendaryEggs()
     if autoSellLegendaryEggsLoop then
-        print("[AutoSellEggs] Loop already running")
         return
     end
 
     autoSellLegendaryEggsLoop = true
     task.spawn(function()
-        print("[AutoSellEggs] Loop started")
         while autoSellLegendaryEggsEnabled do
             autoSellLegendaryEggsOnce()
             task.wait(5)
         end
-        print("[AutoSellEggs] Loop stopped")
         autoSellLegendaryEggsLoop = false
     end)
 end

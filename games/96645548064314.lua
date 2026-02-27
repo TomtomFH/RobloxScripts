@@ -313,15 +313,15 @@ missingAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
 -- Update button visuals based on loaded config
 if autoCatchBest then
     bestPetAutoToggle.Text = "Auto Catch: ON"
-    bestPetAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
+    bestPetAutoToggle.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
 end
 if autoCatchMythical then
     mythicalAutoToggle.Text = "Auto Catch: ON"
-    mythicalAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
+    mythicalAutoToggle.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
 end
 if autoCatchMissing then
     missingAutoToggle.Text = "Auto Catch: ON"
-    missingAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
+    missingAutoToggle.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
 end
 
 -- Helper function to set pet image
@@ -1178,7 +1178,7 @@ bestPetAutoToggle.MouseButton1Click:Connect(function()
     SaveConfig()
     if autoCatchBest then
         bestPetAutoToggle.Text = "Auto Catch: ON"
-        bestPetAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
+        bestPetAutoToggle.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
         if not autoCatchMasterLoop then
             startAutoCatchMaster()
         end
@@ -1195,7 +1195,7 @@ mythicalAutoToggle.MouseButton1Click:Connect(function()
     SaveConfig()
     if autoCatchMythical then
         mythicalAutoToggle.Text = "Auto Catch: ON"
-        mythicalAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
+        mythicalAutoToggle.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
         if not autoCatchMasterLoop then
             startAutoCatchMaster()
         end
@@ -1212,7 +1212,7 @@ missingAutoToggle.MouseButton1Click:Connect(function()
     SaveConfig()
     if autoCatchMissing then
         missingAutoToggle.Text = "Auto Catch: ON"
-        missingAutoToggle.BackgroundColor3 = Color3.fromRGB(80, 160, 90)
+        missingAutoToggle.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
         if not autoCatchMasterLoop then
             startAutoCatchMaster()
         end

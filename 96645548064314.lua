@@ -1,6 +1,10 @@
 -- CATCH AND TAME (https://www.roblox.com/games/96645548064314/)
 
--- Define breeding pairs here
+-- ============================================================
+-- SETTINGS - Modify these to customize default behavior
+-- ============================================================
+
+-- Breeding Configuration
 local breedingPairs = {
     { "Axolotl", "Red Panda" },
     { "Red Panda", "Kitsune" },
@@ -9,8 +13,38 @@ local breedingPairs = {
     { "Lightning Dragon", "Cerberus" }
 }
 
--- Catch CPS setting (progress updates per second)
-local catchCps = 40
+-- Catch Settings
+local catchCps = 40  -- Progress updates per second during minigame
+local minCatchRPS = 1000  -- Minimum RPS required to catch (0 = disabled)
+local ignoreMinRPSForSecret = true  -- Catch Secret pets regardless of min RPS
+local ignoreMinRPSForExclusive = true  -- Catch Exclusive pets regardless of min RPS
+local ignoreMinRPSForMissing = true  -- Catch missing pets regardless of min RPS
+local appliedThreshold = 1000  -- RPS threshold for "new best pet" warning
+
+-- Auto-Catch Default States
+local autoCatchBest = false  -- Auto-catch best overall pet
+local autoCatchMythical = true  -- Auto-catch best Mythical+ pet
+local autoCatchMissing = true  -- Auto-catch best missing pet
+
+-- Auto Features Default States
+local autoBreedEnabled = true  -- Auto-breed configured pairs
+local autoRemoveEggsEnabled = true  -- Auto-remove eggs from pen
+local autoBuyFoodEnabled = true  -- Auto-buy food when available
+local autoBuyMerchantEnabled = true  -- Auto-buy from traveling merchant
+local merchantPurchaseDelay = 0.1  -- Delay between merchant purchases (seconds)
+
+-- Auto Sell Default States
+local autoSellLegendaryEggsEnabled = true  -- Auto-sell Legendary eggs
+local autoSellMythicalEggsEnabled = false  -- Auto-sell Mythical eggs
+
+-- Save Cycling Settings
+local autoCycleSavesEnabled = false  -- Auto-cycle through save slots
+local saveCycleInterval = 375  -- Interval between save switches (seconds) - 6m 15s
+
+-- ============================================================
+-- END SETTINGS
+-- ============================================================
+
 local catchDelay = 1 / catchCps
 
 local folders = {
@@ -334,7 +368,7 @@ local merchantPurchaseDelay = 0.1
 -- Auto-cycle saves settings
 local autoCycleSavesEnabled = false
 local autoCycleSavesLoop = false
-local saveCycleInterval = 150  -- 2 min 30 sec in seconds
+local saveCycleInterval = 375  -- 6 min 15 sec in seconds
 local currentSaveSlot = 0  -- 0 = unknown, will be set when cycling starts
 local saveCycleStartTime = 0  -- Track when current cycle started
 local currentCycleInterval = 0  -- Track the interval for the current cycle

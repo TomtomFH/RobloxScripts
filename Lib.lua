@@ -12,7 +12,7 @@ local HttpService = game:GetService("HttpService")
 
 -- Config System
 local ConfigFileName = "TomtomFHUI_" .. tostring(game.PlaceId) .. ".json"
-local Config = {}
+Config = {}
 
 local function LoadConfig()
     if not isfolder("TomtomFHUI") then
@@ -33,7 +33,7 @@ local function LoadConfig()
     return false
 end
 
-local function SaveConfig()
+function SaveConfig()
     if not isfolder("TomtomFHUI") then
         makefolder("TomtomFHUI")
     end

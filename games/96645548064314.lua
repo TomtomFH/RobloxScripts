@@ -277,14 +277,17 @@ local autoCatchBestConfigKey = "Catching_Auto Catch Best"
 local autoCatchMythicalConfigKey = "Catching_Auto Catch Mythical"
 local autoCatchMissingConfigKey = "Catching_Auto Catch Missing"
 
-if Config[autoCatchBestConfigKey] then
-    autoCatchBest = Config[autoCatchBestConfigKey]
-end
-if Config[autoCatchMythicalConfigKey] then
-    autoCatchMythical = Config[autoCatchMythicalConfigKey]
-end
-if Config[autoCatchMissingConfigKey] then
-    autoCatchMissing = Config[autoCatchMissingConfigKey]
+-- Safely load config values (Config may not exist on first run)
+if Config and type(Config) == "table" then
+    if Config[autoCatchBestConfigKey] then
+        autoCatchBest = Config[autoCatchBestConfigKey]
+    end
+    if Config[autoCatchMythicalConfigKey] then
+        autoCatchMythical = Config[autoCatchMythicalConfigKey]
+    end
+    if Config[autoCatchMissingConfigKey] then
+        autoCatchMissing = Config[autoCatchMissingConfigKey]
+    end
 end
 
 -- Initialize all buttons to OFF state first
@@ -1166,6 +1169,7 @@ end
 
 bestPetAutoToggle.MouseButton1Click:Connect(function()
     autoCatchBest = not autoCatchBest
+    if not Config or type(Config) ~= "table" then Config = {} end
     Config[autoCatchBestConfigKey] = autoCatchBest
     SaveConfig()
     if autoCatchBest then
@@ -1182,6 +1186,7 @@ end)
 
 mythicalAutoToggle.MouseButton1Click:Connect(function()
     autoCatchMythical = not autoCatchMythical
+    if not Config or type(Config) ~= "table" then Config = {} end
     Config[autoCatchMythicalConfigKey] = autoCatchMythical
     SaveConfig()
     if autoCatchMythical then
@@ -1198,6 +1203,7 @@ end)
 
 missingAutoToggle.MouseButton1Click:Connect(function()
     autoCatchMissing = not autoCatchMissing
+    if not Config or type(Config) ~= "table" then Config = {} end
     Config[autoCatchMissingConfigKey] = autoCatchMissing
     SaveConfig()
     if autoCatchMissing then

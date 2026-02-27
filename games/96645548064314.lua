@@ -287,6 +287,14 @@ if Config[autoCatchMissingConfigKey] then
     autoCatchMissing = Config[autoCatchMissingConfigKey]
 end
 
+-- Initialize all buttons to OFF state first
+bestPetAutoToggle.Text = "Auto Catch: OFF"
+bestPetAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+mythicalAutoToggle.Text = "Auto Catch: OFF"
+mythicalAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+missingAutoToggle.Text = "Auto Catch: OFF"
+missingAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+
 -- Update button visuals based on loaded config
 if autoCatchBest then
     bestPetAutoToggle.Text = "Auto Catch: ON"

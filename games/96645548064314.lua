@@ -337,38 +337,24 @@ local bestMythical = nil
 local bestMissing = nil
 local previousBestRPS = -math.huge
 local warningActive = false
-local appliedThreshold = 1000
+-- ============================================================
+-- RUNTIME STATE - These track runtime state and should not be modified
+-- ============================================================
 
--- Catch minimum RPS settings
-local minCatchRPS = 1000
-local ignoreMinRPSForSecret = true
-local ignoreMinRPSForExclusive = true
-local ignoreMinRPSForMissing = true
-
--- Toggle states
-local autoCatchBest = false
-local autoCatchMythical = true
-local autoCatchMissing = true
+-- Auto-catch loop state
 local autoCatchMasterLoop = false
 local catchLock = false
-local autoBreedEnabled = true
-local autoBreedLoop = false
-local autoRemoveEggsEnabled = true
-local autoRemoveEggsLoop = false
-local autoSellLegendaryEggsEnabled = true
-local autoSellLegendaryEggsLoop = false
-local autoSellMythicalEggsEnabled = false
-local autoSellMythicalEggsLoop = false
-local autoBuyFoodEnabled = true
-local autoBuyFoodSetup = false
-local autoBuyMerchantEnabled = true
-local autoBuyMerchantSetup = false
-local merchantPurchaseDelay = 0.1
 
--- Auto-cycle saves settings
-local autoCycleSavesEnabled = false
+-- Auto features loop state
+local autoBreedLoop = false
+local autoRemoveEggsLoop = false
+local autoSellLegendaryEggsLoop = false
+local autoSellMythicalEggsLoop = false
+local autoBuyFoodSetup = false
+local autoBuyMerchantSetup = false
+
+-- Auto-cycle saves state
 local autoCycleSavesLoop = false
-local saveCycleInterval = 375  -- 6 min 15 sec in seconds
 local currentSaveSlot = 0  -- 0 = unknown, will be set when cycling starts
 local saveCycleStartTime = 0  -- Track when current cycle started
 local currentCycleInterval = 0  -- Track the interval for the current cycle

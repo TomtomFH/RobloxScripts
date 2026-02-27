@@ -1444,11 +1444,17 @@ end
 if autoSellLegendaryEggsEnabled then
     startAutoSellLegendaryEggs()
 end
+if autoSellMythicalEggsEnabled then
+    startAutoSellMythicalEggs()
+end
 if autoBuyFoodEnabled then
     setupAutoBuyFood()
 end
 if autoBuyMerchantEnabled then
     setupAutoBuyMerchant()
+end
+if autoCycleSavesEnabled then
+    startAutoCycleSaves()
 end
 
 print("✓ Pet Scanner loaded with UI Library!")

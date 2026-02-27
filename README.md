@@ -31,5 +31,5 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScript
 
 ## Notes
 
-- Some scripts enable features by default (for example, Catch And Tame). If you want different defaults, open the script for that game and change the toggles or values.
-- I plan to add config saving to the UI later, but for now I am focused on building the game scripts.
+- All scripts now default to having features disabled. You can enable what you want through the UI, and your settings will be saved automatically.
+- The UI library automatically saves your settings (toggle states and input values) per game. Your preferences will load automatically the next time you run the script.

@@ -8,6 +8,46 @@ end
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+
+-- Config System
+local ConfigFileName = "TomtomFHUI_" .. tostring(game.PlaceId) .. ".json"
+local Config = {}
+
+local function LoadConfig()
+    if not isfolder("TomtomFHUI") then
+        makefolder("TomtomFHUI")
+    end
+    
+    local filePath = "TomtomFHUI/" .. ConfigFileName
+    if isfile(filePath) then
+        local success, result = pcall(function()
+            local data = readfile(filePath)
+            return HttpService:JSONDecode(data)
+        end)
+        if success then
+            Config = result
+            return true
+        end
+    end
+    return false
+end
+
+local function SaveConfig()
+    if not isfolder("TomtomFHUI") then
+        makefolder("TomtomFHUI")
+    end
+    
+    local filePath = "TomtomFHUI/" .. ConfigFileName
+    local success = pcall(function()
+        local data = HttpService:JSONEncode(Config)
+        writefile(filePath, data)
+    end)
+    return success
+end
+
+-- Load config on library load
+LoadConfig()
 
 local isVisible = true
 local Groups = {}
@@ -250,6 +290,13 @@ function CreateToggle(tabName, toggleText, actionFunction, initialState)
     local tab = Tabs[tabName]
     if not tab then return end
 
+    -- Check config for saved state
+    local configKey = tabName .. "_" .. toggleText
+    local savedState = Config[configKey]
+    if savedState ~= nil then
+        initialState = savedState
+    end
+
     local button = Instance.new("TextButton", tab)
     button.BorderSizePixel = 0
     button.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -305,6 +352,10 @@ function CreateToggle(tabName, toggleText, actionFunction, initialState)
     button.MouseButton1Click:Connect(function()
         state.Value = not state.Value
         updateVisuals()
+        
+        -- Save to config
+        Config[configKey] = state.Value
+        SaveConfig()
     
         task.spawn(function()
             actionFunction(state, button)
@@ -437,6 +488,13 @@ function CreateInput(tabName, labelText, defaultText, buttonText, actionFunction
     local tab = Tabs[tabName]
     if not tab then return end
 
+    -- Check config for saved value
+    local configKey = tabName .. "_" .. labelText
+    local savedText = Config[configKey]
+    if savedText ~= nil then
+        defaultText = savedText
+    end
+
     local frame = Instance.new("Frame", tab)
     frame.Active = false
     frame.BorderSizePixel = 0
@@ -484,6 +542,10 @@ function CreateInput(tabName, labelText, defaultText, buttonText, actionFunction
     Instance.new("UICorner", button)
 
     button.MouseButton1Click:Connect(function()
+        -- Save to config
+        Config[configKey] = textBox.Text
+        SaveConfig()
+        
         task.spawn(function()
             actionFunction(textBox, button, frame)
         end)

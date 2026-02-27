@@ -1,11 +1,12 @@
 local placeId = game.PlaceId
 local baseUrl = "https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/"
-local url = baseUrl.."games/"..placeId..".lua"
+local cacheBust = "?cb=" .. tostring(os.time())
+local url = baseUrl.."games/"..placeId..".lua"..cacheBust
 
 -- Fetch and print version
 local function printVersion()
     pcall(function()
-        local versionUrl = baseUrl.."VERSION"
+        local versionUrl = baseUrl.."VERSION"..cacheBust
         local version = game:HttpGet(versionUrl, true)
         version = version:gsub("%s+", "")
         print("[RobloxScripts] Version: "..version)

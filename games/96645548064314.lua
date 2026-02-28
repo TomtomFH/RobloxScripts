@@ -51,7 +51,10 @@ local autoSellMythicalEggsEnabled = false  -- Auto-sell Mythical eggs
 -- Save Cycling Settings
 local autoCycleSavesEnabled = false  -- Auto-cycle through save slots
 local autoCollectPetCashEnabled = false  -- Collect pet cash before switching saves
-local saveCycleInterval = 375  -- Interval between save switches (seconds) - 6m 15s
+local saveSlot1Time = 375  -- Time to stay on slot 1 (seconds)
+local saveSlot2Time = 375  -- Time to stay on slot 2 (seconds)
+local saveSlot3Time = 375  -- Time to stay on slot 3 (seconds)
+local saveSlot4Time = 375  -- Time to stay on slot 4 (seconds)
 
 -- ============================================================
 -- END SETTINGS
@@ -920,8 +923,18 @@ local function startAutoCycleSaves()
                     end)
                 end
 
+                -- Get slot-specific time
+                local slotTime = saveSlot1Time
+                if slot == 2 then
+                    slotTime = saveSlot2Time
+                elseif slot == 3 then
+                    slotTime = saveSlot3Time
+                elseif slot == 4 then
+                    slotTime = saveSlot4Time
+                end
+                
                 saveCycleStartTime = tick()  -- Mark cycle start
-                currentCycleInterval = saveCycleInterval  -- Capture interval at cycle start
+                currentCycleInterval = slotTime  -- Capture interval at cycle start
                 local args = { slot, true }
                 pcall(function()
                     getSaveInfo:InvokeServer(unpack(args))
@@ -929,7 +942,7 @@ local function startAutoCycleSaves()
                 
                 currentSaveSlot = slot
                 notify(string.format("Switched to save slot %d", slot))
-                task.wait(saveCycleInterval)
+                task.wait(slotTime)
             end
         end
         autoCycleSavesLoop = false
@@ -1390,16 +1403,43 @@ local function formatSeconds(seconds)
 end
 
 -- CREATE MISC TAB UI
-local saveCycleIntervalLabel = CreateValueLabel("Save Cycling", "Save Cycle Interval: " .. formatSeconds(saveCycleInterval))
-
-local saveCycleIntervalInput = CreateInput("Save Cycling", "Interval (seconds)", tostring(saveCycleInterval), "Apply", function(textBox)
+CreateInput("Save Cycling", "Slot 1 Time (seconds)", tostring(saveSlot1Time), "Apply", function(textBox)
     local value = tonumber(textBox.Text)
     if value and value > 0 then
-        saveCycleInterval = value
-        saveCycleIntervalLabel.Text = "Save Cycle Interval: " .. formatSeconds(saveCycleInterval)
-        notify("Save cycle interval set to " .. formatSeconds(saveCycleInterval))
+        saveSlot1Time = value
+        notify("Slot 1 time set to " .. formatSeconds(saveSlot1Time))
     else
-        notify("Invalid interval value", true)
+        notify("Invalid time value", true)
+    end
+end)
+
+CreateInput("Save Cycling", "Slot 2 Time (seconds)", tostring(saveSlot2Time), "Apply", function(textBox)
+    local value = tonumber(textBox.Text)
+    if value and value > 0 then
+        saveSlot2Time = value
+        notify("Slot 2 time set to " .. formatSeconds(saveSlot2Time))
+    else
+        notify("Invalid time value", true)
+    end
+end)
+
+CreateInput("Save Cycling", "Slot 3 Time (seconds)", tostring(saveSlot3Time), "Apply", function(textBox)
+    local value = tonumber(textBox.Text)
+    if value and value > 0 then
+        saveSlot3Time = value
+        notify("Slot 3 time set to " .. formatSeconds(saveSlot3Time))
+    else
+        notify("Invalid time value", true)
+    end
+end)
+
+CreateInput("Save Cycling", "Slot 4 Time (seconds)", tostring(saveSlot4Time), "Apply", function(textBox)
+    local value = tonumber(textBox.Text)
+    if value and value > 0 then
+        saveSlot4Time = value
+        notify("Slot 4 time set to " .. formatSeconds(saveSlot4Time))
+    else
+        notify("Invalid time value", true)
     end
 end)
 

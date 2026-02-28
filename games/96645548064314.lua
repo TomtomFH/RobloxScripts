@@ -1403,6 +1403,99 @@ local function formatSeconds(seconds)
 end
 
 -- CREATE MISC TAB UI
+CreateToggle("Save Cycling", "Auto Cycle Saves", function(state)
+    autoCycleSavesEnabled = state.Value
+    if autoCycleSavesEnabled then
+        notify("Auto Cycle Saves enabled")
+        startAutoCycleSaves()
+    else
+        notify("Auto Cycle Saves disabled")
+    end
+end, autoCycleSavesEnabled)
+
+CreateToggle("Save Cycling", "Collect Pet Cash Before Switch", function(state)
+    autoCollectPetCashEnabled = state.Value
+    if autoCollectPetCashEnabled then
+        notify("Will collect pet cash before switching saves")
+    else
+        notify("Pet cash collection before switch disabled")
+    end
+end, autoCollectPetCashEnabled)
+
+local saveCycleStatusLabel = CreateValueLabel("Save Cycling", "Save slot: --, next slot: --, next cycle: --")
+
+-- Update save cycle status every second
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if autoCycleSavesEnabled and currentSaveSlot > 0 and saveCycleStartTime > 0 then
+            local elapsed = tick() - saveCycleStartTime
+            local remaining = math.max(0, currentCycleInterval - elapsed)
+            local nextSlot = (currentSaveSlot % 4) + 1
+            saveCycleStatusLabel.Text = string.format(
+                "Save slot: %d, next slot: %d, next cycle: %s",
+                currentSaveSlot,
+                nextSlot,
+                formatSeconds(math.ceil(remaining))
+            )
+        else
+            saveCycleStatusLabel.Text = "Save slot: --, next slot: --, next cycle: --"
+        end
+    end
+end)
+
+-- Function to manually switch save slot
+local function switchToSlot(slot)
+    if slot < 1 or slot > 4 then
+        notify("Invalid slot number", true)
+        return
+    end
+    
+    local getSaveInfo = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("getSaveInfo")
+    local collectAllPetCash = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("collectAllPetCash")
+    
+    if autoCollectPetCashEnabled then
+        pcall(function()
+            collectAllPetCash:FireServer()
+        end)
+    end
+    
+    saveCycleStartTime = tick()
+    local slotTime = saveSlot1Time
+    if slot == 2 then
+        slotTime = saveSlot2Time
+    elseif slot == 3 then
+        slotTime = saveSlot3Time
+    elseif slot == 4 then
+        slotTime = saveSlot4Time
+    end
+    currentCycleInterval = slotTime
+    
+    local args = { slot, true }
+    pcall(function()
+        getSaveInfo:InvokeServer(unpack(args))
+    end)
+    
+    currentSaveSlot = slot
+    notify(string.format("Switched to save slot %d", slot))
+end
+
+CreateButton("Save Cycling", "Previous Slot", function()
+    local prevSlot = currentSaveSlot - 1
+    if prevSlot < 1 then
+        prevSlot = 4
+    end
+    switchToSlot(prevSlot)
+end)
+
+CreateButton("Save Cycling", "Next Slot", function()
+    local nextSlot = currentSaveSlot + 1
+    if nextSlot > 4 then
+        nextSlot = 1
+    end
+    switchToSlot(nextSlot)
+end)
+
 CreateInput("Save Cycling", "Slot 1 Time (seconds)", tostring(saveSlot1Time), "Apply", function(textBox)
     local value = tonumber(textBox.Text)
     if value and value > 0 then
@@ -1442,47 +1535,6 @@ CreateInput("Save Cycling", "Slot 4 Time (seconds)", tostring(saveSlot4Time), "A
         notify("Invalid time value", true)
     end
 end)
-
-local saveCycleStatusLabel = CreateValueLabel("Save Cycling", "Save slot: --, next slot: --, next cycle: --")
-
--- Update save cycle status every second
-task.spawn(function()
-    while true do
-        task.wait(1)
-        if autoCycleSavesEnabled and currentSaveSlot > 0 and saveCycleStartTime > 0 then
-            local elapsed = tick() - saveCycleStartTime
-            local remaining = math.max(0, currentCycleInterval - elapsed)
-            local nextSlot = (currentSaveSlot % 4) + 1
-            saveCycleStatusLabel.Text = string.format(
-                "Save slot: %d, next slot: %d, next cycle: %s",
-                currentSaveSlot,
-                nextSlot,
-                formatSeconds(math.ceil(remaining))
-            )
-        else
-            saveCycleStatusLabel.Text = "Save slot: --, next slot: --, next cycle: --"
-        end
-    end
-end)
-
-CreateToggle("Save Cycling", "Auto Cycle Saves", function(state)
-    autoCycleSavesEnabled = state.Value
-    if autoCycleSavesEnabled then
-        notify("Auto Cycle Saves enabled")
-        startAutoCycleSaves()
-    else
-        notify("Auto Cycle Saves disabled")
-    end
-end, autoCycleSavesEnabled)
-
-CreateToggle("Save Cycling", "Collect Pet Cash Before Switch", function(state)
-    autoCollectPetCashEnabled = state.Value
-    if autoCollectPetCashEnabled then
-        notify("Will collect pet cash before switching saves")
-    else
-        notify("Pet cash collection before switch disabled")
-    end
-end, autoCollectPetCashEnabled)
 
 -- Initialize auto features (only those enabled in settings)
 if autoCatchBest or autoCatchMythical or autoCatchMissing then

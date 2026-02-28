@@ -924,23 +924,26 @@ local function startAutoCycleSaves()
                 end
 
                 -- Get slot-specific time
-                local slotTime = saveSlot1Time
+                local slotTime = tonumber(saveSlot1Time) or 375
                 if slot == 2 then
-                    slotTime = saveSlot2Time
+                    slotTime = tonumber(saveSlot2Time) or 375
                 elseif slot == 3 then
-                    slotTime = saveSlot3Time
+                    slotTime = tonumber(saveSlot3Time) or 375
                 elseif slot == 4 then
-                    slotTime = saveSlot4Time
+                    slotTime = tonumber(saveSlot4Time) or 375
                 end
+                slotTime = math.max(1, slotTime)
                 
                 saveCycleStartTime = tick()  -- Mark cycle start
                 currentCycleInterval = slotTime  -- Capture interval at cycle start
-                local args = { slot, true }
-                pcall(function()
-                    getSaveInfo:InvokeServer(unpack(args))
-                end)
-                
                 currentSaveSlot = slot
+                local args = { slot, true }
+                task.spawn(function()
+                    pcall(function()
+                        getSaveInfo:InvokeServer(unpack(args))
+                    end)
+                end)
+
                 notify(string.format("Switched to save slot %d", slot))
                 task.wait(slotTime)
             end
@@ -1461,22 +1464,25 @@ local function switchToSlot(slot)
     end
     
     saveCycleStartTime = tick()
-    local slotTime = saveSlot1Time
+    local slotTime = tonumber(saveSlot1Time) or 375
     if slot == 2 then
-        slotTime = saveSlot2Time
+        slotTime = tonumber(saveSlot2Time) or 375
     elseif slot == 3 then
-        slotTime = saveSlot3Time
+        slotTime = tonumber(saveSlot3Time) or 375
     elseif slot == 4 then
-        slotTime = saveSlot4Time
+        slotTime = tonumber(saveSlot4Time) or 375
     end
+    slotTime = math.max(1, slotTime)
     currentCycleInterval = slotTime
+    currentSaveSlot = slot
     
     local args = { slot, true }
-    pcall(function()
-        getSaveInfo:InvokeServer(unpack(args))
+    task.spawn(function()
+        pcall(function()
+            getSaveInfo:InvokeServer(unpack(args))
+        end)
     end)
-    
-    currentSaveSlot = slot
+
     notify(string.format("Switched to save slot %d", slot))
 end
 

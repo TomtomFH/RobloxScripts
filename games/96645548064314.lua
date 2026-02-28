@@ -413,6 +413,54 @@ local autoCycleSavesLoop = false
 local currentSaveSlot = 0  -- 0 = unknown, will be set when cycling starts
 local saveCycleStartTime = 0  -- Track when current cycle started
 local currentCycleInterval = 0  -- Track the interval for the current cycle
+local saveCycleInterruptToken = 0  -- Increment to interrupt current auto-cycle wait
+
+local function getSaveSlotTime(slot)
+    local slotTime = tonumber(saveSlot1Time) or 375
+    if slot == 2 then
+        slotTime = tonumber(saveSlot2Time) or 375
+    elseif slot == 3 then
+        slotTime = tonumber(saveSlot3Time) or 375
+    elseif slot == 4 then
+        slotTime = tonumber(saveSlot4Time) or 375
+    end
+    return math.max(1, slotTime)
+end
+
+local function switchToSlot(slot, isAutoSwitch)
+    if slot < 1 or slot > 4 then
+        notify("Invalid slot number", true)
+        return false
+    end
+
+    local getSaveInfo = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("getSaveInfo")
+    local collectAllPetCash = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("collectAllPetCash")
+
+    if autoCollectPetCashEnabled then
+        pcall(function()
+            collectAllPetCash:FireServer()
+        end)
+    end
+
+    local slotTime = getSaveSlotTime(slot)
+    saveCycleStartTime = tick()
+    currentCycleInterval = slotTime
+    currentSaveSlot = slot
+
+    if not isAutoSwitch then
+        saveCycleInterruptToken = saveCycleInterruptToken + 1
+    end
+
+    local args = { slot, true }
+    task.spawn(function()
+        pcall(function()
+            getSaveInfo:InvokeServer(unpack(args))
+        end)
+    end)
+
+    notify(string.format("Switched to save slot %d", slot))
+    return true
+end
 
 local function scanPets()
     local character = player.Character
@@ -909,43 +957,31 @@ local function startAutoCycleSaves()
     autoCycleSavesLoop = true
     task.spawn(function()
         while autoCycleSavesEnabled do
-            local getSaveInfo = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("getSaveInfo")
-            local collectAllPetCash = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("collectAllPetCash")
-            
-            for slot = 1, 4 do
+            local slot = currentSaveSlot
+            if slot < 1 or slot > 4 then
+                slot = 1
+            end
+
+            if switchToSlot(slot, true) then
+                local tokenAtCycleStart = saveCycleInterruptToken
+                local cycleEnd = saveCycleStartTime + currentCycleInterval
+
+                while autoCycleSavesEnabled and tick() < cycleEnd do
+                    if saveCycleInterruptToken ~= tokenAtCycleStart then
+                        break
+                    end
+                    task.wait(0.2)
+                end
+
                 if not autoCycleSavesEnabled then
                     break
                 end
-                
-                if autoCollectPetCashEnabled then
-                    pcall(function()
-                        collectAllPetCash:FireServer()
-                    end)
-                end
 
-                -- Get slot-specific time
-                local slotTime = tonumber(saveSlot1Time) or 375
-                if slot == 2 then
-                    slotTime = tonumber(saveSlot2Time) or 375
-                elseif slot == 3 then
-                    slotTime = tonumber(saveSlot3Time) or 375
-                elseif slot == 4 then
-                    slotTime = tonumber(saveSlot4Time) or 375
+                if saveCycleInterruptToken == tokenAtCycleStart then
+                    currentSaveSlot = (slot % 4) + 1
                 end
-                slotTime = math.max(1, slotTime)
-                
-                saveCycleStartTime = tick()  -- Mark cycle start
-                currentCycleInterval = slotTime  -- Capture interval at cycle start
-                currentSaveSlot = slot
-                local args = { slot, true }
-                task.spawn(function()
-                    pcall(function()
-                        getSaveInfo:InvokeServer(unpack(args))
-                    end)
-                end)
-
-                notify(string.format("Switched to save slot %d", slot))
-                task.wait(slotTime)
+            else
+                task.wait(0.2)
             end
         end
         autoCycleSavesLoop = false
@@ -1447,59 +1483,28 @@ task.spawn(function()
     end
 end)
 
--- Function to manually switch save slot
-local function switchToSlot(slot)
-    if slot < 1 or slot > 4 then
-        notify("Invalid slot number", true)
-        return
-    end
-    
-    local getSaveInfo = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("getSaveInfo")
-    local collectAllPetCash = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("collectAllPetCash")
-    
-    if autoCollectPetCashEnabled then
-        pcall(function()
-            collectAllPetCash:FireServer()
-        end)
-    end
-    
-    saveCycleStartTime = tick()
-    local slotTime = tonumber(saveSlot1Time) or 375
-    if slot == 2 then
-        slotTime = tonumber(saveSlot2Time) or 375
-    elseif slot == 3 then
-        slotTime = tonumber(saveSlot3Time) or 375
-    elseif slot == 4 then
-        slotTime = tonumber(saveSlot4Time) or 375
-    end
-    slotTime = math.max(1, slotTime)
-    currentCycleInterval = slotTime
-    currentSaveSlot = slot
-    
-    local args = { slot, true }
-    task.spawn(function()
-        pcall(function()
-            getSaveInfo:InvokeServer(unpack(args))
-        end)
-    end)
-
-    notify(string.format("Switched to save slot %d", slot))
-end
-
 CreateButton("Save Cycling", "Previous Slot", function()
-    local prevSlot = currentSaveSlot - 1
+    local baseSlot = currentSaveSlot
+    if baseSlot < 1 or baseSlot > 4 then
+        baseSlot = 1
+    end
+    local prevSlot = baseSlot - 1
     if prevSlot < 1 then
         prevSlot = 4
     end
-    switchToSlot(prevSlot)
+    switchToSlot(prevSlot, false)
 end)
 
 CreateButton("Save Cycling", "Next Slot", function()
-    local nextSlot = currentSaveSlot + 1
+    local baseSlot = currentSaveSlot
+    if baseSlot < 1 or baseSlot > 4 then
+        baseSlot = 1
+    end
+    local nextSlot = baseSlot + 1
     if nextSlot > 4 then
         nextSlot = 1
     end
-    switchToSlot(nextSlot)
+    switchToSlot(nextSlot, false)
 end)
 
 CreateInput("Save Cycling", "Slot 1 Time (seconds)", tostring(saveSlot1Time), "Apply", function(textBox)

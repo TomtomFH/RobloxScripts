@@ -68,28 +68,44 @@ function SetConfigValue(tabName, entryName, value, legacyKey)
     return SaveConfig()
 end
 
-local function migrateLegacyFlatConfig()
+local function migrateLegacyFlatConfigInPlace()
     local config = ensureConfigTable()
     local hasChanges = false
+    local pending = {}
 
     for key, value in pairs(config) do
         if type(key) == "string" and type(value) ~= "table" then
-            local splitIndex = string.find(key, "_")
+            local splitIndex = string.find(key, "_", 1, true)
             if splitIndex and splitIndex > 1 and splitIndex < #key then
                 local tabName = string.sub(key, 1, splitIndex - 1)
                 local entryName = string.sub(key, splitIndex + 1)
 
                 if tabName ~= "" and entryName ~= "" then
-                    local tabConfig = ensureTabConfig(tabName)
-                    if tabConfig[entryName] == nil then
-                        tabConfig[entryName] = value
-                    end
-                    config[key] = nil
-                    hasChanges = true
+                    table.insert(pending, {
+                        legacyKey = key,
+                        tabName = tabName,
+                        entryName = entryName,
+                        value = value
+                    })
                 end
             end
         end
     end
+
+    for _, item in ipairs(pending) do
+        local tabConfig = ensureTabConfig(item.tabName)
+        if tabConfig[item.entryName] == nil then
+            tabConfig[item.entryName] = item.value
+        end
+        config[item.legacyKey] = nil
+        hasChanges = true
+    end
+
+    return hasChanges
+end
+
+local function migrateLegacyFlatConfig()
+    local hasChanges = migrateLegacyFlatConfigInPlace()
 
     if hasChanges then
         SaveConfig()
@@ -211,6 +227,8 @@ function SaveConfig()
         if not isfolder("TomtomFHUI") then
             makefolder("TomtomFHUI")
         end
+
+        migrateLegacyFlatConfigInPlace()
         
         local filePath = "TomtomFHUI/" .. ConfigFileName
         local data = encodePrettyJson(Config, "")

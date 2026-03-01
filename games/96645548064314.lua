@@ -1399,10 +1399,8 @@ end, customBreedingEnabled)
 
 CreateLabel("Breeding", "Custom Pairs")
 
--- Container for custom pair buttons
-local customPairContainer = CreateContainer("Breeding", 0, false)
-
--- Function to create a custom pair button
+-- Function to create a custom pair button (defined early, container created later)
+local customPairContainer
 local function createCustomPairButton(pairIndex, pet1, pet2)
     local button = Instance.new("TextButton")
     button.Name = "CustomPair_" .. pairIndex
@@ -1453,6 +1451,9 @@ CreateInput("Breeding", "Add Custom Pair", "Pet1, Pet2", "Add Pair", function(te
         notify("Invalid format. Use: Pet1, Pet2", true)
     end
 end)
+
+-- Container for custom pair buttons (created after input so it appears below)
+customPairContainer = CreateContainer("Breeding", 0, false)
 
 -- CREATE AUTO FEATURES TAB UI
 CreateToggle("Auto Features", "AutoRemove Eggs", function(state)

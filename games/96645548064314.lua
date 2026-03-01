@@ -69,6 +69,47 @@ local saveSlot4Time = 375  -- Time to stay on slot 4 (seconds)
 
 local catchDelay = 1 / catchCps
 
+-- ============================================================
+-- LOG CAPTURE SYSTEM - Capture all prints to clipboard on Ctrl+C
+-- ============================================================
+local logBuffer = {}
+local originalPrint = print
+
+-- Override global print to capture output
+print = function(...)
+    local args = {...}
+    local message = table.concat(args, " ")
+    table.insert(logBuffer, os.date("[%H:%M:%S] ") .. message)
+    originalPrint(...) -- Still call original print
+end
+
+-- Set up Ctrl+C to copy logs to clipboard
+task.spawn(function()
+    local UserInputService = game:GetService("UserInputService")
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        
+        -- Check for Ctrl+C (KeyCode.C with LeftControl or RightControl)
+        if input.KeyCode == Enum.KeyCode.C then
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl) then
+                local logText = table.concat(logBuffer, "\n")
+                if setclipboard then
+                    setclipboard(logText)
+                    originalPrint("[Logger] Copied " .. #logBuffer .. " log entries to clipboard")
+                else
+                    originalPrint("[Logger] setclipboard not available in your executor")
+                end
+            end
+        end
+    end)
+end)
+
+print("[Logger] Log capture initialized - Press Ctrl+C to copy all logs to clipboard")
+
+-- ============================================================
+-- END LOG CAPTURE SYSTEM
+-- ============================================================
+
 local folders = {
     workspace.SkyIslandPets.Pets,
     workspace.RoamingPets.Pets

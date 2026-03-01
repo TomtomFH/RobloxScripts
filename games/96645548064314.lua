@@ -415,13 +415,22 @@ local customBreedingPairs = {}  -- Store custom breeding pairs
 
 -- Load custom breeding pairs from config
 if Config and type(Config) == "table" and Config["Breeding_CustomPairs"] then
+    print("Loading custom breeding pairs from config:", Config["Breeding_CustomPairs"])
     local HttpService = game:GetService("HttpService")
     local ok, decoded = pcall(function()
         return HttpService:JSONDecode(Config["Breeding_CustomPairs"])
     end)
     if ok and type(decoded) == "table" then
         customBreedingPairs = decoded
+        print("Loaded", #customBreedingPairs, "custom breeding pairs")
+        for i, pair in ipairs(customBreedingPairs) do
+            print("  Pair", i, ":", pair[1], "↔", pair[2])
+        end
+    else
+        print("Failed to decode custom pairs or not a table")
     end
+else
+    print("No custom breeding pairs in config")
 end
 local autoSellLegendaryEggsLoop = false
 local autoSellMythicalEggsLoop = false
@@ -1421,8 +1430,13 @@ local function saveCustomPairs()
         return HttpService:JSONEncode(customBreedingPairs)
     end)
     if ok then
+        print("Saving custom pairs to config:", encoded)
+        print("Number of pairs being saved:", #customBreedingPairs)
         Config["Breeding_CustomPairs"] = encoded
         SaveConfig()
+        print("Config saved successfully")
+    else
+        print("Failed to encode custom pairs for saving")
     end
 end
 
@@ -1441,30 +1455,58 @@ local function rebuildCustomPairButtons()
         local pet1, pet2 = pair[1], pair[2]
         local buttonText = pet1 .. " ↔ " .. pet2
         
-        -- Create button with closure over the actual pair data, not index
-        local button = CreateButton("Breeding", buttonText, function()
+        -- Store button reference in a table that persists
+        local buttonRef = {}
+        
+        -- Create button
+        buttonRef.instance = CreateButton("Breeding", buttonText, function()
+            print("Button clicked for pair:", pet1, "↔", pet2)
+            print("Current custom pairs before removal:", #customBreedingPairs)
+            
             -- Find and remove this specific pair by matching pet names
             for j = #customBreedingPairs, 1, -1 do
                 local p = customBreedingPairs[j]
                 if p[1] == pet1 and p[2] == pet2 then
+                    print("Found matching pair at index", j)
                     table.remove(customBreedingPairs, j)
+                    print("Removed pair. Remaining pairs:", #customBreedingPairs)
                     notify("Removed breeding pair: " .. pet1 .. " ↔ " .. pet2)
                     saveCustomPairs()
-                    rebuildCustomPairButtons()
+                    
+                    -- Destroy the button using the reference
+                    if buttonRef.instance then
+                        print("Attempting to destroy button:", buttonRef.instance.Name)
+                        print("Button parent:", buttonRef.instance.Parent)
+                        buttonRef.instance.Parent = nil
+                        buttonRef.instance:Destroy()
+                        print("Button destroyed successfully")
+                    else
+                        print("Button reference is nil!")
+                    end
+                    
+                    -- Remove from tracking array
+                    for k = #customPairButtons, 1, -1 do
+                        if customPairButtons[k] == buttonRef.instance then
+                            table.remove(customPairButtons, k)
+                            break
+                        end
+                    end
+                    
                     return
                 end
             end
         end)
         
         -- Store the returned button instance
-        if button then
-            table.insert(customPairButtons, button)
+        if buttonRef.instance then
+            table.insert(customPairButtons, buttonRef.instance)
         end
     end
 end
 
 CreateInput("Breeding", "Add Custom Pair", "Pet1, Pet2", "Add Pair", function(textBox)
     local text = textBox.Text
+    print("Add Custom Pair button clicked. Input text:", text)
     local parts = {}
     for part in text:gmatch("[^,]+") do
         table.insert(parts, part:match("^%s*(.-)%s*$"))  -- Trim whitespace
@@ -1472,10 +1514,13 @@ CreateInput("Breeding", "Add Custom Pair", "Pet1, Pet2", "Add Pair", function(te
     
     if #parts == 2 and parts[1] ~= "" and parts[2] ~= "" then
         local pet1, pet2 = parts[1], parts[2]
+        print("Adding new pair:", pet1, "↔", pet2)
+        print("Current pairs before adding:", #customBreedingPairs)
         table.insert(customBreedingPairs, {pet1, pet2})
+        print("Pairs after adding:", #customBreedingPairs)
         notify("Added breeding pair: " .. pet1 .. " ↔ " .. pet2)
         textBox.Text = "Pet1, Pet2"  -- Reset input
-        -- Save to config and rebuild buttons
+        -- Save custom pairs to config and rebuild buttons
         saveCustomPairs()
         rebuildCustomPairButtons()
     else

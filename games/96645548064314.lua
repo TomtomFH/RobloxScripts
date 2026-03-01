@@ -1410,7 +1410,7 @@ end, customBreedingEnabled)
 
 CreateLabel("Breeding", "Custom Pairs")
 
--- Storage for custom pair button references
+-- Storage for custom pair button references (actual button instances)
 local customPairButtons = {}
 
 -- Function to save custom pairs to config
@@ -1429,22 +1429,9 @@ end
 -- Function to rebuild all custom pair buttons
 local function rebuildCustomPairButtons()
     -- Destroy all existing pair buttons
-    for _, buttonName in ipairs(customPairButtons) do
-        local breedingTab = player.PlayerGui:FindFirstChild("TomtomFHUI")
-        if breedingTab then
-            breedingTab = breedingTab:FindFirstChild("Main")
-            if breedingTab then
-                breedingTab = breedingTab:FindFirstChild("MainTabsPage")
-                if breedingTab then
-                    breedingTab = breedingTab:FindFirstChild("Breeding")
-                    if breedingTab then
-                        local button = breedingTab:FindFirstChild(buttonName)
-                        if button then
-                            button:Destroy()
-                        end
-                    end
-                end
-            end
+    for _, button in ipairs(customPairButtons) do
+        if button and button.Parent then
+            button:Destroy()
         end
     end
     customPairButtons = {}
@@ -1455,7 +1442,7 @@ local function rebuildCustomPairButtons()
         local buttonText = pet1 .. " ↔ " .. pet2
         
         -- Create button with closure over the actual pair data, not index
-        CreateButton("Breeding", buttonText, function()
+        local button = CreateButton("Breeding", buttonText, function()
             -- Find and remove this specific pair by matching pet names
             for j = #customBreedingPairs, 1, -1 do
                 local p = customBreedingPairs[j]
@@ -1469,7 +1456,10 @@ local function rebuildCustomPairButtons()
             end
         end)
         
-        table.insert(customPairButtons, buttonText)
+        -- Store the returned button instance
+        if button then
+            table.insert(customPairButtons, button)
+        end
     end
 end
 

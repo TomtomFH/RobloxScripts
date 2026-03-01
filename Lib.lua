@@ -507,6 +507,8 @@ function CreateButton(tabName, buttonText, actionFunction)
             actionFunction()
         end)
 	end)
+	
+	return button
 end
 
 function CreateLabel(tabName, labelText)

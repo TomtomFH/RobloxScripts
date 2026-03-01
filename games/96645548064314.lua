@@ -1070,34 +1070,33 @@ local function startAutoCycleSaves()
             if tick() - lastManualSwitchTime < 2 then
                 print("[AutoCycle] Skipping auto-switch, manual switch too recent")
                 task.wait(0.5)
-                continue
-            end
+            else
+                local slot = currentSaveSlot
+                if slot < 1 or slot > 4 then
+                    slot = 1
+                end
 
-            local slot = currentSaveSlot
-            if slot < 1 or slot > 4 then
-                slot = 1
-            end
+                if switchToSlot(slot, true) then
+                    local tokenAtCycleStart = saveCycleInterruptToken
+                    local cycleEnd = saveCycleStartTime + currentCycleInterval
 
-            if switchToSlot(slot, true) then
-                local tokenAtCycleStart = saveCycleInterruptToken
-                local cycleEnd = saveCycleStartTime + currentCycleInterval
+                    while autoCycleSavesEnabled and tick() < cycleEnd do
+                        if saveCycleInterruptToken ~= tokenAtCycleStart then
+                            break
+                        end
+                        task.wait(0.2)
+                    end
 
-                while autoCycleSavesEnabled and tick() < cycleEnd do
-                    if saveCycleInterruptToken ~= tokenAtCycleStart then
+                    if not autoCycleSavesEnabled then
                         break
                     end
+
+                    if saveCycleInterruptToken == tokenAtCycleStart then
+                        currentSaveSlot = (slot % 4) + 1
+                    end
+                else
                     task.wait(0.2)
                 end
-
-                if not autoCycleSavesEnabled then
-                    break
-                end
-
-                if saveCycleInterruptToken == tokenAtCycleStart then
-                    currentSaveSlot = (slot % 4) + 1
-                end
-            else
-                task.wait(0.2)
             end
         end
         autoCycleSavesLoop = false

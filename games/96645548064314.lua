@@ -510,20 +510,37 @@ local function switchToSlot(slot, isAutoSwitch)
     task.spawn(function()
         pcall(function()
             local result1, result2 = getSaveInfo:InvokeServer(unpack(args))
+            print("[SaveSwitch] Initial call - Result1:", result1, "Result2:", result2)
+            
             -- Check if the second return value is nil (cooldown) or a number (success)
             if result2 == nil and isAutoSwitch then
+                print("[SaveSwitch] Cooldown detected, retrying...")
                 notify("Save switch on cooldown, retrying...", true)
-                task.wait(1)
-                pcall(function()
-                    getSaveInfo:InvokeServer(unpack(args))
-                end)
-            elseif result2 == nil then
+                
+                for retryCount = 1, 3 do
+                    task.wait(1)
+                    local retryResult1, retryResult2 = getSaveInfo:InvokeServer(unpack(args))
+                    print("[SaveSwitch] Retry " .. retryCount .. " - Result1:", retryResult1, "Result2:", retryResult2)
+                    
+                    if retryResult2 ~= nil then
+                        print("[SaveSwitch] Retry succeeded on attempt " .. retryCount)
+                        notify("Save switch succeeded on retry #" .. retryCount)
+                        return
+                    end
+                end
+                
+                print("[SaveSwitch] All retries failed")
+                notify("Failed to switch saves after retries", true)
+            elseif result2 == nil and not isAutoSwitch then
                 notify("Save switch failed: on cooldown", true)
+                print("[SaveSwitch] Manual switch failed - cooldown")
+            else
+                print("[SaveSwitch] Switch successful on first try")
+                notify(string.format("Switched to save slot %d", slot))
             end
         end)
     end)
 
-    notify(string.format("Switched to save slot %d", slot))
     return true
 end
 

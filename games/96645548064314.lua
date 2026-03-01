@@ -1399,39 +1399,75 @@ end, customBreedingEnabled)
 
 CreateLabel("Breeding", "Custom Pairs")
 
--- Function to create a custom pair button (defined early, container created later)
-local customPairContainer
-local function createCustomPairButton(pairIndex, pet1, pet2)
-    local button = Instance.new("TextButton")
-    button.Name = "CustomPair_" .. pairIndex
-    button.Size = UDim2.new(1, -20, 0, 30)
-    button.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextSize = 13
-    button.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
-    button.Text = pet1 .. " ↔ " .. pet2
-    button.Parent = customPairContainer
+-- Storage for custom pair button references
+local customPairButtons = {}
+
+-- Function to rebuild all custom pair buttons
+local function rebuildCustomPairButtons()
+    -- Destroy all existing pair buttons
+    for _, button in pairs(customPairButtons) do
+        if button and button.Parent then
+            button:Destroy()
+        end
+    end
+    customPairButtons = {}
     
-    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 6)
-    
-    button.MouseButton1Click:Connect(function()
-        -- Remove this pair
-        table.remove(customBreedingPairs, pairIndex)
-        button:Destroy()
-        notify("Removed breeding pair: " .. pet1 .. " ↔ " .. pet2)
+    -- Recreate buttons for each pair
+    for i, pair in ipairs(customBreedingPairs) do
+        local pet1, pet2 = pair[1], pair[2]
+        local buttonText = pet1 .. " ↔ " .. pet2
         
-        -- Rebuild all buttons to fix indices
-        for _, child in pairs(customPairContainer:GetChildren()) do
-            if child.Name:sub(1, 11) == "CustomPair_" then
-                child:Destroy()
-            end
+        -- Find the Breeding tab in the UI
+        local breedingTab = player.PlayerGui:WaitForChild("TomtomFHUI")
+            :FindFirstChild("Main"):FindFirstChild("MainTabsPage")
+            :FindFirstChild("Breeding")
+        
+        if breedingTab then
+            local button = Instance.new("TextButton")
+            button.Active = false
+            button.BorderSizePixel = 0
+            button.TextColor3 = Color3.fromRGB(255, 255, 255)
+            button.TextSize = 15
+            button.BackgroundColor3 = Color3.fromRGB(18, 18, 21)
+            button.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+            button.Selectable = false
+            button.Size = UDim2.new(0, 550, 0, 50)
+            button.Name = buttonText
+            button.BorderColor3 = Color3.fromRGB(0, 0, 0)
+            button.Text = ""
+            button.Parent = breedingTab
+            
+            Instance.new("UICorner", button)
+            
+            local label = Instance.new("TextLabel")
+            label.TextWrapped = true
+            label.BorderSizePixel = 0
+            label.TextSize = 15
+            label.TextXAlignment = Enum.TextXAlignment.Left
+            label.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            label.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+            label.TextColor3 = Color3.fromRGB(255, 255, 255)
+            label.BackgroundTransparency = 1
+            label.Size = UDim2.new(0, 500, 0, 35)
+            label.BorderColor3 = Color3.fromRGB(0, 0, 0)
+            label.Text = buttonText
+            label.Name = buttonText
+            label.Position = UDim2.new(0, 20, 0, 7)
+            label.Parent = button
+            
+            button.MouseButton1Click:Connect(function()
+                task.spawn(function()
+                    -- Remove this pair
+                    table.remove(customBreedingPairs, i)
+                    notify("Removed breeding pair: " .. pet1 .. " ↔ " .. pet2)
+                    -- Rebuild all buttons with updated indices
+                    rebuildCustomPairButtons()
+                end)
+            end)
+            
+            table.insert(customPairButtons, button)
         end
-        for i, pair in pairs(customBreedingPairs) do
-            createCustomPairButton(i, pair[1], pair[2])
-        end
-    end)
-    
-    return button
+    end
 end
 
 CreateInput("Breeding", "Add Custom Pair", "Pet1, Pet2", "Add Pair", function(textBox)
@@ -1444,16 +1480,14 @@ CreateInput("Breeding", "Add Custom Pair", "Pet1, Pet2", "Add Pair", function(te
     if #parts == 2 and parts[1] ~= "" and parts[2] ~= "" then
         local pet1, pet2 = parts[1], parts[2]
         table.insert(customBreedingPairs, {pet1, pet2})
-        createCustomPairButton(#customBreedingPairs, pet1, pet2)
         notify("Added breeding pair: " .. pet1 .. " ↔ " .. pet2)
         textBox.Text = "Pet1, Pet2"  -- Reset input
+        -- Rebuild all buttons to show the new pair
+        rebuildCustomPairButtons()
     else
         notify("Invalid format. Use: Pet1, Pet2", true)
     end
 end)
-
--- Container for custom pair buttons (created after input so it appears below)
-customPairContainer = CreateContainer("Breeding", 0, false)
 
 -- CREATE AUTO FEATURES TAB UI
 CreateToggle("Auto Features", "AutoRemove Eggs", function(state)

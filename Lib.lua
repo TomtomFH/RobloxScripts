@@ -14,32 +14,48 @@ local HttpService = game:GetService("HttpService")
 local ConfigFileName = "TomtomFHUI_" .. tostring(game.PlaceId) .. ".json"
 Config = {}
 
+-- Check if filesystem is available
+local hasFileSystem = type(isfolder) == "function" and type(makefolder) == "function" and 
+                      type(isfile) == "function" and type(readfile) == "function" and 
+                      type(writefile) == "function"
+
 local function LoadConfig()
-    if not isfolder("TomtomFHUI") then
-        makefolder("TomtomFHUI")
+    if not hasFileSystem then
+        return false
     end
     
-    local filePath = "TomtomFHUI/" .. ConfigFileName
-    if isfile(filePath) then
-        local success, result = pcall(function()
-            local data = readfile(filePath)
-            return HttpService:JSONDecode(data)
-        end)
-        if success then
-            Config = result
-            return true
+    local success, result = pcall(function()
+        if not isfolder("TomtomFHUI") then
+            makefolder("TomtomFHUI")
         end
+        
+        local filePath = "TomtomFHUI/" .. ConfigFileName
+        if isfile(filePath) then
+            local data = readfile(filePath)
+            local decoded = HttpService:JSONDecode(data)
+            return decoded
+        end
+        return nil
+    end)
+    
+    if success and result then
+        Config = result
+        return true
     end
     return false
 end
 
 function SaveConfig()
-    if not isfolder("TomtomFHUI") then
-        makefolder("TomtomFHUI")
+    if not hasFileSystem then
+        return false
     end
     
-    local filePath = "TomtomFHUI/" .. ConfigFileName
     local success = pcall(function()
+        if not isfolder("TomtomFHUI") then
+            makefolder("TomtomFHUI")
+        end
+        
+        local filePath = "TomtomFHUI/" .. ConfigFileName
         local data = HttpService:JSONEncode(Config)
         writefile(filePath, data)
     end)

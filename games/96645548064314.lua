@@ -510,6 +510,7 @@ local saveCycleStartTime = 0  -- Track when current cycle started
 local currentCycleInterval = 0  -- Track the interval for the current cycle
 local saveCycleInterruptToken = 0  -- Increment to interrupt current auto-cycle wait
 local lastManualSwitchTime = 0  -- Track when last manual switch happened to prevent immediate retry
+local lastSwitchAttemptTime = 0  -- Track last switch attempt to prevent rapid-fire retries
 
 local function getSaveSlotTime(slot)
     local slotTime = tonumber(saveSlot1Time) or 375
@@ -546,12 +547,13 @@ local function switchToSlot(slot, isAutoSwitch)
         print("[SaveSwitch] Manual switch detected, setting cooldown timer")
     end
 
+    lastSwitchAttemptTime = tick()  -- Always track attempt time to prevent rapid retries
     local slotTime = getSaveSlotTime(slot)
     local args = { slot, true }
     local isAutoSwitchCopy = isAutoSwitch -- Capture for closure
     
     task.spawn(function()
-        pcall(function()
+        local success, err = pcall(function()
             local result1, result2 = getSaveInfo:InvokeServer(unpack(args))
             print("[SaveSwitch] Initial call - isAutoSwitch=" .. tostring(isAutoSwitchCopy) .. ", Result1:", result1, "Result2:", result2)
             
@@ -594,6 +596,10 @@ local function switchToSlot(slot, isAutoSwitch)
                 print("[SaveSwitch] MANUAL switch failed - cooldown (NO RETRY)")
             end
         end)
+        
+        if not success then
+            print("[SaveSwitch] ERROR in remote call: " .. tostring(err))
+        end
     end)
 
     return true
@@ -1125,6 +1131,11 @@ local function startAutoCycleSaves()
             if tick() - lastManualSwitchTime < 2 then
                 print("[AutoCycle] Manual switch cooldown active, waiting...")
                 task.wait(0.5)
+            -- Prevent rapid-fire retries (wait at least 5 seconds between attempts)
+            elseif tick() - lastSwitchAttemptTime < 5 then
+                local waitTime = 5 - (tick() - lastSwitchAttemptTime)
+                print("[AutoCycle] Too soon since last switch attempt, waiting " .. math.ceil(waitTime) .. " seconds")
+                task.wait(math.min(waitTime, 1))
             -- Check if there's an existing timer running (either from manual or previous auto switch)
             elseif saveCycleStartTime > 0 and tick() < (saveCycleStartTime + currentCycleInterval) then
                 -- Timer is still running, just wait it out

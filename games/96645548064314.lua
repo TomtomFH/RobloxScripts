@@ -487,6 +487,8 @@ local function switchToSlot(slot, isAutoSwitch)
         return false
     end
 
+    print("[SaveSwitch] Called with slot=" .. slot .. ", isAutoSwitch=" .. tostring(isAutoSwitch))
+
     local getSaveInfo = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("getSaveInfo")
     local collectAllPetCash = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("collectAllPetCash")
 
@@ -506,15 +508,15 @@ local function switchToSlot(slot, isAutoSwitch)
     end
 
     local args = { slot, true }
-    local success = false
+    local isAutoSwitchCopy = isAutoSwitch -- Capture for closure
     task.spawn(function()
         pcall(function()
             local result1, result2 = getSaveInfo:InvokeServer(unpack(args))
-            print("[SaveSwitch] Initial call - Result1:", result1, "Result2:", result2)
+            print("[SaveSwitch] Initial call - isAutoSwitch=" .. tostring(isAutoSwitchCopy) .. ", Result1:", result1, "Result2:", result2)
             
             -- Check if the second return value is nil (cooldown) or a number (success)
-            if result2 == nil and isAutoSwitch then
-                print("[SaveSwitch] Cooldown detected, retrying...")
+            if result2 == nil and isAutoSwitchCopy then
+                print("[SaveSwitch] Cooldown detected on AUTO switch, retrying...")
                 notify("Save switch on cooldown, retrying...", true)
                 
                 for retryCount = 1, 3 do
@@ -531,9 +533,9 @@ local function switchToSlot(slot, isAutoSwitch)
                 
                 print("[SaveSwitch] All retries failed")
                 notify("Failed to switch saves after retries", true)
-            elseif result2 == nil and not isAutoSwitch then
+            elseif result2 == nil and not isAutoSwitchCopy then
                 notify("Save switch failed: on cooldown", true)
-                print("[SaveSwitch] Manual switch failed - cooldown")
+                print("[SaveSwitch] MANUAL switch failed - cooldown (NO RETRY)")
             else
                 print("[SaveSwitch] Switch successful on first try")
                 notify(string.format("Switched to save slot %d", slot))

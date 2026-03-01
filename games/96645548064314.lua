@@ -1405,9 +1405,22 @@ local customPairButtons = {}
 -- Function to rebuild all custom pair buttons
 local function rebuildCustomPairButtons()
     -- Destroy all existing pair buttons
-    for _, button in pairs(customPairButtons) do
-        if button and button.Parent then
-            button:Destroy()
+    for _, buttonName in ipairs(customPairButtons) do
+        local breedingTab = player.PlayerGui:FindFirstChild("TomtomFHUI")
+        if breedingTab then
+            breedingTab = breedingTab:FindFirstChild("Main")
+            if breedingTab then
+                breedingTab = breedingTab:FindFirstChild("MainTabsPage")
+                if breedingTab then
+                    breedingTab = breedingTab:FindFirstChild("Breeding")
+                    if breedingTab then
+                        local button = breedingTab:FindFirstChild(buttonName)
+                        if button then
+                            button:Destroy()
+                        end
+                    end
+                end
+            end
         end
     end
     customPairButtons = {}
@@ -1417,56 +1430,15 @@ local function rebuildCustomPairButtons()
         local pet1, pet2 = pair[1], pair[2]
         local buttonText = pet1 .. " ↔ " .. pet2
         
-        -- Find the Breeding tab in the UI
-        local breedingTab = player.PlayerGui:WaitForChild("TomtomFHUI")
-            :FindFirstChild("Main"):FindFirstChild("MainTabsPage")
-            :FindFirstChild("Breeding")
+        CreateButton("Breeding", buttonText, function()
+            -- Remove this pair
+            table.remove(customBreedingPairs, i)
+            notify("Removed breeding pair: " .. pet1 .. " ↔ " .. pet2)
+            -- Rebuild all buttons with updated indices
+            rebuildCustomPairButtons()
+        end)
         
-        if breedingTab then
-            local button = Instance.new("TextButton")
-            button.Active = false
-            button.BorderSizePixel = 0
-            button.TextColor3 = Color3.fromRGB(255, 255, 255)
-            button.TextSize = 15
-            button.BackgroundColor3 = Color3.fromRGB(18, 18, 21)
-            button.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
-            button.Selectable = false
-            button.Size = UDim2.new(0, 550, 0, 50)
-            button.Name = buttonText
-            button.BorderColor3 = Color3.fromRGB(0, 0, 0)
-            button.Text = ""
-            button.Parent = breedingTab
-            
-            Instance.new("UICorner", button)
-            
-            local label = Instance.new("TextLabel")
-            label.TextWrapped = true
-            label.BorderSizePixel = 0
-            label.TextSize = 15
-            label.TextXAlignment = Enum.TextXAlignment.Left
-            label.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-            label.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
-            label.TextColor3 = Color3.fromRGB(255, 255, 255)
-            label.BackgroundTransparency = 1
-            label.Size = UDim2.new(0, 500, 0, 35)
-            label.BorderColor3 = Color3.fromRGB(0, 0, 0)
-            label.Text = buttonText
-            label.Name = buttonText
-            label.Position = UDim2.new(0, 20, 0, 7)
-            label.Parent = button
-            
-            button.MouseButton1Click:Connect(function()
-                task.spawn(function()
-                    -- Remove this pair
-                    table.remove(customBreedingPairs, i)
-                    notify("Removed breeding pair: " .. pet1 .. " ↔ " .. pet2)
-                    -- Rebuild all buttons with updated indices
-                    rebuildCustomPairButtons()
-                end)
-            end)
-            
-            table.insert(customPairButtons, button)
-        end
+        table.insert(customPairButtons, buttonText)
     end
 end
 

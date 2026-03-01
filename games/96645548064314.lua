@@ -540,26 +540,32 @@ local function switchToSlot(slot, isAutoSwitch)
         end)
     end
 
-    local slotTime = getSaveSlotTime(slot)
-    saveCycleStartTime = tick()
-    currentCycleInterval = slotTime
-    currentSaveSlot = slot
-
     if not isAutoSwitch then
         saveCycleInterruptToken = saveCycleInterruptToken + 1
         lastManualSwitchTime = tick()  -- Track manual switch time
         print("[SaveSwitch] Manual switch detected, setting cooldown timer")
     end
 
+    local slotTime = getSaveSlotTime(slot)
     local args = { slot, true }
     local isAutoSwitchCopy = isAutoSwitch -- Capture for closure
+    
     task.spawn(function()
         pcall(function()
             local result1, result2 = getSaveInfo:InvokeServer(unpack(args))
             print("[SaveSwitch] Initial call - isAutoSwitch=" .. tostring(isAutoSwitchCopy) .. ", Result1:", result1, "Result2:", result2)
             
             -- Check if the second return value is nil (cooldown) or a number (success)
-            if result2 == nil and isAutoSwitchCopy then
+            if result2 ~= nil then
+                -- SUCCESS - Update timing variables
+                print("[SaveSwitch] Switch successful on first try")
+                saveCycleStartTime = tick()
+                currentCycleInterval = slotTime
+                currentSaveSlot = slot
+                notify(string.format("Switched to save slot %d", slot))
+                
+            elseif result2 == nil and isAutoSwitchCopy then
+                -- AUTO switch failed, retry
                 print("[SaveSwitch] Cooldown detected on AUTO switch, retrying...")
                 notify("Save switch on cooldown, retrying...", true)
                 
@@ -569,7 +575,11 @@ local function switchToSlot(slot, isAutoSwitch)
                     print("[SaveSwitch] Retry " .. retryCount .. " - Result1:", retryResult1, "Result2:", retryResult2)
                     
                     if retryResult2 ~= nil then
+                        -- RETRY SUCCESS - Update timing variables
                         print("[SaveSwitch] Retry succeeded on attempt " .. retryCount)
+                        saveCycleStartTime = tick()
+                        currentCycleInterval = slotTime
+                        currentSaveSlot = slot
                         notify("Save switch succeeded on retry #" .. retryCount)
                         return
                     end
@@ -577,12 +587,11 @@ local function switchToSlot(slot, isAutoSwitch)
                 
                 print("[SaveSwitch] All retries failed")
                 notify("Failed to switch saves after retries", true)
+                
             elseif result2 == nil and not isAutoSwitchCopy then
+                -- MANUAL switch failed, no retry
                 notify("Save switch failed: on cooldown", true)
                 print("[SaveSwitch] MANUAL switch failed - cooldown (NO RETRY)")
-            else
-                print("[SaveSwitch] Switch successful on first try")
-                notify(string.format("Switched to save slot %d", slot))
             end
         end)
     end)

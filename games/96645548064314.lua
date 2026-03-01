@@ -232,7 +232,7 @@ CreateMenu("Catch And Tame")
 CreateGroup("Catch And Tame", "Main")
 CreateTab("Catch And Tame", "Main", "Catching")
 CreateTab("Catch And Tame", "Main", "Breeding")
-CreateTab("Catch And Tame", "Main", "Auto Features")
+CreateTab("Catch And Tame", "Main", "Auto Buy")
 CreateTab("Catch And Tame", "Main", "Auto Sell")
 CreateTab("Catch And Tame", "Main", "Pet Warning")
 CreateTab("Catch And Tame", "Main", "Save Cycling")
@@ -1461,6 +1461,16 @@ CreateToggle("Breeding", "Custom Breeding Pairs", function(state)
     end
 end, customBreedingEnabled)
 
+CreateToggle("Breeding", "Auto Remove Eggs", function(state)
+    autoRemoveEggsEnabled = state.Value
+    if autoRemoveEggsEnabled then
+        notify("Auto Remove Eggs enabled")
+        startAutoRemoveEggs()
+    else
+        notify("Auto Remove Eggs disabled")
+    end
+end, autoRemoveEggsEnabled)
+
 CreateLabel("Breeding", "Custom Pairs")
 
 -- Storage for custom pair button references (actual button instances)
@@ -1556,33 +1566,23 @@ end)
 -- Initialize custom pair buttons from loaded config
 rebuildCustomPairButtons()
 
--- CREATE AUTO FEATURES TAB UI
-CreateToggle("Auto Features", "AutoRemove Eggs", function(state)
-    autoRemoveEggsEnabled = state.Value
-    if autoRemoveEggsEnabled then
-        notify("AutoRemove Eggs enabled")
-        startAutoRemoveEggs()
-    else
-        notify("AutoRemove Eggs disabled")
-    end
-end, autoRemoveEggsEnabled)
-
-CreateToggle("Auto Features", "AutoBuy Food", function(state)
+-- CREATE AUTO BUY TAB UI
+CreateToggle("Auto Buy", "Food", function(state)
     autoBuyFoodEnabled = state.Value
     if autoBuyFoodEnabled then
-        notify("AutoBuy Food enabled")
+        notify("Food auto-buy enabled")
     else
-        notify("AutoBuy Food disabled")
+        notify("Food auto-buy disabled")
     end
     setupAutoBuyFood()
 end, autoBuyFoodEnabled)
 
-CreateToggle("Auto Features", "AutoBuy Merchant", function(state)
+CreateToggle("Auto Buy", "Merchant", function(state)
     autoBuyMerchantEnabled = state.Value
     if autoBuyMerchantEnabled then
-        notify("AutoBuy Merchant enabled")
+        notify("Merchant auto-buy enabled")
     else
-        notify("AutoBuy Merchant disabled")
+        notify("Merchant auto-buy disabled")
     end
     setupAutoBuyMerchant()
 end, autoBuyMerchantEnabled)
@@ -1625,10 +1625,6 @@ local thresholdInput = CreateInput("Pet Warning", "Threshold Value", tostring(ap
 end)
 
 appliedThresholdLabel = CreateValueLabel("Pet Warning", "Applied Threshold: " .. appliedThreshold)
-
-CreateButton("Pet Warning", "Close Menu", function()
-    DestroyMenu("Catch And Tame")
-end)
 
 -- Helper function to format seconds to human-readable time
 local function formatSeconds(seconds)

@@ -616,6 +616,10 @@ function CreateToggle(tabName, toggleText, actionFunction, initialState)
     state.Name = "State"
     state.Value = initialState or false
 
+    if savedState == nil then
+        SetConfigValue(tabName, toggleText, state.Value)
+    end
+
     local function updateVisuals()
         local color = state.Value and Color3.fromRGB(0, 115, 200) or Color3.fromRGB(116, 116, 116)
         local pos = state.Value and UDim2.new(0, 500, 0, 17) or UDim2.new(0, 475, 0, 17)

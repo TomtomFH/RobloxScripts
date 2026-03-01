@@ -553,7 +553,7 @@ local function switchToSlot(slot, isAutoSwitch)
     task.spawn(function()
         local success, err = pcall(function()
             local result1, result2 = getSaveInfo:InvokeServer(unpack(args))
-            print("[SaveSwitch] Initial call - isAutoSwitch=" .. tostring(isAutoSwitchCopy) .. ", Result1:", result1, "Result2:", result2)
+            print("[SaveSwitch] Initial call - isAutoSwitch=" .. tostring(isAutoSwitchCopy) .. ", Result1: " .. tostring(result1) .. ", Result2: " .. tostring(result2))
             
             -- Check if the second return value is nil (cooldown) or a number (success)
             if result2 ~= nil then
@@ -572,7 +572,7 @@ local function switchToSlot(slot, isAutoSwitch)
                 for retryCount = 1, 3 do
                     task.wait(1)
                     local retryResult1, retryResult2 = getSaveInfo:InvokeServer(unpack(args))
-                    print("[SaveSwitch] Retry " .. retryCount .. " - Result1:", retryResult1, "Result2:", retryResult2)
+                    print("[SaveSwitch] Retry " .. retryCount .. " - Result1: " .. tostring(retryResult1) .. ", Result2: " .. tostring(retryResult2))
                     
                     if retryResult2 ~= nil then
                         -- RETRY SUCCESS - Update timing variables

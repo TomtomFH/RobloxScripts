@@ -511,12 +511,14 @@ local function switchToSlot(slot, isAutoSwitch)
         pcall(function()
             local result1, result2 = getSaveInfo:InvokeServer(unpack(args))
             -- Check if the second return value is nil (cooldown) or a number (success)
-            if result2 == nil then
+            if result2 == nil and isAutoSwitch then
                 notify("Save switch on cooldown, retrying...", true)
                 task.wait(1)
                 pcall(function()
                     getSaveInfo:InvokeServer(unpack(args))
                 end)
+            elseif result2 == nil then
+                notify("Save switch failed: on cooldown", true)
             end
         end)
     end)

@@ -112,7 +112,8 @@ print("[Logger] Log capture initialized - Press Ctrl+C to copy all logs to clipb
 
 local folders = {
     workspace.SkyIslandPets.Pets,
-    workspace.RoamingPets.Pets
+    workspace.RoamingPets.Pets,
+    workspace.WaterIslandPets.Pets
 }
 
 local player = game:GetService("Players").LocalPlayer

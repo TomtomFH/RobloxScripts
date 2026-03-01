@@ -1066,16 +1066,44 @@ local function startAutoCycleSaves()
     autoCycleSavesLoop = true
     task.spawn(function()
         while autoCycleSavesEnabled do
-            -- Skip if a manual switch just happened (within last 2 seconds)
+            local slot = currentSaveSlot
+            if slot < 1 or slot > 4 then
+                slot = 1
+            end
+
+            -- Check if we're still in cooldown from a manual switch
             if tick() - lastManualSwitchTime < 2 then
-                print("[AutoCycle] Skipping auto-switch, manual switch too recent")
+                print("[AutoCycle] Manual switch cooldown active, waiting...")
                 task.wait(0.5)
-            else
-                local slot = currentSaveSlot
-                if slot < 1 or slot > 4 then
-                    slot = 1
+            -- Check if there's an existing timer running (either from manual or previous auto switch)
+            elseif saveCycleStartTime > 0 and tick() < (saveCycleStartTime + currentCycleInterval) then
+                -- Timer is still running, just wait it out
+                local tokenAtCycleStart = saveCycleInterruptToken
+                local cycleEnd = saveCycleStartTime + currentCycleInterval
+                local remainingTime = cycleEnd - tick()
+                
+                print("[AutoCycle] Timer already running for slot " .. slot .. ", waiting " .. math.floor(remainingTime) .. " seconds")
+
+                while autoCycleSavesEnabled and tick() < cycleEnd do
+                    if saveCycleInterruptToken ~= tokenAtCycleStart then
+                        print("[AutoCycle] Timer interrupted (token changed)")
+                        break
+                    end
+                    task.wait(0.2)
                 end
 
+                if not autoCycleSavesEnabled then
+                    break
+                end
+
+                -- Only move to next slot if timer wasn't interrupted
+                if saveCycleInterruptToken == tokenAtCycleStart then
+                    currentSaveSlot = (slot % 4) + 1
+                    print("[AutoCycle] Timer complete, moving to next slot: " .. currentSaveSlot)
+                end
+            else
+                -- No timer running, start a new switch
+                print("[AutoCycle] Starting new auto-switch to slot " .. slot)
                 if switchToSlot(slot, true) then
                     local tokenAtCycleStart = saveCycleInterruptToken
                     local cycleEnd = saveCycleStartTime + currentCycleInterval

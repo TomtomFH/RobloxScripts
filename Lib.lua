@@ -34,82 +34,21 @@ local function ensureTabConfig(tabName)
     return config[tabName]
 end
 
-function GetConfigValue(tabName, entryName, legacyKey)
+function GetConfigValue(tabName, entryName)
     local config = ensureConfigTable()
 
     if type(config[tabName]) == "table" and config[tabName][entryName] ~= nil then
         return config[tabName][entryName]
     end
 
-    if legacyKey and config[legacyKey] ~= nil then
-        return config[legacyKey]
-    end
-
-    local flatKey = tabName .. "_" .. entryName
-    if config[flatKey] ~= nil then
-        return config[flatKey]
-    end
-
     return nil
 end
 
-function SetConfigValue(tabName, entryName, value, legacyKey)
-    local config = ensureConfigTable()
+function SetConfigValue(tabName, entryName, value)
     local tabConfig = ensureTabConfig(tabName)
     tabConfig[entryName] = value
 
-    local flatKey = tabName .. "_" .. entryName
-    config[flatKey] = nil
-
-    if legacyKey then
-        config[legacyKey] = nil
-    end
-
     return SaveConfig()
-end
-
-local function migrateLegacyFlatConfigInPlace()
-    local config = ensureConfigTable()
-    local hasChanges = false
-    local pending = {}
-
-    for key, value in pairs(config) do
-        if type(key) == "string" and type(value) ~= "table" then
-            local splitIndex = string.find(key, "_", 1, true)
-            if splitIndex and splitIndex > 1 and splitIndex < #key then
-                local tabName = string.sub(key, 1, splitIndex - 1)
-                local entryName = string.sub(key, splitIndex + 1)
-
-                if tabName ~= "" and entryName ~= "" then
-                    table.insert(pending, {
-                        legacyKey = key,
-                        tabName = tabName,
-                        entryName = entryName,
-                        value = value
-                    })
-                end
-            end
-        end
-    end
-
-    for _, item in ipairs(pending) do
-        local tabConfig = ensureTabConfig(item.tabName)
-        if tabConfig[item.entryName] == nil then
-            tabConfig[item.entryName] = item.value
-        end
-        config[item.legacyKey] = nil
-        hasChanges = true
-    end
-
-    return hasChanges
-end
-
-local function migrateLegacyFlatConfig()
-    local hasChanges = migrateLegacyFlatConfigInPlace()
-
-    if hasChanges then
-        SaveConfig()
-    end
 end
 
 local function isArrayTable(value)
@@ -227,8 +166,6 @@ function SaveConfig()
         if not isfolder("TomtomFHUI") then
             makefolder("TomtomFHUI")
         end
-
-        migrateLegacyFlatConfigInPlace()
         
         local filePath = "TomtomFHUI/" .. ConfigFileName
         local data = encodePrettyJson(Config, "")
@@ -239,7 +176,6 @@ end
 
 -- Load config on library load
 LoadConfig()
-migrateLegacyFlatConfig()
 
 local isVisible = true
 local Groups = {}

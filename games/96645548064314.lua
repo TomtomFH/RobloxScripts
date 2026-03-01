@@ -468,6 +468,7 @@ local currentSaveSlot = 0  -- 0 = unknown, will be set when cycling starts
 local saveCycleStartTime = 0  -- Track when current cycle started
 local currentCycleInterval = 0  -- Track the interval for the current cycle
 local saveCycleInterruptToken = 0  -- Increment to interrupt current auto-cycle wait
+local lastManualSwitchTime = 0  -- Track when last manual switch happened to prevent immediate retry
 
 local function getSaveSlotTime(slot)
     local slotTime = tonumber(saveSlot1Time) or 375
@@ -505,6 +506,8 @@ local function switchToSlot(slot, isAutoSwitch)
 
     if not isAutoSwitch then
         saveCycleInterruptToken = saveCycleInterruptToken + 1
+        lastManualSwitchTime = tick()  -- Track manual switch time
+        print("[SaveSwitch] Manual switch detected, setting cooldown timer")
     end
 
     local args = { slot, true }
@@ -1063,6 +1066,13 @@ local function startAutoCycleSaves()
     autoCycleSavesLoop = true
     task.spawn(function()
         while autoCycleSavesEnabled do
+            -- Skip if a manual switch just happened (within last 2 seconds)
+            if tick() - lastManualSwitchTime < 2 then
+                print("[AutoCycle] Skipping auto-switch, manual switch too recent")
+                task.wait(0.5)
+                continue
+            end
+
             local slot = currentSaveSlot
             if slot < 1 or slot > 4 then
                 slot = 1

@@ -19,6 +19,86 @@ local hasFileSystem = type(isfolder) == "function" and type(makefolder) == "func
                       type(isfile) == "function" and type(readfile) == "function" and 
                       type(writefile) == "function"
 
+local function isArrayTable(value)
+    if type(value) ~= "table" then
+        return false
+    end
+
+    local count = 0
+    for key in pairs(value) do
+        if type(key) ~= "number" or key < 1 or key % 1 ~= 0 then
+            return false
+        end
+        count = count + 1
+    end
+
+    for index = 1, count do
+        if value[index] == nil then
+            return false
+        end
+    end
+
+    return true
+end
+
+local function getSortedKeys(tbl)
+    local keys = {}
+    for key in pairs(tbl) do
+        table.insert(keys, key)
+    end
+
+    table.sort(keys, function(a, b)
+        return tostring(a) < tostring(b)
+    end)
+
+    return keys
+end
+
+local function encodePrettyJson(value, indent)
+    local valueType = type(value)
+
+    if valueType == "nil" then
+        return "null"
+    end
+
+    if valueType == "string" or valueType == "number" or valueType == "boolean" then
+        return HttpService:JSONEncode(value)
+    end
+
+    if valueType ~= "table" then
+        return "null"
+    end
+
+    local nextIndent = indent .. "  "
+
+    if isArrayTable(value) then
+        if #value == 0 then
+            return "[]"
+        end
+
+        local items = {}
+        for index = 1, #value do
+            table.insert(items, nextIndent .. encodePrettyJson(value[index], nextIndent))
+        end
+
+        return "[\n" .. table.concat(items, ",\n") .. "\n" .. indent .. "]"
+    end
+
+    local keys = getSortedKeys(value)
+    if #keys == 0 then
+        return "{}"
+    end
+
+    local properties = {}
+    for _, key in ipairs(keys) do
+        local keyJson = HttpService:JSONEncode(tostring(key))
+        local valueJson = encodePrettyJson(value[key], nextIndent)
+        table.insert(properties, nextIndent .. keyJson .. ": " .. valueJson)
+    end
+
+    return "{\n" .. table.concat(properties, ",\n") .. "\n" .. indent .. "}"
+end
+
 local function LoadConfig()
     if not hasFileSystem then
         return false
@@ -56,7 +136,7 @@ function SaveConfig()
         end
         
         local filePath = "TomtomFHUI/" .. ConfigFileName
-        local data = HttpService:JSONEncode(Config)
+        local data = encodePrettyJson(Config, "")
         writefile(filePath, data)
     end)
     return success

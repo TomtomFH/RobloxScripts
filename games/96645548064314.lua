@@ -1621,6 +1621,27 @@ local function formatSeconds(seconds)
     return table.concat(parts, " ")
 end
 
+-- Load saved slot times from config before creating UI elements
+local savedSlot1Time = getConfigSetting("Save Cycling", "Slot 1 Time (seconds)")
+if savedSlot1Time then
+    saveSlot1Time = tonumber(savedSlot1Time) or saveSlot1Time
+end
+
+local savedSlot2Time = getConfigSetting("Save Cycling", "Slot 2 Time (seconds)")
+if savedSlot2Time then
+    saveSlot2Time = tonumber(savedSlot2Time) or saveSlot2Time
+end
+
+local savedSlot3Time = getConfigSetting("Save Cycling", "Slot 3 Time (seconds)")
+if savedSlot3Time then
+    saveSlot3Time = tonumber(savedSlot3Time) or saveSlot3Time
+end
+
+local savedSlot4Time = getConfigSetting("Save Cycling", "Slot 4 Time (seconds)")
+if savedSlot4Time then
+    saveSlot4Time = tonumber(savedSlot4Time) or saveSlot4Time
+end
+
 -- CREATE MISC TAB UI
 CreateToggle("Save Cycling", "Auto Cycle Saves", function(state)
     autoCycleSavesEnabled = state.Value

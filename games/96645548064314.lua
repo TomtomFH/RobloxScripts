@@ -412,6 +412,17 @@ local catchLock = false
 local autoBreedLoop = false
 local autoRemoveEggsLoop = false
 local customBreedingPairs = {}  -- Store custom breeding pairs
+
+-- Load custom breeding pairs from config
+if Config and type(Config) == "table" and Config["Breeding_CustomPairs"] then
+    local HttpService = game:GetService("HttpService")
+    local ok, decoded = pcall(function()
+        return HttpService:JSONDecode(Config["Breeding_CustomPairs"])
+    end)
+    if ok and type(decoded) == "table" then
+        customBreedingPairs = decoded
+    end
+end
 local autoSellLegendaryEggsLoop = false
 local autoSellMythicalEggsLoop = false
 local autoBuyFoodSetup = false
@@ -1402,6 +1413,19 @@ CreateLabel("Breeding", "Custom Pairs")
 -- Storage for custom pair button references
 local customPairButtons = {}
 
+-- Function to save custom pairs to config
+local function saveCustomPairs()
+    if not Config or type(Config) ~= "table" then Config = {} end
+    local HttpService = game:GetService("HttpService")
+    local ok, encoded = pcall(function()
+        return HttpService:JSONEncode(customBreedingPairs)
+    end)
+    if ok then
+        Config["Breeding_CustomPairs"] = encoded
+        SaveConfig()
+    end
+end
+
 -- Function to rebuild all custom pair buttons
 local function rebuildCustomPairButtons()
     -- Destroy all existing pair buttons
@@ -1430,12 +1454,19 @@ local function rebuildCustomPairButtons()
         local pet1, pet2 = pair[1], pair[2]
         local buttonText = pet1 .. " ↔ " .. pet2
         
+        -- Create button with closure over the actual pair data, not index
         CreateButton("Breeding", buttonText, function()
-            -- Remove this pair
-            table.remove(customBreedingPairs, i)
-            notify("Removed breeding pair: " .. pet1 .. " ↔ " .. pet2)
-            -- Rebuild all buttons with updated indices
-            rebuildCustomPairButtons()
+            -- Find and remove this specific pair by matching pet names
+            for j = #customBreedingPairs, 1, -1 do
+                local p = customBreedingPairs[j]
+                if p[1] == pet1 and p[2] == pet2 then
+                    table.remove(customBreedingPairs, j)
+                    notify("Removed breeding pair: " .. pet1 .. " ↔ " .. pet2)
+                    saveCustomPairs()
+                    rebuildCustomPairButtons()
+                    return
+                end
+            end
         end)
         
         table.insert(customPairButtons, buttonText)
@@ -1454,12 +1485,16 @@ CreateInput("Breeding", "Add Custom Pair", "Pet1, Pet2", "Add Pair", function(te
         table.insert(customBreedingPairs, {pet1, pet2})
         notify("Added breeding pair: " .. pet1 .. " ↔ " .. pet2)
         textBox.Text = "Pet1, Pet2"  -- Reset input
-        -- Rebuild all buttons to show the new pair
+        -- Save to config and rebuild buttons
+        saveCustomPairs()
         rebuildCustomPairButtons()
     else
         notify("Invalid format. Use: Pet1, Pet2", true)
     end
 end)
+
+-- Initialize custom pair buttons from loaded config
+rebuildCustomPairButtons()
 
 -- CREATE AUTO FEATURES TAB UI
 CreateToggle("Auto Features", "AutoRemove Eggs", function(state)

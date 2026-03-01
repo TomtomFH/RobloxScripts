@@ -193,12 +193,39 @@ function CreateMenu(menuName)
     UI.Name = LibName
     UI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
+    -- Function to reset all hover states in the UI
+    local function resetAllHoverStates()
+        local function resetElementHoverState(element)
+            -- Reset button colors to their default state
+            if element:IsA("TextButton") then
+                local originalColor = element:GetAttribute("OriginalBackgroundColor")
+                if originalColor then
+                    element.BackgroundColor3 = originalColor
+                else
+                    element.BackgroundColor3 = Color3.fromRGB(18, 18, 21)
+                end
+            end
+            
+            -- Recursively reset children
+            for _, child in ipairs(element:GetChildren()) do
+                resetElementHoverState(child)
+            end
+        end
+        
+        resetElementHoverState(Background)
+    end
+
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
     
         if input.KeyCode == Enum.KeyCode.LeftControl then
             isVisible = not isVisible
             UI.Enabled = isVisible
+            
+            -- Reset hover states when visibility changes
+            if not isVisible or isVisible then
+                task.defer(resetAllHoverStates)
+            end
         end
     end)
 
@@ -370,6 +397,20 @@ function CreateTab(menuName, groupName, tabName)
     button.Text = tabName
     button.Name = tabName
     button.ZIndex = 2
+    button.AutoButtonColor = false  -- Disable automatic hover effects
+
+    -- Manual hover state handling for tab buttons
+    button.MouseEnter:Connect(function()
+        if isVisible then
+            TweenService:Create(button, TweenInfo.new(0.15), {TextColor3 = Color3.fromRGB(100, 180, 255)}):Play()
+        end
+    end)
+    
+    button.MouseLeave:Connect(function()
+        if button.TextColor3 ~= Color3.fromRGB(0, 170, 255) then  -- Don't reset if it's the active tab
+            TweenService:Create(button, TweenInfo.new(0.15), {TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+        end
+    end)
 
     local page = Instance.new("Frame", menu)
     page.BorderSizePixel = 0
@@ -521,6 +562,7 @@ function CreateToggle(tabName, toggleText, actionFunction, initialState)
     button.Text = ""
     button.Name = toggleText
     button.Selectable = false
+    button.AutoButtonColor = false  -- Disable automatic hover effects
 
     Instance.new("UICorner", button)
 
@@ -570,6 +612,17 @@ function CreateToggle(tabName, toggleText, actionFunction, initialState)
         end)
     end
 
+    -- Manual hover state handling
+    button.MouseEnter:Connect(function()
+        if isVisible then
+            TweenService:Create(button, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(35, 35, 40)}):Play()
+        end
+    end)
+    
+    button.MouseLeave:Connect(function()
+        TweenService:Create(button, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(18, 18, 21)}):Play()
+    end)
+
     button.MouseButton1Click:Connect(function()
         state.Value = not state.Value
         updateVisuals()
@@ -598,6 +651,7 @@ function CreateButton(tabName, buttonText, actionFunction)
 	button.Name = buttonText
 	button.BorderColor3 = Color3.fromRGB(0, 0, 0)
 	button.Text = ""
+	button.AutoButtonColor = false  -- Disable automatic hover effects
 
 	local corner = Instance.new("UICorner", button)
 
@@ -615,6 +669,17 @@ function CreateButton(tabName, buttonText, actionFunction)
 	label.Text = buttonText
 	label.Name = buttonText
 	label.Position = UDim2.new(0, 20, 0, 7)
+
+	-- Manual hover state handling
+	button.MouseEnter:Connect(function()
+		if isVisible then
+			TweenService:Create(button, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(35, 35, 40)}):Play()
+		end
+	end)
+	
+	button.MouseLeave:Connect(function()
+		TweenService:Create(button, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(18, 18, 21)}):Play()
+	end)
 
 	button.MouseButton1Click:Connect(function()
         task.spawn(function()
@@ -764,8 +829,20 @@ function CreateInput(tabName, labelText, defaultText, buttonText, actionFunction
     button.Size = UDim2.new(0, 120, 0, 32)
     button.Position = UDim2.new(0, 370, 0, 9)
     button.Text = buttonText or "Apply"
+    button.AutoButtonColor = false  -- Disable automatic hover effects
 
     Instance.new("UICorner", button)
+
+    -- Manual hover state handling for input button
+    button.MouseEnter:Connect(function()
+        if isVisible then
+            TweenService:Create(button, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(0, 140, 230)}):Play()
+        end
+    end)
+    
+    button.MouseLeave:Connect(function()
+        TweenService:Create(button, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(0, 115, 200)}):Play()
+    end)
 
     button.MouseButton1Click:Connect(function()
         -- Save to config

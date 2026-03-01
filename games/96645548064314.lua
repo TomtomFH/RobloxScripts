@@ -5,14 +5,17 @@
 -- ============================================================
 
 -- Breeding Configuration
-local breedingPairs = {
+local crossBreedingPairs = {
     -- Cross-breeding pairs
     { "Red Panda", "Kitsune" },
     { "Red Panda", "Axolotl" },
     { "Lightning Dragon", "Cerberus" },
     { "Griffin", "Cosmic Griffin" },
     { "Hydra", "Cosmic Griffin" },
-    { "Galaxy Kitsune", "Galaxy Axolotl" },
+    { "Galaxy Kitsune", "Galaxy Axolotl" }
+}
+
+local selfBreedingPairs = {
     -- Self-breeding pairs (for when you have multiple of the same pet)
     { "Red Panda", "Red Panda" },
     { "Kitsune", "Kitsune" },
@@ -37,8 +40,12 @@ local autoCatchBest = false  -- Auto-catch best overall pet
 local autoCatchMythical = false  -- Auto-catch best Mythical+ pet
 local autoCatchMissing = false  -- Auto-catch best missing pet
 
--- Auto Features Default States
+-- Breeding Default States
 local autoBreedEnabled = false  -- Auto-breed configured pairs
+local selfBreedingEnabled = false  -- Allow pets to breed with themselves
+local customBreedingEnabled = false  -- Enable custom breeding pairs
+
+-- Auto Features Default States
 local autoRemoveEggsEnabled = false  -- Auto-remove eggs from pen
 local autoBuyFoodEnabled = false  -- Auto-buy food when available
 local autoBuyMerchantEnabled = false  -- Auto-buy from traveling merchant
@@ -181,6 +188,7 @@ end)
 CreateMenu("Catch And Tame")
 CreateGroup("Catch And Tame", "Main")
 CreateTab("Catch And Tame", "Main", "Catching")
+CreateTab("Catch And Tame", "Main", "Breeding")
 CreateTab("Catch And Tame", "Main", "Auto Features")
 CreateTab("Catch And Tame", "Main", "Auto Sell")
 CreateTab("Catch And Tame", "Main", "Pet Warning")
@@ -403,6 +411,7 @@ local catchLock = false
 -- Auto features loop state
 local autoBreedLoop = false
 local autoRemoveEggsLoop = false
+local customBreedingPairs = {}  -- Store custom breeding pairs
 local autoSellLegendaryEggsLoop = false
 local autoSellMythicalEggsLoop = false
 local autoBuyFoodSetup = false
@@ -769,8 +778,30 @@ local function startAutoBreed()
                 local breedRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("breedRequest")
                 local usedPets = {}
 
+                -- Build combined breeding pairs list
+                local allPairs = {}
+                
+                -- Add cross-breeding pairs
+                for _, pair in pairs(crossBreedingPairs) do
+                    table.insert(allPairs, pair)
+                end
+                
+                -- Add self-breeding pairs if enabled
+                if selfBreedingEnabled then
+                    for _, pair in pairs(selfBreedingPairs) do
+                        table.insert(allPairs, pair)
+                    end
+                end
+                
+                -- Add custom breeding pairs if enabled
+                if customBreedingEnabled and customBreedingPairs then
+                    for _, pair in pairs(customBreedingPairs) do
+                        table.insert(allPairs, pair)
+                    end
+                end
+
                 -- Breed all configured pairs
-                for _, pair in pairs(breedingPairs) do
+                for _, pair in pairs(allPairs) do
                     local pet1Name = pair[1]
                     local pet2Name = pair[2]
                     
@@ -1337,17 +1368,93 @@ CreateToggle("Catching", "Ignore Min RPS for Missing", function(state)
     end
 end, ignoreMinRPSForMissing)
 
--- CREATE AUTO FEATURES TAB UI
-CreateToggle("Auto Features", "AutoBreed", function(state)
+-- CREATE BREEDING TAB UI
+CreateToggle("Breeding", "Auto Breed", function(state)
     autoBreedEnabled = state.Value
     if autoBreedEnabled then
-        notify("AutoBreed enabled")
+        notify("Auto Breed enabled")
         startAutoBreed()
     else
-        notify("AutoBreed disabled")
+        notify("Auto Breed disabled")
     end
 end, autoBreedEnabled)
 
+CreateToggle("Breeding", "Self Breeding Pairs", function(state)
+    selfBreedingEnabled = state.Value
+    if selfBreedingEnabled then
+        notify("Self breeding enabled")
+    else
+        notify("Self breeding disabled")
+    end
+end, selfBreedingEnabled)
+
+CreateToggle("Breeding", "Custom Breeding Pairs", function(state)
+    customBreedingEnabled = state.Value
+    if customBreedingEnabled then
+        notify("Custom breeding enabled")
+    else
+        notify("Custom breeding disabled")
+    end
+end, customBreedingEnabled)
+
+CreateLabel("Breeding", "Custom Pairs")
+
+-- Container for custom pair buttons
+local customPairContainer = CreateContainer("Breeding", 0, false)
+
+-- Function to create a custom pair button
+local function createCustomPairButton(pairIndex, pet1, pet2)
+    local button = Instance.new("TextButton")
+    button.Name = "CustomPair_" .. pairIndex
+    button.Size = UDim2.new(1, -20, 0, 30)
+    button.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 13
+    button.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+    button.Text = pet1 .. " ↔ " .. pet2
+    button.Parent = customPairContainer
+    
+    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 6)
+    
+    button.MouseButton1Click:Connect(function()
+        -- Remove this pair
+        table.remove(customBreedingPairs, pairIndex)
+        button:Destroy()
+        notify("Removed breeding pair: " .. pet1 .. " ↔ " .. pet2)
+        
+        -- Rebuild all buttons to fix indices
+        for _, child in pairs(customPairContainer:GetChildren()) do
+            if child.Name:sub(1, 11) == "CustomPair_" then
+                child:Destroy()
+            end
+        end
+        for i, pair in pairs(customBreedingPairs) do
+            createCustomPairButton(i, pair[1], pair[2])
+        end
+    end)
+    
+    return button
+end
+
+CreateInput("Breeding", "Add Custom Pair", "Pet1, Pet2", "Add Pair", function(textBox)
+    local text = textBox.Text
+    local parts = {}
+    for part in text:gmatch("[^,]+") do
+        table.insert(parts, part:match("^%s*(.-)%s*$"))  -- Trim whitespace
+    end
+    
+    if #parts == 2 and parts[1] ~= "" and parts[2] ~= "" then
+        local pet1, pet2 = parts[1], parts[2]
+        table.insert(customBreedingPairs, {pet1, pet2})
+        createCustomPairButton(#customBreedingPairs, pet1, pet2)
+        notify("Added breeding pair: " .. pet1 .. " ↔ " .. pet2)
+        textBox.Text = "Pet1, Pet2"  -- Reset input
+    else
+        notify("Invalid format. Use: Pet1, Pet2", true)
+    end
+end)
+
+-- CREATE AUTO FEATURES TAB UI
 CreateToggle("Auto Features", "AutoRemove Eggs", function(state)
     autoRemoveEggsEnabled = state.Value
     if autoRemoveEggsEnabled then

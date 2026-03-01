@@ -716,6 +716,11 @@ function CreateInput(tabName, labelText, defaultText, buttonText, actionFunction
         defaultText = savedText
     end
 
+    -- Auto-save default value if no saved config exists
+    if savedText == nil and defaultText ~= nil then
+        SetConfigValue(tabName, labelText, defaultText)
+    end
+
     local frame = Instance.new("Frame", tab)
     frame.Active = false
     frame.BorderSizePixel = 0

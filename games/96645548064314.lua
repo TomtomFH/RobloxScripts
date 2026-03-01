@@ -1154,27 +1154,10 @@ local function startAutoCycleSaves()
             else
                 -- No timer running, start a new switch
                 print("[AutoCycle] Starting new auto-switch to slot " .. slot)
-                if switchToSlot(slot, true) then
-                    local tokenAtCycleStart = saveCycleInterruptToken
-                    local cycleEnd = saveCycleStartTime + currentCycleInterval
-
-                    while autoCycleSavesEnabled and tick() < cycleEnd do
-                        if saveCycleInterruptToken ~= tokenAtCycleStart then
-                            break
-                        end
-                        task.wait(0.2)
-                    end
-
-                    if not autoCycleSavesEnabled then
-                        break
-                    end
-
-                    if saveCycleInterruptToken == tokenAtCycleStart then
-                        currentSaveSlot = (slot % 4) + 1
-                    end
-                else
-                    task.wait(0.2)
-                end
+                switchToSlot(slot, true)
+                
+                -- Wait a moment for the async switch to process
+                task.wait(1)
             end
         end
         autoCycleSavesLoop = false

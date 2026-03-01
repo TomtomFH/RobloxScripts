@@ -19,6 +19,83 @@ local hasFileSystem = type(isfolder) == "function" and type(makefolder) == "func
                       type(isfile) == "function" and type(readfile) == "function" and 
                       type(writefile) == "function"
 
+local function ensureConfigTable()
+    if type(Config) ~= "table" then
+        Config = {}
+    end
+    return Config
+end
+
+local function ensureTabConfig(tabName)
+    local config = ensureConfigTable()
+    if type(config[tabName]) ~= "table" then
+        config[tabName] = {}
+    end
+    return config[tabName]
+end
+
+function GetConfigValue(tabName, entryName, legacyKey)
+    local config = ensureConfigTable()
+
+    if type(config[tabName]) == "table" and config[tabName][entryName] ~= nil then
+        return config[tabName][entryName]
+    end
+
+    if legacyKey and config[legacyKey] ~= nil then
+        return config[legacyKey]
+    end
+
+    local flatKey = tabName .. "_" .. entryName
+    if config[flatKey] ~= nil then
+        return config[flatKey]
+    end
+
+    return nil
+end
+
+function SetConfigValue(tabName, entryName, value, legacyKey)
+    local config = ensureConfigTable()
+    local tabConfig = ensureTabConfig(tabName)
+    tabConfig[entryName] = value
+
+    local flatKey = tabName .. "_" .. entryName
+    config[flatKey] = nil
+
+    if legacyKey then
+        config[legacyKey] = nil
+    end
+
+    return SaveConfig()
+end
+
+local function migrateLegacyFlatConfig()
+    local config = ensureConfigTable()
+    local hasChanges = false
+
+    for key, value in pairs(config) do
+        if type(key) == "string" and type(value) ~= "table" then
+            local splitIndex = string.find(key, "_")
+            if splitIndex and splitIndex > 1 and splitIndex < #key then
+                local tabName = string.sub(key, 1, splitIndex - 1)
+                local entryName = string.sub(key, splitIndex + 1)
+
+                if tabName ~= "" and entryName ~= "" then
+                    local tabConfig = ensureTabConfig(tabName)
+                    if tabConfig[entryName] == nil then
+                        tabConfig[entryName] = value
+                    end
+                    config[key] = nil
+                    hasChanges = true
+                end
+            end
+        end
+    end
+
+    if hasChanges then
+        SaveConfig()
+    end
+end
+
 local function isArrayTable(value)
     if type(value) ~= "table" then
         return false
@@ -144,6 +221,7 @@ end
 
 -- Load config on library load
 LoadConfig()
+migrateLegacyFlatConfig()
 
 local isVisible = true
 local Groups = {}
@@ -474,8 +552,7 @@ function CreateToggle(tabName, toggleText, actionFunction, initialState)
     if not tab then return end
 
     -- Check config for saved state
-    local configKey = tabName .. "_" .. toggleText
-    local savedState = Config[configKey]
+    local savedState = GetConfigValue(tabName, toggleText)
     if savedState ~= nil then
         initialState = savedState
     end
@@ -540,8 +617,7 @@ function CreateToggle(tabName, toggleText, actionFunction, initialState)
         updateVisuals()
         
         -- Save to config
-        Config[configKey] = state.Value
-        SaveConfig()
+        SetConfigValue(tabName, toggleText, state.Value)
     
         task.spawn(function()
             actionFunction(state, button)
@@ -677,8 +753,7 @@ function CreateInput(tabName, labelText, defaultText, buttonText, actionFunction
     if not tab then return end
 
     -- Check config for saved value
-    local configKey = tabName .. "_" .. labelText
-    local savedText = Config[configKey]
+    local savedText = GetConfigValue(tabName, labelText)
     if savedText ~= nil then
         defaultText = savedText
     end
@@ -731,8 +806,7 @@ function CreateInput(tabName, labelText, defaultText, buttonText, actionFunction
 
     button.MouseButton1Click:Connect(function()
         -- Save to config
-        Config[configKey] = textBox.Text
-        SaveConfig()
+        SetConfigValue(tabName, labelText, textBox.Text)
         
         task.spawn(function()
             actionFunction(textBox, button, frame)

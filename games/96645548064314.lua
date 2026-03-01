@@ -83,6 +83,49 @@ local FoodConfig = require(ReplicatedStorage:WaitForChild("Configs"):WaitForChil
 -- Load UI Library
 local UiLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/Lib.lua", true))()
 
+local function getConfigSetting(tabName, entryName, legacyKey)
+    if type(GetConfigValue) == "function" then
+        return GetConfigValue(tabName, entryName, legacyKey)
+    end
+
+    if Config and type(Config) == "table" then
+        if type(Config[tabName]) == "table" and Config[tabName][entryName] ~= nil then
+            return Config[tabName][entryName]
+        end
+
+        if legacyKey and Config[legacyKey] ~= nil then
+            return Config[legacyKey]
+        end
+    end
+
+    return nil
+end
+
+local function setConfigSetting(tabName, entryName, value, legacyKey)
+    if type(SetConfigValue) == "function" then
+        SetConfigValue(tabName, entryName, value, legacyKey)
+        return
+    end
+
+    if not Config or type(Config) ~= "table" then
+        Config = {}
+    end
+
+    if type(Config[tabName]) ~= "table" then
+        Config[tabName] = {}
+    end
+
+    Config[tabName][entryName] = value
+
+    local flatKey = tabName .. "_" .. entryName
+    Config[flatKey] = nil
+    if legacyKey then
+        Config[legacyKey] = nil
+    end
+
+    SaveConfig()
+end
+
 -- Notification helper
 local snackbar = nil
 local function notify(message, isError)
@@ -296,20 +339,30 @@ local missingCard, missingImage, missingInfo, missingAutoToggle = createPetCard(
 missingInfo.Text = "No missing pets found"
 
 -- Load auto-catch button states from config
-local autoCatchBestConfigKey = "Catching_Auto Catch Best"
-local autoCatchMythicalConfigKey = "Catching_Auto Catch Mythical"
-local autoCatchMissingConfigKey = "Catching_Auto Catch Missing"
+local autoCatchTabName = "Catching"
+local autoCatchBestConfigEntry = "Auto Catch Best"
+local autoCatchMythicalConfigEntry = "Auto Catch Mythical"
+local autoCatchMissingConfigEntry = "Auto Catch Missing"
+
+local autoCatchBestLegacyConfigKey = "Catching_Auto Catch Best"
+local autoCatchMythicalLegacyConfigKey = "Catching_Auto Catch Mythical"
+local autoCatchMissingLegacyConfigKey = "Catching_Auto Catch Missing"
 
 -- Safely load config values (Config may not exist on first run)
-if Config and type(Config) == "table" then
-    if Config[autoCatchBestConfigKey] then
-        autoCatchBest = Config[autoCatchBestConfigKey]
+do
+    local savedBest = getConfigSetting(autoCatchTabName, autoCatchBestConfigEntry, autoCatchBestLegacyConfigKey)
+    if savedBest ~= nil then
+        autoCatchBest = savedBest
     end
-    if Config[autoCatchMythicalConfigKey] then
-        autoCatchMythical = Config[autoCatchMythicalConfigKey]
+
+    local savedMythical = getConfigSetting(autoCatchTabName, autoCatchMythicalConfigEntry, autoCatchMythicalLegacyConfigKey)
+    if savedMythical ~= nil then
+        autoCatchMythical = savedMythical
     end
-    if Config[autoCatchMissingConfigKey] then
-        autoCatchMissing = Config[autoCatchMissingConfigKey]
+
+    local savedMissing = getConfigSetting(autoCatchTabName, autoCatchMissingConfigEntry, autoCatchMissingLegacyConfigKey)
+    if savedMissing ~= nil then
+        autoCatchMissing = savedMissing
     end
 end
 
@@ -414,8 +467,8 @@ local autoRemoveEggsLoop = false
 local customBreedingPairs = {}  -- Store custom breeding pairs
 
 -- Load custom breeding pairs from config
-if Config and type(Config) == "table" and Config["Breeding_CustomPairs"] then
-    local savedPairs = Config["Breeding_CustomPairs"]
+do
+    local savedPairs = getConfigSetting("Breeding", "CustomPairs", "Breeding_CustomPairs")
 
     if type(savedPairs) == "table" then
         customBreedingPairs = savedPairs
@@ -1273,9 +1326,7 @@ end
 
 bestPetAutoToggle.MouseButton1Click:Connect(function()
     autoCatchBest = not autoCatchBest
-    if not Config or type(Config) ~= "table" then Config = {} end
-    Config[autoCatchBestConfigKey] = autoCatchBest
-    SaveConfig()
+    setConfigSetting(autoCatchTabName, autoCatchBestConfigEntry, autoCatchBest, autoCatchBestLegacyConfigKey)
     if autoCatchBest then
         bestPetAutoToggle.Text = "Auto Catch: ON"
         bestPetAutoToggle.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
@@ -1290,9 +1341,7 @@ end)
 
 mythicalAutoToggle.MouseButton1Click:Connect(function()
     autoCatchMythical = not autoCatchMythical
-    if not Config or type(Config) ~= "table" then Config = {} end
-    Config[autoCatchMythicalConfigKey] = autoCatchMythical
-    SaveConfig()
+    setConfigSetting(autoCatchTabName, autoCatchMythicalConfigEntry, autoCatchMythical, autoCatchMythicalLegacyConfigKey)
     if autoCatchMythical then
         mythicalAutoToggle.Text = "Auto Catch: ON"
         mythicalAutoToggle.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
@@ -1307,9 +1356,7 @@ end)
 
 missingAutoToggle.MouseButton1Click:Connect(function()
     autoCatchMissing = not autoCatchMissing
-    if not Config or type(Config) ~= "table" then Config = {} end
-    Config[autoCatchMissingConfigKey] = autoCatchMissing
-    SaveConfig()
+    setConfigSetting(autoCatchTabName, autoCatchMissingConfigEntry, autoCatchMissing, autoCatchMissingLegacyConfigKey)
     if autoCatchMissing then
         missingAutoToggle.Text = "Auto Catch: ON"
         missingAutoToggle.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
@@ -1421,9 +1468,7 @@ local customPairButtons = {}
 
 -- Function to save custom pairs to config
 local function saveCustomPairs()
-    if not Config or type(Config) ~= "table" then Config = {} end
-    Config["Breeding_CustomPairs"] = customBreedingPairs
-    SaveConfig()
+    setConfigSetting("Breeding", "CustomPairs", customBreedingPairs, "Breeding_CustomPairs")
 end
 
 -- Function to rebuild all custom pair buttons

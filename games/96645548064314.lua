@@ -1879,10 +1879,6 @@ CreateButton("Menus", "Merchant", function()
     openMenu("Merchant")
 end)
 
-CreateButton("Menus", "Trait Machine", function()
-    openMenu("TraitMachineUI")
-end)
-
 -- CreateButton("Menus", "Close Current Menu", function()
 --     local Knit = require(game:GetService("ReplicatedStorage").Packages.knit)
 --     local MenuController = Knit.GetController("MenuController")

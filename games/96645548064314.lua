@@ -265,6 +265,7 @@ CreateTab("Catch And Tame", "Main", "Auto Buy")
 CreateTab("Catch And Tame", "Main", "Auto Sell")
 CreateTab("Catch And Tame", "Main", "Pet Warning")
 CreateTab("Catch And Tame", "Main", "Save Cycling")
+CreateTab("Catch And Tame", "Main", "Menus")
 
 local uiRoot = player.PlayerGui:WaitForChild("TomtomFHUI")
 local warningLabel = Instance.new("TextLabel")
@@ -1852,6 +1853,37 @@ CreateInput("Save Cycling", "Slot 4 Time (seconds)", tostring(saveSlot4Time), "A
     else
         notify("Invalid time value", true)
     end
+end)
+
+-- CREATE MENUS TAB UI
+local function openMenu(menuName)
+    local Knit = require(game:GetService("ReplicatedStorage").Packages.knit)
+    local MenuController = Knit.GetController("MenuController")
+    
+    local PlayerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    local menu = PlayerGui:WaitForChild(menuName)
+    
+    if menu and menu:FindFirstChild("Holder") then
+        MenuController:OpenMenuFrame(menu, menu.Holder)
+        notify(menuName .. " opened")
+    else
+        notify("Could not find " .. menuName, true)
+    end
+end
+
+CreateButton("Menus", "Open Mutation Machine", function()
+    openMenu("MutationMachine")
+end)
+
+CreateButton("Menus", "Open Shop Menu", function()
+    openMenu("SelectShopUI")
+end)
+
+CreateButton("Menus", "Close Current Menu", function()
+    local Knit = require(game:GetService("ReplicatedStorage").Packages.knit)
+    local MenuController = Knit.GetController("MenuController")
+    MenuController:CloseMenu()
+    notify("Menu closed")
 end)
 
 -- Initialize auto features (only those enabled in settings)

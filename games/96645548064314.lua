@@ -522,7 +522,25 @@ local function getSaveSlotTime(slot)
     elseif slot == 4 then
         slotTime = tonumber(saveSlot4Time) or 375
     end
-    return math.max(1, slotTime)
+    return math.max(0, slotTime)
+end
+
+local function getNextValidSlot(currentSlot)
+    -- Find next slot with time > 0
+    local startSlot = currentSlot
+    for i = 1, 4 do
+        local nextSlot = (currentSlot % 4) + 1
+        local slotTime = getSaveSlotTime(nextSlot)
+        if slotTime > 0 then
+            return nextSlot
+        end
+        currentSlot = nextSlot
+        -- If we've checked all slots and none are valid, return nil
+        if currentSlot == startSlot then
+            return nil
+        end
+    end
+    return nil
 end
 
 local function switchToSlot(slot, isAutoSwitch)
@@ -1154,17 +1172,41 @@ local function startAutoCycleSaves()
 
                 -- Only move to next slot if timer wasn't interrupted
                 if saveCycleInterruptToken == tokenAtCycleStart then
-                    currentSaveSlot = (slot % 4) + 1
-                    print("[AutoCycle] Timer complete, moving to next slot: " .. currentSaveSlot)
+                    local nextSlot = getNextValidSlot(slot)
+                    if nextSlot then
+                        currentSaveSlot = nextSlot
+                        print("[AutoCycle] Timer complete, moving to next slot: " .. currentSaveSlot)
+                    else
+                        print("[AutoCycle] No valid slots configured (all set to 0), disabling")
+                        autoCycleSavesEnabled = false
+                        notify("Auto cycle disabled: all slots set to 0", true)
+                        break
+                    end
                 end
             else
                 -- No timer running, start a new switch
-                print("[AutoCycle] Starting new auto-switch to slot " .. slot)
-                switchToSlot(slot, true)
-                
-                -- Wait 10 seconds to give time for retries to complete and cooldown to expire
-                print("[AutoCycle] Waiting 10 seconds for switch to process...")
-                task.wait(10)
+                -- Check if current slot is valid (time > 0)
+                local slotTime = getSaveSlotTime(slot)
+                if slotTime == 0 then
+                    print("[AutoCycle] Slot " .. slot .. " has time=0, skipping to next valid slot")
+                    local nextSlot = getNextValidSlot(slot)
+                    if nextSlot then
+                        currentSaveSlot = nextSlot
+                        print("[AutoCycle] Found next valid slot: " .. currentSaveSlot)
+                    else
+                        print("[AutoCycle] No valid slots configured (all set to 0), disabling")
+                        autoCycleSavesEnabled = false
+                        notify("Auto cycle disabled: all slots set to 0", true)
+                        break
+                    end
+                else
+                    print("[AutoCycle] Starting new auto-switch to slot " .. slot)
+                    switchToSlot(slot, true)
+                    
+                    -- Wait 10 seconds to give time for retries to complete and cooldown to expire
+                    print("[AutoCycle] Waiting 10 seconds for switch to process...")
+                    task.wait(10)
+                end
             end
         end
         autoCycleSavesLoop = false
@@ -1778,13 +1820,17 @@ task.spawn(function()
         if autoCycleSavesEnabled and currentSaveSlot > 0 and saveCycleStartTime > 0 then
             local elapsed = tick() - saveCycleStartTime
             local remaining = math.max(0, currentCycleInterval - elapsed)
-            local nextSlot = (currentSaveSlot % 4) + 1
-            saveCycleStatusLabel.Text = string.format(
-                "Save slot: %d, next slot: %d, next cycle: %s",
-                currentSaveSlot,
-                nextSlot,
-                formatSeconds(math.ceil(remaining))
-            )
+            local nextSlot = getNextValidSlot(currentSaveSlot)
+            if nextSlot then
+                saveCycleStatusLabel.Text = string.format(
+                    "Save slot: %d, next slot: %d, next cycle: %s",
+                    currentSaveSlot,
+                    nextSlot,
+                    formatSeconds(math.ceil(remaining))
+                )
+            else
+                saveCycleStatusLabel.Text = "Save slot: " .. currentSaveSlot .. ", next slot: none (all 0)"
+            end
         else
             saveCycleStatusLabel.Text = "Save slot: --, next slot: --, next cycle: --"
         end
@@ -1815,11 +1861,17 @@ CreateButton("Save Cycling", "Next Slot", function()
     switchToSlot(nextSlot, false)
 end)
 
+CreateLabel("Save Cycling", "Set time to 0 to skip that slot")
+
 CreateInput("Save Cycling", "Slot 1 Time (seconds)", tostring(saveSlot1Time), "Apply", function(textBox)
     local value = tonumber(textBox.Text)
-    if value and value > 0 then
+    if value and value >= 0 then
         saveSlot1Time = value
-        notify("Slot 1 time set to " .. formatSeconds(saveSlot1Time))
+        if value == 0 then
+            notify("Slot 1 will be skipped")
+        else
+            notify("Slot 1 time set to " .. formatSeconds(saveSlot1Time))
+        end
     else
         notify("Invalid time value", true)
     end
@@ -1827,9 +1879,13 @@ end)
 
 CreateInput("Save Cycling", "Slot 2 Time (seconds)", tostring(saveSlot2Time), "Apply", function(textBox)
     local value = tonumber(textBox.Text)
-    if value and value > 0 then
+    if value and value >= 0 then
         saveSlot2Time = value
-        notify("Slot 2 time set to " .. formatSeconds(saveSlot2Time))
+        if value == 0 then
+            notify("Slot 2 will be skipped")
+        else
+            notify("Slot 2 time set to " .. formatSeconds(saveSlot2Time))
+        end
     else
         notify("Invalid time value", true)
     end
@@ -1837,9 +1893,13 @@ end)
 
 CreateInput("Save Cycling", "Slot 3 Time (seconds)", tostring(saveSlot3Time), "Apply", function(textBox)
     local value = tonumber(textBox.Text)
-    if value and value > 0 then
+    if value and value >= 0 then
         saveSlot3Time = value
-        notify("Slot 3 time set to " .. formatSeconds(saveSlot3Time))
+        if value == 0 then
+            notify("Slot 3 will be skipped")
+        else
+            notify("Slot 3 time set to " .. formatSeconds(saveSlot3Time))
+        end
     else
         notify("Invalid time value", true)
     end
@@ -1847,9 +1907,13 @@ end)
 
 CreateInput("Save Cycling", "Slot 4 Time (seconds)", tostring(saveSlot4Time), "Apply", function(textBox)
     local value = tonumber(textBox.Text)
-    if value and value > 0 then
+    if value and value >= 0 then
         saveSlot4Time = value
-        notify("Slot 4 time set to " .. formatSeconds(saveSlot4Time))
+        if value == 0 then
+            notify("Slot 4 will be skipped")
+        else
+            notify("Slot 4 time set to " .. formatSeconds(saveSlot4Time))
+        end
     else
         notify("Invalid time value", true)
     end

@@ -1871,20 +1871,24 @@ local function openMenu(menuName)
     end
 end
 
-CreateButton("Menus", "Open Mutation Machine", function()
+CreateButton("Menus", "Mutation Machine (Cupid Mutation)", function()
     openMenu("MutationMachine")
 end)
 
-CreateButton("Menus", "Open Shop Menu", function()
-    openMenu("SelectShopUI")
+CreateButton("Menus", "Merchant", function()
+    openMenu("Merchant")
 end)
 
-CreateButton("Menus", "Close Current Menu", function()
-    local Knit = require(game:GetService("ReplicatedStorage").Packages.knit)
-    local MenuController = Knit.GetController("MenuController")
-    MenuController:CloseMenu()
-    notify("Menu closed")
+CreateButton("Menus", "Trait Machine", function()
+    openMenu("TraitMachineUI")
 end)
+
+-- CreateButton("Menus", "Close Current Menu", function()
+--     local Knit = require(game:GetService("ReplicatedStorage").Packages.knit)
+--     local MenuController = Knit.GetController("MenuController")
+--     MenuController:CloseMenu()
+--     notify("Menu closed")
+-- end)
 
 -- Initialize auto features (only those enabled in settings)
 if autoCatchBest or autoCatchMythical or autoCatchMissing then

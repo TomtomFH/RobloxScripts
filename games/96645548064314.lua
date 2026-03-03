@@ -125,6 +125,9 @@ local FoodConfig = require(ReplicatedStorage:WaitForChild("Configs"):WaitForChil
 -- Load UI Library
 local UiLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/Lib.lua", true))()
 
+-- Load Discord Webhook Utility
+local sendWebhook = loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/utils/discord_webhook.lua", true))()
+
 local function getConfigSetting(tabName, entryName)
     if type(GetConfigValue) == "function" then
         return GetConfigValue(tabName, entryName)
@@ -266,6 +269,7 @@ CreateTab("Catch And Tame", "Main", "Auto Sell")
 CreateTab("Catch And Tame", "Main", "Pet Warning")
 CreateTab("Catch And Tame", "Main", "Save Cycling")
 CreateTab("Catch And Tame", "Main", "Menus")
+CreateTab("Catch And Tame", "Main", "Feedback")
 
 local uiRoot = player.PlayerGui:WaitForChild("TomtomFHUI")
 local warningLabel = Instance.new("TextLabel")
@@ -1949,6 +1953,42 @@ end)
 --     MenuController:CloseMenu()
 --     notify("Menu closed")
 -- end)
+
+-- ============================================================
+-- FEEDBACK TAB
+-- ============================================================
+
+CreateLabel("Feedback", "Send bug reports or suggestions to the developer")
+
+CreateInput("Feedback", "Bug Report", "Describe the bug...", "Send Bug Report", function(textBox)
+    local message = textBox.Text
+    if message and message ~= "" and message ~= "Describe the bug..." then
+        local success = sendWebhook("🐛 **Bug Report**\n" .. message)
+        if success then
+            notify("Bug report sent!")
+            textBox.Text = "Describe the bug..."
+        else
+            notify("Failed to send bug report", true)
+        end
+    else
+        notify("Please enter a bug description", true)
+    end
+end)
+
+CreateInput("Feedback", "Suggestion", "Your suggestion...", "Send Suggestion", function(textBox)
+    local message = textBox.Text
+    if message and message ~= "" and message ~= "Your suggestion..." then
+        local success = sendWebhook("💡 **Suggestion**\n" .. message)
+        if success then
+            notify("Suggestion sent!")
+            textBox.Text = "Your suggestion..."
+        else
+            notify("Failed to send suggestion", true)
+        end
+    else
+        notify("Please enter a suggestion", true)
+    end
+end)
 
 -- Initialize auto features (only those enabled in settings)
 if autoCatchBest or autoCatchMythical or autoCatchMissing then

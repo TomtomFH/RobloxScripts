@@ -1,10 +1,53 @@
 local LibName = "TomtomFHUI"
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
 
-for _,v in game.Players.LocalPlayer.PlayerGui:GetChildren() do
-    if v.Name == LibName then
-        v:Destroy()
+local function resolveUiParent()
+    if type(gethui) == "function" then
+        local ok, hui = pcall(gethui)
+        if ok and hui then
+            return hui
+        end
+    end
+
+    local okCoreGui, cg = pcall(function()
+        return CoreGui
+    end)
+    if okCoreGui and cg then
+        return cg
+    end
+
+    return Players.LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local function cleanupExistingUi()
+    local checkedParents = {}
+    local function scanParent(parent)
+        if not parent or checkedParents[parent] then
+            return
+        end
+        checkedParents[parent] = true
+
+        for _, v in ipairs(parent:GetChildren()) do
+            if v.Name == LibName then
+                pcall(function()
+                    v:Destroy()
+                end)
+            end
+        end
+    end
+
+    scanParent(Players.LocalPlayer:FindFirstChild("PlayerGui"))
+    scanParent(CoreGui)
+    if type(gethui) == "function" then
+        local ok, hui = pcall(gethui)
+        if ok then
+            scanParent(hui)
+        end
     end
 end
+
+cleanupExistingUi()
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -189,8 +232,13 @@ local SetActiveTabHandlers = {}  -- Store active tab update handlers per menu
 local CurrentPageConnections = {}  -- Track CurrentPage listeners per menu
 
 function CreateMenu(menuName)
-    local UI = Instance.new("ScreenGui", game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"))
+    local UI = Instance.new("ScreenGui")
+    UI.Parent = resolveUiParent()
     UI.Name = LibName
+    UI.DisplayOrder = 999999
+    UI.IgnoreGuiInset = true
+    UI.ResetOnSpawn = false
+    UI.OnTopOfCoreBlur = true
     UI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
     UserInputService.InputBegan:Connect(function(input, gameProcessed)

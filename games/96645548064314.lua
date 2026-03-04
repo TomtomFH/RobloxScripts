@@ -271,7 +271,29 @@ CreateTab("Catch And Tame", "Main", "Save Cycling")
 CreateTab("Catch And Tame", "Main", "Menus")
 CreateTab("Catch And Tame", "Main", "Feedback")
 
-local uiRoot = player.PlayerGui:WaitForChild("TomtomFHUI")
+local function resolveUiRoot()
+    local playerGui = player:WaitForChild("PlayerGui")
+
+    if type(gethui) == "function" then
+        local ok, hui = pcall(gethui)
+        if ok and hui then
+            local gui = hui:FindFirstChild("TomtomFHUI") or hui:WaitForChild("TomtomFHUI", 3)
+            if gui then
+                return gui
+            end
+        end
+    end
+
+    local coreGui = game:GetService("CoreGui")
+    local coreUi = coreGui:FindFirstChild("TomtomFHUI") or coreGui:WaitForChild("TomtomFHUI", 3)
+    if coreUi then
+        return coreUi
+    end
+
+    return playerGui:WaitForChild("TomtomFHUI")
+end
+
+local uiRoot = resolveUiRoot()
 local warningLabel = Instance.new("TextLabel")
 warningLabel.Size = UDim2.new(0, 520, 0, 60)
 warningLabel.Position = UDim2.new(0.5, -260, 0, 10)

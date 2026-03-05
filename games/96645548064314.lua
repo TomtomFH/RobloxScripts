@@ -125,6 +125,14 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Knit = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("knit"))
 local FoodConfig = require(ReplicatedStorage:WaitForChild("Configs"):WaitForChild("Food"))
+local rarityGradientsFolder = nil
+
+pcall(function()
+    local uiFolder = ReplicatedStorage:WaitForChild("UI", 10)
+    if uiFolder then
+        rarityGradientsFolder = uiFolder:WaitForChild("RarityGradients", 10)
+    end
+end)
 
 -- Load UI Library
 local UiLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/Lib.lua", true))()
@@ -341,7 +349,7 @@ local function createPetCard(parent, titleText, titleColor, position)
     local image = Instance.new("ImageLabel", card)
     image.Size = UDim2.new(0, 60, 0, 60)
     image.Position = UDim2.new(0, 10, 0, 35)
-    image.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    image.BackgroundTransparency = 1
     image.BorderSizePixel = 0
     image.Image = "rbxasset://textures/Ui/GuiImagePlaceholder.png"
     image.Parent = card
@@ -477,16 +485,311 @@ if autoCatchCustom then
 end
 
 -- Helper function to set pet image
-local function setPetImage(imageLabel, petName)
-    if petsConfig and petsConfig[petName] and petsConfig[petName].Image then
-        local imageId = petsConfig[petName].Image
+local movingGradientNames = {
+    Epic = true,
+    Legendary = true,
+    Gold = true,
+    Exclusive = true,
+    Mythical = true,
+    Rainbow = true,
+    Neon = true,
+    Shiny = true,
+    Secret = true,
+    Godly = true,
+    Glass = true,
+    Charged = true,
+    Cosmic = true,
+    Admin = true,
+    Snowy = true,
+    Fractured = true
+}
+
+local iconGradientStates = {}
+
+local function trimText(text)
+    if type(text) ~= "string" then
+        return nil
+    end
+    return text:match("^%s*(.-)%s*$")
+end
+
+local function colorAtTime(keypoints, t)
+    if t <= 0 then
+        return keypoints[1].Value
+    end
+    if t >= 1 then
+        return keypoints[#keypoints].Value
+    end
+
+    for i = 1, #keypoints - 1 do
+        local left = keypoints[i]
+        local right = keypoints[i + 1]
+        if left.Time <= t and t < right.Time then
+            local alpha = (t - left.Time) / (right.Time - left.Time)
+            return Color3.new(
+                (right.Value.R - left.Value.R) * alpha + left.Value.R,
+                (right.Value.G - left.Value.G) * alpha + left.Value.G,
+                (right.Value.B - left.Value.B) * alpha + left.Value.B
+            )
+        end
+    end
+
+    return keypoints[1].Value
+end
+
+local function resolvePrimaryMutation(mutation, mutationList)
+    local parsed = {}
+
+    local function pushMutation(value)
+        local cleaned = trimText(value)
+        if cleaned and cleaned ~= "" and cleaned ~= "None" and cleaned ~= "Normal" then
+            table.insert(parsed, cleaned)
+        end
+    end
+
+    pushMutation(mutation)
+
+    if type(mutationList) == "string" and mutationList ~= "" then
+        for part in mutationList:gmatch("[^,]+") do
+            pushMutation(part)
+        end
+    end
+
+    if #parsed == 0 then
+        return nil
+    end
+
+    for _, name in ipairs(parsed) do
+        if name == "Cosmic" then
+            return "Cosmic"
+        end
+    end
+    for _, name in ipairs(parsed) do
+        if name == "Charged" then
+            return "Charged"
+        end
+    end
+
+    return parsed[1]
+end
+
+local function clearIconGradient(imageLabel)
+    local state = iconGradientStates[imageLabel]
+    if state and state.connection then
+        state.connection:Disconnect()
+    end
+
+    local host = state and state.host
+    if host then
+        for _, child in ipairs(host:GetChildren()) do
+            if child:IsA("UIGradient") then
+                child:Destroy()
+            end
+        end
+        host.Visible = false
+    end
+
+    iconGradientStates[imageLabel] = nil
+end
+
+local function ensureGradientHost(imageLabel)
+    local state = iconGradientStates[imageLabel]
+    local host = state and state.host
+
+    if not (host and host.Parent) then
+        host = Instance.new("Frame")
+        host.Name = "PetIconGradientHost"
+        host.BackgroundColor3 = Color3.fromRGB(75, 75, 75)
+        host.BorderSizePixel = 0
+        host.ClipsDescendants = true
+        host.Visible = false
+        host.Parent = imageLabel.Parent
+    end
+
+    host.Size = imageLabel.Size
+    host.Position = imageLabel.Position
+    host.AnchorPoint = imageLabel.AnchorPoint
+    host.ZIndex = math.max(0, imageLabel.ZIndex - 1)
+
+    local imageCorner = imageLabel:FindFirstChildOfClass("UICorner")
+    local hostCorner = host:FindFirstChildOfClass("UICorner")
+    if imageCorner then
+        if not hostCorner then
+            hostCorner = Instance.new("UICorner")
+            hostCorner.Parent = host
+        end
+        hostCorner.CornerRadius = imageCorner.CornerRadius
+    end
+
+    if not state then
+        state = {}
+        iconGradientStates[imageLabel] = state
+    end
+    state.host = host
+
+    return host, state
+end
+
+local function applyPetIconGradient(imageLabel, rarity, mutation, mutationList)
+    if not imageLabel then
+        return
+    end
+
+    local host, state = ensureGradientHost(imageLabel)
+
+    local gradientName = resolvePrimaryMutation(mutation, mutationList)
+    if not gradientName then
+        gradientName = rarity
+    end
+
+    if not gradientName or not rarityGradientsFolder or not host then
+        if state.connection then
+            state.connection:Disconnect()
+            state.connection = nil
+        end
+        if state.gradient and state.gradient.Parent then
+            state.gradient:Destroy()
+        end
+        state.gradient = nil
+        state.gradientSignature = nil
+        host.Visible = false
+        return
+    end
+
+    local gradientTemplate = rarityGradientsFolder:FindFirstChild(gradientName)
+    if not gradientTemplate then
+        if state.connection then
+            state.connection:Disconnect()
+            state.connection = nil
+        end
+        if state.gradient and state.gradient.Parent then
+            state.gradient:Destroy()
+        end
+        state.gradient = nil
+        state.gradientSignature = nil
+        host.Visible = false
+        return
+    end
+
+    if state.gradientSignature == gradientName and state.gradient and state.gradient.Parent == host then
+        host.Visible = true
+        return
+    end
+
+    if state.connection then
+        state.connection:Disconnect()
+        state.connection = nil
+    end
+    if state.gradient and state.gradient.Parent then
+        state.gradient:Destroy()
+    end
+
+    local gradient = gradientTemplate:Clone()
+    gradient.Name = "PetIconGradient"
+    gradient.Rotation = -90
+    gradient.Parent = host
+    host.Visible = true
+
+    local shouldMove = movingGradientNames[gradientName] == true
+    local spinSpeed = gradient:GetAttribute("SpinSpeed")
+    if type(spinSpeed) ~= "number" then
+        spinSpeed = 0
+    end
+
+    if not shouldMove and spinSpeed == 0 then
+        state.gradient = gradient
+        state.gradientSignature = gradientName
+        return
+    end
+
+    local originalKeypoints = nil
+    local slideSpeed = gradient:GetAttribute("SlideSpeed")
+    if type(slideSpeed) ~= "number" then
+        slideSpeed = 0.5
+    end
+
+    if shouldMove then
+        originalKeypoints = table.clone(gradient.Color.Keypoints)
+    end
+
+    local elapsed = 0
+    local connection
+    connection = RunService.Heartbeat:Connect(function(dt)
+        if not gradient or not gradient.Parent then
+            if connection then
+                connection:Disconnect()
+            end
+            return
+        end
+
+        if shouldMove then
+            elapsed = (elapsed + dt * slideSpeed) % 1
+            local shifted = {
+                ColorSequenceKeypoint.new(0, colorAtTime(originalKeypoints, elapsed)),
+                ColorSequenceKeypoint.new(1, colorAtTime(originalKeypoints, elapsed))
+            }
+
+            for _, keypoint in ipairs(originalKeypoints) do
+                table.insert(shifted, ColorSequenceKeypoint.new((elapsed - keypoint.Time) % 1, keypoint.Value))
+            end
+
+            table.sort(shifted, function(a, b)
+                return a.Time < b.Time
+            end)
+
+            gradient.Color = ColorSequence.new(shifted)
+        end
+
+        if spinSpeed ~= 0 then
+            gradient.Rotation = (gradient.Rotation + dt * spinSpeed) % 360
+        end
+    end)
+
+    state.connection = connection
+    state.gradient = gradient
+    state.gradientSignature = gradientName
+end
+
+local function setPetImage(imageLabel, petName, rarity, mutation, mutationList)
+    local imageId = petsConfig and petsConfig[petName] and petsConfig[petName].Image
+    local renderSignature = table.concat({
+        tostring(petName),
+        tostring(rarity),
+        tostring(mutation),
+        tostring(mutationList),
+        tostring(imageId)
+    }, "|")
+
+    local state = iconGradientStates[imageLabel]
+    if state and state.renderSignature == renderSignature then
+        return
+    end
+
+    applyPetIconGradient(imageLabel, rarity, mutation, mutationList)
+
+    if imageId then
         imageLabel.Image = "rbxasset://textures/Ui/GuiImagePlaceholder.png"
         task.spawn(function()
             pcall(function()
                 imageLabel.Image = "rbxthumb://type=Asset&id=" .. imageId .. "&w=420&h=420"
             end)
         end)
+    else
+        imageLabel.Image = "rbxasset://textures/Ui/GuiImagePlaceholder.png"
     end
+
+    state = iconGradientStates[imageLabel] or {}
+    state.renderSignature = renderSignature
+    iconGradientStates[imageLabel] = state
+end
+
+local function clearPetImageRender(imageLabel)
+    if not imageLabel then
+        return
+    end
+
+    imageLabel.Image = "rbxasset://textures/Ui/GuiImagePlaceholder.png"
+    clearIconGradient(imageLabel)
 end
 
 -- Helper function to get pet info display
@@ -868,14 +1171,20 @@ local function scanPets()
             bestPetInfo.Text = getPetInfo(bestPet, bestOverallRPS)
         end
         if bestPetImage then
-            setPetImage(bestPetImage, bestPet:GetAttribute("Name"))
+            setPetImage(
+                bestPetImage,
+                bestPet:GetAttribute("Name"),
+                bestPet:GetAttribute("Rarity"),
+                bestPet:GetAttribute("Mutation"),
+                bestPet:GetAttribute("MutationList")
+            )
         end
     else
         if bestPetInfo then
             bestPetInfo.Text = "No pet found"
         end
         if bestPetImage then
-            bestPetImage.Image = "rbxasset://textures/Ui/GuiImagePlaceholder.png"
+            clearPetImageRender(bestPetImage)
         end
     end
     -- Update best mythical+ display
@@ -885,14 +1194,20 @@ local function scanPets()
             mythicalInfo.Text = getPetInfo(bestMythical, bestMythicalRPS)
         end
         if mythicalImage then
-            setPetImage(mythicalImage, bestMythical:GetAttribute("Name"))
+            setPetImage(
+                mythicalImage,
+                bestMythical:GetAttribute("Name"),
+                bestMythical:GetAttribute("Rarity"),
+                bestMythical:GetAttribute("Mutation"),
+                bestMythical:GetAttribute("MutationList")
+            )
         end
     else
         if mythicalInfo then
             mythicalInfo.Text = "No Mythical+ pet found"
         end
         if mythicalImage then
-            mythicalImage.Image = "rbxasset://textures/Ui/GuiImagePlaceholder.png"
+            clearPetImageRender(mythicalImage)
         end
     end
 
@@ -903,14 +1218,20 @@ local function scanPets()
             missingInfo.Text = getPetInfo(bestMissing, bestMissingRPS)
         end
         if missingImage then
-            setPetImage(missingImage, bestMissing:GetAttribute("Name"))
+            setPetImage(
+                missingImage,
+                bestMissing:GetAttribute("Name"),
+                bestMissing:GetAttribute("Rarity"),
+                bestMissing:GetAttribute("Mutation"),
+                bestMissing:GetAttribute("MutationList")
+            )
         end
     else
         if missingInfo then
             missingInfo.Text = "No missing pets found"
         end
         if missingImage then
-            missingImage.Image = "rbxasset://textures/Ui/GuiImagePlaceholder.png"
+            clearPetImageRender(missingImage)
         end
     end
     
@@ -921,7 +1242,13 @@ local function scanPets()
             customInfo.Text = getPetInfo(bestCustom, bestCustomRPS)
         end
         if customImage then
-            setPetImage(customImage, bestCustom:GetAttribute("Name"))
+            setPetImage(
+                customImage,
+                bestCustom:GetAttribute("Name"),
+                bestCustom:GetAttribute("Rarity"),
+                bestCustom:GetAttribute("Mutation"),
+                bestCustom:GetAttribute("MutationList")
+            )
         end
     else
         local filterCount = 0
@@ -935,7 +1262,7 @@ local function scanPets()
             end
         end
         if customImage then
-            customImage.Image = "rbxasset://textures/Ui/GuiImagePlaceholder.png"
+            clearPetImageRender(customImage)
         end
     end
 end
@@ -1847,11 +2174,13 @@ local function createPetEntry(entryData)
     local image = Instance.new("ImageLabel", button)
     image.Size = UDim2.new(0, 70, 0, 70)
     image.Position = UDim2.new(0.5, -35, 0, 5)
-    image.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+    image.BackgroundTransparency = 1
     image.BorderSizePixel = 0
     image.Image = "rbxasset://textures/Ui/GuiImagePlaceholder.png"
     Instance.new("UICorner", image).CornerRadius = UDim.new(0, 6)
-    setPetImage(image, entryData.petName)
+    local petData = petsConfig and petsConfig[entryData.petName]
+    local petRarity = petData and petData.Rarity or "Common"
+    setPetImage(image, entryData.petName, petRarity, entryData.combo.mutations, entryData.combo.mutations)
 
     local nameLabel = Instance.new("TextLabel", button)
     nameLabel.Size = UDim2.new(1, -8, 0, 16)
@@ -1876,8 +2205,8 @@ local function createPetEntry(entryData)
 
     local selectedFrame = Instance.new("Frame", button)
     selectedFrame.Name = "SelectedFrame"
-    selectedFrame.Size = UDim2.new(1, 0, 1, 0)
-    selectedFrame.Position = UDim2.new(0, 0, 0, 0)
+    selectedFrame.Size = UDim2.new(1, 0, 0, 45)
+    selectedFrame.Position = UDim2.new(0, 0, 0, 75)
     selectedFrame.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
     selectedFrame.BackgroundTransparency = 1
     selectedFrame.BorderSizePixel = 0

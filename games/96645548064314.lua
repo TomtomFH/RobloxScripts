@@ -574,6 +574,12 @@ local function switchToSlot(slot, isAutoSwitch)
         notify("Invalid slot number", true)
         return false
     end
+    
+    -- Don't switch if we're already on this slot (safety check)
+    if currentSaveSlot == slot and isAutoSwitch then
+        print("[SaveSwitch] Already on slot " .. slot .. ", skipping switch")
+        return true
+    end
 
     print("[SaveSwitch] Called with slot=" .. slot .. ", isAutoSwitch=" .. tostring(isAutoSwitch))
 
@@ -1211,28 +1217,22 @@ local function startAutoCycleSaves()
                 end
             else
                 -- No timer running, start a new switch
-                -- Check if current slot is valid (time > 0)
-                local slotTime = getSaveSlotTime(slot)
-                if slotTime == 0 then
-                    print("[AutoCycle] Slot " .. slot .. " has time=0, skipping to next valid slot")
-                    local nextSlot = getNextValidSlot(slot)
-                    if nextSlot then
-                        currentSaveSlot = nextSlot
-                        print("[AutoCycle] Found next valid slot: " .. currentSaveSlot)
-                    else
-                        print("[AutoCycle] No valid slots configured (all set to 0), disabling")
-                        autoCycleSavesEnabled = false
-                        notify("Auto cycle disabled: all slots set to 0", true)
-                        break
-                    end
-                else
-                    print("[AutoCycle] Starting new auto-switch to slot " .. slot)
-                    switchToSlot(slot, true)
-                    
-                    -- Wait 10 seconds to give time for retries to complete and cooldown to expire
-                    print("[AutoCycle] Waiting 10 seconds for switch to process...")
-                    task.wait(10)
+                -- Move to next valid slot first
+                local nextSlot = getNextValidSlot(slot)
+                if not nextSlot then
+                    print("[AutoCycle] No valid slots configured (all set to 0), disabling")
+                    autoCycleSavesEnabled = false
+                    notify("Auto cycle disabled: all slots set to 0", true)
+                    break
                 end
+                
+                currentSaveSlot = nextSlot
+                print("[AutoCycle] Starting new auto-switch to slot " .. currentSaveSlot)
+                switchToSlot(currentSaveSlot, true)
+                
+                -- Wait 10 seconds to give time for retries to complete and cooldown to expire
+                print("[AutoCycle] Waiting 10 seconds for switch to process...")
+                task.wait(10)
             end
         end
         autoCycleSavesLoop = false

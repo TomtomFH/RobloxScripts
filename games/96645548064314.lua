@@ -33,6 +33,7 @@ local minCatchRPS = 1000  -- Minimum RPS required to catch (0 = disabled)
 local ignoreMinRPSForSecret = false  -- Catch Secret pets regardless of min RPS
 local ignoreMinRPSForExclusive = false  -- Catch Exclusive pets regardless of min RPS
 local ignoreMinRPSForMissing = false  -- Catch missing pets regardless of min RPS
+local ignoreMinRPSForBestCustom = false  -- Catch Best Custom regardless of min RPS
 local appliedThreshold = 1000  -- RPS threshold for "new best pet" warning
 
 -- Auto-Catch Default States
@@ -1877,7 +1878,7 @@ local function startAutoCatchMaster()
     task.spawn(function()
         while autoCatchBest or autoCatchMythical or autoCatchMissing or autoCatchCustom do
             -- Priority: Custom > Mythical+ > Missing > Best Overall
-            if autoCatchCustom and bestCustom and shouldCatchPet(bestCustom) then
+            if autoCatchCustom and bestCustom and (ignoreMinRPSForBestCustom or shouldCatchPet(bestCustom)) then
                 catchPet(bestCustom)
                 task.wait(1)
             elseif autoCatchMythical and bestMythical and shouldCatchPet(bestMythical) then
@@ -2403,6 +2404,15 @@ CreateToggle("Catching", "Ignore Min RPS for Missing", function(state)
         notify("Missing pets must meet minimum RPS")
     end
 end, ignoreMinRPSForMissing)
+
+CreateToggle("Catching", "Ignore Min RPS for Best Custom", function(state)
+    ignoreMinRPSForBestCustom = state.Value
+    if ignoreMinRPSForBestCustom then
+        notify("Will catch Best Custom pets regardless of min RPS")
+    else
+        notify("Best Custom pets must meet minimum RPS")
+    end
+end, ignoreMinRPSForBestCustom)
 
 -- CREATE BREEDING TAB UI
 CreateToggle("Breeding", "Auto Breed", function(state)

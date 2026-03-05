@@ -39,6 +39,10 @@ local appliedThreshold = 1000  -- RPS threshold for "new best pet" warning
 local autoCatchBest = false  -- Auto-catch best overall pet
 local autoCatchMythical = false  -- Auto-catch best Mythical+ pet
 local autoCatchMissing = false  -- Auto-catch best missing pet
+local autoCatchCustom = false  -- Auto-catch best custom filtered pet
+
+-- Custom Pet Filters
+local customPetFilters = {}  -- Format: {["PetName_MutationCombo"] = true}
 
 -- Breeding Default States
 local autoBreedEnabled = false  -- Auto-breed configured pairs
@@ -394,11 +398,20 @@ local missingCard, missingImage, missingInfo, missingAutoToggle = createPetCard(
 )
 missingInfo.Text = "No missing pets found"
 
+local customCard, customImage, customInfo, customAutoToggle = createPetCard(
+    cardsRow,
+    "Best Custom",
+    Color3.fromRGB(255, 165, 0),
+    UDim2.new(0.5, 5, 0, 165)
+)
+customInfo.Text = "No custom filters set"
+
 -- Load auto-catch button states from config
 local autoCatchTabName = "Catching"
 local autoCatchBestConfigEntry = "Auto Catch Best"
 local autoCatchMythicalConfigEntry = "Auto Catch Mythical"
 local autoCatchMissingConfigEntry = "Auto Catch Missing"
+local autoCatchCustomConfigEntry = "Auto Catch Custom"
 
 -- Safely load config values (Config may not exist on first run)
 do
@@ -416,6 +429,23 @@ do
     if savedMissing ~= nil then
         autoCatchMissing = savedMissing
     end
+    
+    local savedCustom = getConfigSetting(autoCatchTabName, autoCatchCustomConfigEntry)
+    if savedCustom ~= nil then
+        autoCatchCustom = savedCustom
+    end
+    
+    local savedFilters = getConfigSetting(autoCatchTabName, "Custom Pet Filters")
+    if type(savedFilters) == "table" then
+        customPetFilters = savedFilters
+        
+        -- Update custom card info display
+        local filterCount = 0
+        for _ in pairs(customPetFilters) do filterCount = filterCount + 1 end
+        if filterCount > 0 then
+            customInfo.Text = filterCount .. " filter(s) active"
+        end
+    end
 end
 
 -- Initialize all buttons to OFF state first
@@ -425,6 +455,8 @@ mythicalAutoToggle.Text = "Auto Catch: OFF"
 mythicalAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
 missingAutoToggle.Text = "Auto Catch: OFF"
 missingAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+customAutoToggle.Text = "Auto Catch: OFF"
+customAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
 
 -- Update button visuals based on loaded config
 if autoCatchBest then
@@ -438,6 +470,10 @@ end
 if autoCatchMissing then
     missingAutoToggle.Text = "Auto Catch: ON"
     missingAutoToggle.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
+end
+if autoCatchCustom then
+    customAutoToggle.Text = "Auto Catch: ON"
+    customAutoToggle.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
 end
 
 -- Helper function to set pet image
@@ -503,6 +539,7 @@ end
 local bestPet = nil
 local bestMythical = nil
 local bestMissing = nil
+local bestCustom = nil
 local previousBestRPS = -math.huge
 local warningActive = false
 -- ============================================================
@@ -731,6 +768,7 @@ local function scanPets()
     local bestOverall, bestOverallRPS = nil, -math.huge
     local newBestMythical, bestMythicalRPS = nil, -math.huge
     local newBestMissing, bestMissingRPS = nil, -math.huge
+    local newBestCustom, bestCustomRPS = nil, -math.huge
     local rarityPriority = { Secret = 3, Exclusive = 2, Mythical = 1 }
 
     for _, folder in pairs(folders) do
@@ -761,6 +799,37 @@ local function scanPets()
                         if rps > bestMissingRPS then
                             bestMissingRPS = rps
                             newBestMissing = pet
+                        end
+                    end
+                    
+                    -- Check for best custom filtered pet
+                    if petName then
+                        local mutations = pet:GetAttribute("MutationList") or "None"
+                        local filterKey
+                        
+                        if mutations == "None" then
+                            filterKey = petName .. "_Normal"
+                        else
+                            -- Try exact match first
+                            local mutList = mutations:gsub(", ", ",")
+                            filterKey = petName .. "_" .. mutList
+                            
+                            -- If no exact match, try each individual mutation
+                            if not customPetFilters[filterKey] then
+                                for mutation in mutations:gmatch("[^,]+") do
+                                    local singleMut = mutation:match("^%s*(.-)%s*$") -- Trim whitespace
+                                    local singleKey = petName .. "_" .. singleMut
+                                    if customPetFilters[singleKey] then
+                                        filterKey = singleKey
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                        
+                        if customPetFilters[filterKey] and rps > bestCustomRPS then
+                            bestCustomRPS = rps
+                            newBestCustom = pet
                         end
                     end
                 end
@@ -842,6 +911,31 @@ local function scanPets()
         end
         if missingImage then
             missingImage.Image = "rbxasset://textures/Ui/GuiImagePlaceholder.png"
+        end
+    end
+    
+    -- Update best custom display
+    bestCustom = newBestCustom
+    if bestCustom then
+        if customInfo then
+            customInfo.Text = getPetInfo(bestCustom, bestCustomRPS)
+        end
+        if customImage then
+            setPetImage(customImage, bestCustom:GetAttribute("Name"))
+        end
+    else
+        local filterCount = 0
+        for _ in pairs(customPetFilters) do filterCount = filterCount + 1 end
+        
+        if customInfo then
+            if filterCount == 0 then
+                customInfo.Text = "No custom filters set"
+            else
+                customInfo.Text = filterCount .. " filter(s) active\nNo matching pets found"
+            end
+        end
+        if customImage then
+            customImage.Image = "rbxasset://textures/Ui/GuiImagePlaceholder.png"
         end
     end
 end
@@ -1455,9 +1549,12 @@ local function startAutoCatchMaster()
 
     autoCatchMasterLoop = true
     task.spawn(function()
-        while autoCatchBest or autoCatchMythical or autoCatchMissing do
-            -- Priority: Mythical+ > Missing > Best Overall
-            if autoCatchMythical and bestMythical and shouldCatchPet(bestMythical) then
+        while autoCatchBest or autoCatchMythical or autoCatchMissing or autoCatchCustom do
+            -- Priority: Custom > Mythical+ > Missing > Best Overall
+            if autoCatchCustom and bestCustom and shouldCatchPet(bestCustom) then
+                catchPet(bestCustom)
+                task.wait(1)
+            elseif autoCatchMythical and bestMythical and shouldCatchPet(bestMythical) then
                 catchPet(bestMythical)
                 task.wait(1)
             elseif autoCatchMissing and bestMissing and shouldCatchMissingPet(bestMissing) then
@@ -1537,7 +1634,404 @@ missingCard.MouseButton1Click:Connect(function()
     end
 end)
 
+customAutoToggle.MouseButton1Click:Connect(function()
+    autoCatchCustom = not autoCatchCustom
+    setConfigSetting(autoCatchTabName, autoCatchCustomConfigEntry, autoCatchCustom)
+    if autoCatchCustom then
+        customAutoToggle.Text = "Auto Catch: ON"
+        customAutoToggle.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
+        if not autoCatchMasterLoop then
+            startAutoCatchMaster()
+        end
+    else
+        customAutoToggle.Text = "Auto Catch: OFF"
+        customAutoToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    end
+end)
+
+customCard.MouseButton1Click:Connect(function()
+    if bestCustom then
+        catchPet(bestCustom)
+    end
+end)
+
 -- CREATE CATCHING SETTINGS UI
+
+-- Create custom pet selector menu
+local customSelectorMenu = Instance.new("Frame")
+customSelectorMenu.Name = "CustomPetSelector"
+customSelectorMenu.Size = UDim2.new(0, 700, 0, 550)
+customSelectorMenu.Position = UDim2.new(0.5, -350, 0.5, -275)
+customSelectorMenu.BackgroundColor3 = Color3.fromRGB(18, 18, 21)
+customSelectorMenu.BorderSizePixel = 0
+customSelectorMenu.Visible = false
+customSelectorMenu.ZIndex = 100
+customSelectorMenu.Parent = uiRoot
+
+Instance.new("UICorner", customSelectorMenu).CornerRadius = UDim.new(0, 12)
+
+-- Add drag functionality with UIDragDetector
+do
+    local ok, dragDetector = pcall(function()
+        return Instance.new("UIDragDetector")
+    end)
+
+    if ok and dragDetector then
+        dragDetector.Parent = customSelectorMenu
+        pcall(function()
+            dragDetector.DragStyle = Enum.UIDragDetectorDragStyle.TranslatePlane
+        end)
+    end
+end
+
+-- Title
+local selectorTitle = Instance.new("TextLabel", customSelectorMenu)
+selectorTitle.Size = UDim2.new(1, -20, 0, 30)
+selectorTitle.Position = UDim2.new(0, 10, 0, 5)
+selectorTitle.BackgroundTransparency = 1
+selectorTitle.Text = "Select Custom Pets/Mutations"
+selectorTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+selectorTitle.TextSize = 16
+selectorTitle.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+selectorTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Search box
+local searchBox = Instance.new("TextBox", customSelectorMenu)
+searchBox.Size = UDim2.new(1, -20, 0, 35)
+searchBox.Position = UDim2.new(0, 10, 0, 40)
+searchBox.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+searchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+searchBox.PlaceholderText = "Search pets or mutations..."
+searchBox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+searchBox.TextSize = 14
+searchBox.FontFace = Font.new("rbxasset://fonts/families/Roboto.json")
+searchBox.ClearTextOnFocus = false
+searchBox.Text = ""
+
+Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 6)
+
+-- Scroll frame for pet grid
+local scrollFrame = Instance.new("ScrollingFrame", customSelectorMenu)
+scrollFrame.Size = UDim2.new(1, -20, 1, -138)
+scrollFrame.Position = UDim2.new(0, 10, 0, 85)
+scrollFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
+scrollFrame.BorderSizePixel = 0
+scrollFrame.ScrollBarThickness = 8
+
+Instance.new("UICorner", scrollFrame).CornerRadius = UDim.new(0, 8)
+
+local gridLayout = Instance.new("UIGridLayout", scrollFrame)
+gridLayout.CellSize = UDim2.new(0, 100, 0, 120)
+gridLayout.CellPadding = UDim2.new(0, 5, 0, 5)
+gridLayout.SortOrder = Enum.SortOrder.Name
+
+local gridPadding = Instance.new("UIPadding", scrollFrame)
+gridPadding.PaddingTop = UDim.new(0, 5)
+gridPadding.PaddingLeft = UDim.new(0, 5)
+
+-- Bottom buttons container
+local buttonContainer = Instance.new("Frame", customSelectorMenu)
+buttonContainer.Size = UDim2.new(1, -20, 0, 35)
+buttonContainer.Position = UDim2.new(0, 10, 1, -45)
+buttonContainer.BackgroundTransparency = 1
+
+-- Clear All button
+local clearAllButton = Instance.new("TextButton", buttonContainer)
+clearAllButton.Size = UDim2.new(0, 140, 1, 0)
+clearAllButton.Position = UDim2.new(0, 0, 0, 0)
+clearAllButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+clearAllButton.Text = "Clear All"
+clearAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+clearAllButton.TextSize = 15
+clearAllButton.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+
+Instance.new("UICorner", clearAllButton).CornerRadius = UDim.new(0, 6)
+
+-- Apply button
+local applyButton = Instance.new("TextButton", buttonContainer)
+applyButton.Size = UDim2.new(0, 140, 1, 0)
+applyButton.Position = UDim2.new(1, -140, 0, 0)
+applyButton.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
+applyButton.Text = "Apply & Close"
+applyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+applyButton.TextSize = 15
+applyButton.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+
+Instance.new("UICorner", applyButton).CornerRadius = UDim.new(0, 6)
+
+-- Temporary selection state (not saved until Apply is clicked)
+local tempCustomFilters = {}
+local petEntries = {}
+local pendingPetEntries = {}
+local petGridBuildConn = nil
+local petGridBuilt = false
+local searchTermLower = ""
+
+-- All possible mutation variants
+local mutationVariants = {
+    "Normal",
+    "Albino",
+    "Gold",
+    "Rainbow",
+    "Glass",
+    "Neon",
+    "Shiny"
+}
+
+-- Function to generate all mutation combinations for a pet
+local function getMutationCombinations(petName)
+    local combinations = {}
+    
+    -- Add all single mutations
+    for _, mutation in ipairs(mutationVariants) do
+        local key = petName .. "_" .. mutation
+        table.insert(combinations, {
+            key = key,
+            display = mutation,
+            petName = petName,
+            mutations = mutation
+        })
+    end
+    
+    return combinations
+end
+
+local function runOnRenderStep(callback)
+    local conn
+    conn = RunService.RenderStepped:Connect(function()
+        if conn then
+            conn:Disconnect()
+            conn = nil
+        end
+        pcall(callback)
+    end)
+end
+
+local function updateCanvasSize()
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, gridLayout.AbsoluteContentSize.Y + 10)
+end
+
+local function setEntrySelected(entry, isSelected)
+    if isSelected then
+        entry.selectedFrame.BackgroundTransparency = 0
+        entry.button.BackgroundColor3 = Color3.fromRGB(0, 90, 160)
+    else
+        entry.selectedFrame.BackgroundTransparency = 1
+        entry.button.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    end
+end
+
+local function applySearchFilter(text)
+    searchTermLower = text and text:lower() or ""
+
+    for _, entry in ipairs(petEntries) do
+        local matches = searchTermLower == ""
+            or entry.petNameLower:find(searchTermLower, 1, true)
+            or entry.mutationLower:find(searchTermLower, 1, true)
+        entry.button.Visible = matches
+    end
+
+    runOnRenderStep(updateCanvasSize)
+end
+
+local function createPetEntry(entryData)
+    local button = Instance.new("TextButton", scrollFrame)
+    button.Name = entryData.combo.key
+    button.Size = UDim2.new(0, 100, 0, 120)
+    button.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    button.Text = ""
+    button.AutoButtonColor = false
+
+    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 6)
+
+    local image = Instance.new("ImageLabel", button)
+    image.Size = UDim2.new(0, 70, 0, 70)
+    image.Position = UDim2.new(0.5, -35, 0, 5)
+    image.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+    image.BorderSizePixel = 0
+    image.Image = "rbxasset://textures/Ui/GuiImagePlaceholder.png"
+    Instance.new("UICorner", image).CornerRadius = UDim.new(0, 6)
+    setPetImage(image, entryData.petName)
+
+    local nameLabel = Instance.new("TextLabel", button)
+    nameLabel.Size = UDim2.new(1, -8, 0, 16)
+    nameLabel.Position = UDim2.new(0, 4, 0, 78)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = entryData.petName
+    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nameLabel.TextSize = 10
+    nameLabel.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+    nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+    nameLabel.TextScaled = true
+
+    local mutationLabel = Instance.new("TextLabel", button)
+    mutationLabel.Size = UDim2.new(1, -8, 0, 22)
+    mutationLabel.Position = UDim2.new(0, 4, 0, 94)
+    mutationLabel.BackgroundTransparency = 1
+    mutationLabel.Text = entryData.combo.display
+    mutationLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    mutationLabel.TextSize = 11
+    mutationLabel.FontFace = Font.new("rbxasset://fonts/families/Roboto.json")
+    mutationLabel.TextTruncate = Enum.TextTruncate.AtEnd
+
+    local selectedFrame = Instance.new("Frame", button)
+    selectedFrame.Name = "SelectedFrame"
+    selectedFrame.Size = UDim2.new(1, 0, 1, 0)
+    selectedFrame.Position = UDim2.new(0, 0, 0, 0)
+    selectedFrame.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
+    selectedFrame.BackgroundTransparency = 1
+    selectedFrame.BorderSizePixel = 0
+    selectedFrame.ZIndex = button.ZIndex - 1
+    Instance.new("UICorner", selectedFrame).CornerRadius = UDim.new(0, 6)
+
+    local entry = {
+        button = button,
+        selectedFrame = selectedFrame,
+        key = entryData.combo.key,
+        petNameLower = entryData.petName:lower(),
+        mutationLower = entryData.combo.mutations:lower()
+    }
+
+    setEntrySelected(entry, tempCustomFilters[entry.key] == true)
+
+    button.MouseButton1Click:Connect(function()
+        if tempCustomFilters[entry.key] then
+            tempCustomFilters[entry.key] = nil
+            setEntrySelected(entry, false)
+        else
+            tempCustomFilters[entry.key] = true
+            setEntrySelected(entry, true)
+        end
+    end)
+
+    table.insert(petEntries, entry)
+
+    local matches = searchTermLower == ""
+        or entry.petNameLower:find(searchTermLower, 1, true)
+        or entry.mutationLower:find(searchTermLower, 1, true)
+    button.Visible = matches
+end
+
+local function buildPetGridIncremental()
+    if petGridBuilt then
+        applySearchFilter(searchBox.Text)
+        return
+    end
+
+    if petGridBuildConn then
+        petGridBuildConn:Disconnect()
+        petGridBuildConn = nil
+    end
+
+    pendingPetEntries = {}
+    petEntries = {}
+
+    for petName, _ in pairs(petsConfig) do
+        local combinations = getMutationCombinations(petName)
+        for _, combo in ipairs(combinations) do
+            table.insert(pendingPetEntries, {
+                petName = petName,
+                combo = combo
+            })
+        end
+    end
+
+    table.sort(pendingPetEntries, function(a, b)
+        return a.combo.key < b.combo.key
+    end)
+
+    local nextIndex = 1
+    local total = #pendingPetEntries
+    local batchSize = 24
+
+    petGridBuildConn = RunService.RenderStepped:Connect(function()
+        local count = 0
+        while nextIndex <= total and count < batchSize do
+            createPetEntry(pendingPetEntries[nextIndex])
+            nextIndex = nextIndex + 1
+            count = count + 1
+        end
+
+        updateCanvasSize()
+
+        if nextIndex > total then
+            petGridBuilt = true
+            pendingPetEntries = {}
+            if petGridBuildConn then
+                petGridBuildConn:Disconnect()
+                petGridBuildConn = nil
+            end
+        end
+    end)
+end
+
+local function refreshSelectionVisuals()
+    for _, entry in ipairs(petEntries) do
+        setEntrySelected(entry, tempCustomFilters[entry.key] == true)
+    end
+end
+
+-- Search box handler
+searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+    applySearchFilter(searchBox.Text)
+end)
+
+-- Apply button handler
+applyButton.MouseButton1Click:Connect(function()
+    customPetFilters = {}
+    for key, _ in pairs(tempCustomFilters) do
+        customPetFilters[key] = true
+    end
+    
+    setConfigSetting(autoCatchTabName, "Custom Pet Filters", customPetFilters)
+    
+    local count = 0
+    for _ in pairs(customPetFilters) do count = count + 1 end
+    
+    notify("Applied " .. count .. " custom pet filters")
+
+    task.defer(function()
+        customSelectorMenu.Visible = false
+        
+        -- Update custom card info
+        if count == 0 then
+            customInfo.Text = "No custom filters set"
+        else
+            customInfo.Text = count .. " filter(s) active"
+        end
+    end)
+end)
+
+-- Clear All button handler
+clearAllButton.MouseButton1Click:Connect(function()
+    tempCustomFilters = {}
+    customPetFilters = {}
+    setConfigSetting(autoCatchTabName, "Custom Pet Filters", customPetFilters)
+    notify("Cleared all selections")
+
+    runOnRenderStep(function()
+        refreshSelectionVisuals()
+        customInfo.Text = "No custom filters set"
+    end)
+end)
+
+-- Button to open custom selector
+CreateButton("Catching", "Configure Custom Pets", function()
+    -- Initialize temp filters from saved filters
+    tempCustomFilters = {}
+    for key, _ in pairs(customPetFilters) do
+        tempCustomFilters[key] = true
+    end
+    
+    runOnRenderStep(function()
+        searchBox.Text = ""
+        buildPetGridIncremental()
+        applySearchFilter("")
+        refreshSelectionVisuals()
+        customSelectorMenu.Visible = true
+    end)
+end)
+
 local minRPSLabel = CreateValueLabel("Catching", minCatchRPS == 0 and "Catch Minimum RPS: Disabled" or ("Catch Minimum RPS: " .. minCatchRPS))
 
 local minCatchRPSInput = CreateInput("Catching", "Minimum RPS", tostring(minCatchRPS), "Apply", function(textBox)
@@ -2013,7 +2507,7 @@ CreateInput("Feedback", "Suggestion", "Your suggestion...", "Send Suggestion", f
 end)
 
 -- Initialize auto features (only those enabled in settings)
-if autoCatchBest or autoCatchMythical or autoCatchMissing then
+if autoCatchBest or autoCatchMythical or autoCatchMissing or autoCatchCustom then
     startAutoCatchMaster()
 end
 if autoBreedEnabled then

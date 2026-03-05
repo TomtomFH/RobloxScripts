@@ -915,8 +915,8 @@ local function switchToSlot(slot, isAutoSwitch)
         return false
     end
     
-    -- Don't switch if we're already on this slot (safety check)
-    if currentSaveSlot == slot and isAutoSwitch then
+    -- Don't switch if we're already on this slot (only for manual switches)
+    if not isAutoSwitch and currentSaveSlot == slot then
         print("[SaveSwitch] Already on slot " .. slot .. ", skipping switch")
         return true
     end
@@ -1647,9 +1647,8 @@ local function startAutoCycleSaves()
                     break
                 end
                 
-                currentSaveSlot = nextSlot
-                print("[AutoCycle] Starting new auto-switch to slot " .. currentSaveSlot)
-                switchToSlot(currentSaveSlot, true)
+                print("[AutoCycle] Starting new auto-switch to slot " .. nextSlot)
+                switchToSlot(nextSlot, true)
                 
                 -- Wait 10 seconds to give time for retries to complete and cooldown to expire
                 print("[AutoCycle] Waiting 10 seconds for switch to process...")

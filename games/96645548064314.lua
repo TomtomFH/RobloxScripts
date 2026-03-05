@@ -2050,7 +2050,7 @@ Instance.new("UICorner", scrollFrame).CornerRadius = UDim.new(0, 8)
 local gridLayout = Instance.new("UIGridLayout", scrollFrame)
 gridLayout.CellSize = UDim2.new(0, 100, 0, 120)
 gridLayout.CellPadding = UDim2.new(0, 5, 0, 5)
-gridLayout.SortOrder = Enum.SortOrder.Name
+gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
 local gridPadding = Instance.new("UIPadding", scrollFrame)
 gridPadding.PaddingTop = UDim.new(0, 5)
@@ -2161,13 +2161,16 @@ local function applySearchFilter(text)
     runOnRenderStep(updateCanvasSize)
 end
 
-local function createPetEntry(entryData)
+local function createPetEntry(entryData, layoutOrder)
     local button = Instance.new("TextButton", scrollFrame)
     button.Name = entryData.combo.key
     button.Size = UDim2.new(0, 100, 0, 120)
     button.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
     button.Text = ""
     button.AutoButtonColor = false
+    
+    -- Set LayoutOrder for custom sorting
+    button.LayoutOrder = layoutOrder or 0
 
     Instance.new("UICorner", button).CornerRadius = UDim.new(0, 6)
 
@@ -2266,17 +2269,30 @@ local function buildPetGridIncremental()
     end
 
     table.sort(pendingPetEntries, function(a, b)
-        return a.combo.key < b.combo.key
+        -- Sort primarily by pet name
+        if a.petName ~= b.petName then
+            return a.petName < b.petName
+        end
+        -- Within same pet, sort by mutation order in mutationVariants
+        local mutationIndexA = 999
+        local mutationIndexB = 999
+        for i, mutation in ipairs(mutationVariants) do
+            if mutation == a.combo.mutations then mutationIndexA = i end
+            if mutation == b.combo.mutations then mutationIndexB = i end
+        end
+        return mutationIndexA < mutationIndexB
     end)
 
     local nextIndex = 1
     local total = #pendingPetEntries
     local batchSize = 24
+    local layoutOrderCounter = 0
 
     petGridBuildConn = RunService.RenderStepped:Connect(function()
         local count = 0
         while nextIndex <= total and count < batchSize do
-            createPetEntry(pendingPetEntries[nextIndex])
+            createPetEntry(pendingPetEntries[nextIndex], layoutOrderCounter)
+            layoutOrderCounter = layoutOrderCounter + 1
             nextIndex = nextIndex + 1
             count = count + 1
         end

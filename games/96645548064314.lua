@@ -52,13 +52,21 @@ local customBreedingEnabled = false  -- Enable custom breeding pairs
 
 -- Auto Features Default States
 local autoRemoveEggsEnabled = false  -- Auto-remove eggs from pen
+local autoPlaceNurseryEggsEnabled = false  -- Auto-place eggs into empty nurseries
+local autoRetrieveNurseryEggsEnabled = false  -- Auto-retrieve ready eggs from nurseries
+local useCustomNurseryEggFilter = false  -- Use selected eggs for nursery placement
+local nurseryPlaceDelay = 0.2  -- Delay between nursery placement requests (seconds)
+local nurseryRetrieveDelay = 0.2  -- Delay between nursery retrieval requests (seconds)
 local autoBuyFoodEnabled = false  -- Auto-buy food when available
 local autoBuyMerchantEnabled = false  -- Auto-buy from traveling merchant
 local merchantPurchaseDelay = 0.1  -- Delay between merchant purchases (seconds)
 
 -- Auto Sell Default States
-local autoSellLegendaryEggsEnabled = false  -- Auto-sell Legendary eggs
-local autoSellMythicalEggsEnabled = false  -- Auto-sell Mythical eggs
+local autoSellEggsEnabled = false  -- Auto-sell selected eggs
+
+-- Egg filter selections
+local nurseryEggFilters = {}  -- Format: {["Egg Name"] = true}
+local autoSellEggFilters = {}  -- Format: {["Egg Name"] = true}
 
 -- Save Cycling Settings
 local autoCycleSavesEnabled = false  -- Auto-cycle through save slots
@@ -124,8 +132,11 @@ local folders = {
 local player = game:GetService("Players").LocalPlayer
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
 local Knit = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("knit"))
 local FoodConfig = require(ReplicatedStorage:WaitForChild("Configs"):WaitForChild("Food"))
+local EggsConfig = require(ReplicatedStorage:WaitForChild("Configs"):WaitForChild("Eggs"))
+local PenDecorations = require(ReplicatedStorage:WaitForChild("Configs"):WaitForChild("PenDecorations"))
 local rarityGradientsFolder = nil
 
 pcall(function()
@@ -196,6 +207,7 @@ end
 
 -- Load pets config
 local petsConfig = {}
+local eggsConfig = {}
 local playerPetIndex = {}
 local function loadPetsConfig()
     pcall(function()
@@ -209,7 +221,14 @@ local function loadPlayerPetIndex()
         playerPetIndex = getPlayerIndex:InvokeServer() or {}
     end)
 end
+
+local function loadEggsConfig()
+    pcall(function()
+        eggsConfig = EggsConfig
+    end)
+end
 task.spawn(loadPetsConfig)
+task.spawn(loadEggsConfig)
 loadPlayerPetIndex()
 
 -- Refresh player pet index periodically
@@ -277,6 +296,7 @@ CreateMenu("Catch And Tame")
 CreateGroup("Catch And Tame", "Main")
 CreateTab("Catch And Tame", "Main", "Catching")
 CreateTab("Catch And Tame", "Main", "Breeding")
+CreateTab("Catch And Tame", "Main", "Nursery")
 CreateTab("Catch And Tame", "Main", "Auto Buy")
 CreateTab("Catch And Tame", "Main", "Auto Sell")
 CreateTab("Catch And Tame", "Main", "Pet Warning")
@@ -454,6 +474,28 @@ do
         if filterCount > 0 then
             customInfo.Text = filterCount .. " filter(s) active"
         end
+    end
+end
+
+do
+    local savedNurseryCustomFilter = getConfigSetting("Nursery", "Use Custom Filter")
+    if savedNurseryCustomFilter ~= nil then
+        useCustomNurseryEggFilter = savedNurseryCustomFilter
+    end
+
+    local savedNurseryEggFilters = getConfigSetting("Nursery", "Selected Eggs")
+    if type(savedNurseryEggFilters) == "table" then
+        nurseryEggFilters = savedNurseryEggFilters
+    end
+
+    local savedAutoSellEggsEnabled = getConfigSetting("Auto Sell", "Auto Sell Eggs")
+    if savedAutoSellEggsEnabled ~= nil then
+        autoSellEggsEnabled = savedAutoSellEggsEnabled
+    end
+
+    local savedAutoSellEggFilters = getConfigSetting("Auto Sell", "Selected Eggs")
+    if type(savedAutoSellEggFilters) == "table" then
+        autoSellEggFilters = savedAutoSellEggFilters
     end
 end
 
@@ -857,6 +899,8 @@ local catchLock = false
 -- Auto features loop state
 local autoBreedLoop = false
 local autoRemoveEggsLoop = false
+local autoPlaceNurseryEggsLoop = false
+local autoRetrieveNurseryEggsLoop = false
 local customBreedingPairs = {}  -- Store custom breeding pairs
 
 -- Load custom breeding pairs from config
@@ -867,8 +911,7 @@ do
         customBreedingPairs = savedPairs
     end
 end
-local autoSellLegendaryEggsLoop = false
-local autoSellMythicalEggsLoop = false
+local autoSellEggsLoop = false
 local autoBuyFoodSetup = false
 local autoBuyMerchantSetup = false
 
@@ -1490,6 +1533,340 @@ local function startAutoRemoveEggs()
     end)
 end
 
+local function findPlayerPen()
+    local playerPens = workspace:FindFirstChild("PlayerPens")
+    if not playerPens then
+        return nil
+    end
+
+    for _, pen in pairs(playerPens:GetChildren()) do
+        if pen:GetAttribute("Owner") == player.Name then
+            return pen
+        end
+    end
+
+    return nil
+end
+
+local function modelHasNurseryEggTag(model)
+    local ok, hasTag = pcall(function()
+        return model:HasTag("NurseryEgg")
+    end)
+
+    if ok then
+        return hasTag == true
+    end
+
+    return CollectionService:HasTag(model, "NurseryEgg")
+end
+
+local function getEmptyNurseryGuids()
+    local pen = findPlayerPen()
+    if not pen then
+        return {}
+    end
+
+    local emptyGuids = {}
+    local seen = {}
+
+    for _, candidate in ipairs(pen:GetDescendants()) do
+        if candidate:IsA("Model") then
+            local nurseryGuid = candidate:GetAttribute("GUID")
+            local itemName = candidate:GetAttribute("ItemName")
+
+            if type(nurseryGuid) == "string"
+                and nurseryGuid ~= ""
+                and type(itemName) == "string"
+                and string.find(string.lower(itemName), "nursery", 1, true)
+                and not modelHasNurseryEggTag(candidate)
+                and not seen[nurseryGuid] then
+                seen[nurseryGuid] = true
+                table.insert(emptyGuids, nurseryGuid)
+            end
+        end
+    end
+
+    return emptyGuids
+end
+
+local function getInventoryEggName(eggData)
+    if type(eggData) ~= "table" then
+        return nil
+    end
+
+    local name = eggData.Name
+        or eggData.name
+        or eggData.EggName
+        or eggData.eggName
+        or eggData.ItemName
+        or eggData.itemName
+        or eggData.Type
+        or eggData.type
+
+    if type(name) == "string" and name ~= "" then
+        return name
+    end
+
+    return nil
+end
+
+local function getAvailableEggGuids(nameFilter)
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if not remotes then
+        return {}
+    end
+
+    local getEggInventory = remotes:FindFirstChild("getEggInventory")
+    if not getEggInventory then
+        return {}
+    end
+
+    local ok, eggs = pcall(function()
+        return getEggInventory:InvokeServer()
+    end)
+
+    if not ok or type(eggs) ~= "table" then
+        return {}
+    end
+
+    local function isEggReadyToHatch(eggData, eggName)
+        if type(eggData) ~= "table" then
+            return false
+        end
+
+        -- Handle direct ready flags if the inventory payload provides them.
+        if eggData.readyToHatch == true
+            or eggData.isReadyToHatch == true
+            or eggData.ReadyToHatch == true
+            or eggData.canHatch == true
+            or eggData.CanHatch == true
+            or eggData.IsReady == true
+            or eggData.isReady == true
+            or eggData.ready == true
+            or eggData.hatchReady == true
+            or eggData.HatchReady == true
+            or eggData.status == "Ready"
+            or eggData.Status == "Ready"
+            or eggData.state == "Ready"
+            or eggData.State == "Ready" then
+            return true
+        end
+
+        -- Handle countdown style payloads where remaining time is explicit.
+        local remaining = tonumber(eggData.timeLeftToHatch)
+            or tonumber(eggData.TimeLeftToHatch)
+            or tonumber(eggData.hatchTimeLeft)
+            or tonumber(eggData.HatchTimeLeft)
+            or tonumber(eggData.remaining)
+            or tonumber(eggData.Remaining)
+            or tonumber(eggData.timeRemaining)
+            or tonumber(eggData.TimeRemaining)
+        if remaining then
+            return remaining <= 0
+        end
+
+        -- Handle absolute ready-at timestamps.
+        local readyAt = tonumber(eggData.readyAt)
+            or tonumber(eggData.ReadyAt)
+            or tonumber(eggData.hatchAt)
+            or tonumber(eggData.HatchAt)
+            or tonumber(eggData.endTime)
+            or tonumber(eggData.EndTime)
+            or tonumber(eggData.finishTime)
+            or tonumber(eggData.FinishTime)
+        if readyAt then
+            return os.time() >= readyAt
+        end
+
+        -- Handle timestamp style payloads: placedAt + duration.
+        local placedAt = tonumber(eggData.placedEgg)
+            or tonumber(eggData.PlacedEgg)
+            or tonumber(eggData.startTime)
+            or tonumber(eggData.StartTime)
+            or tonumber(eggData.createdAt)
+            or tonumber(eggData.CreatedAt)
+        local duration = tonumber(eggData.timeLeftToHatch)
+            or tonumber(eggData.TimeLeftToHatch)
+            or tonumber(eggData.totalDuration)
+            or tonumber(eggData.TotalDuration)
+
+        if not duration and type(eggName) == "string" then
+            local configData = eggsConfig[eggName] or EggsConfig[eggName]
+            duration = configData and tonumber(configData.HatchTime) or nil
+        end
+
+        if placedAt and duration then
+            return (duration - (os.time() - placedAt)) <= 0
+        end
+
+        return false
+    end
+
+    local eggGuids = {}
+    for guid, eggData in pairs(eggs) do
+        if type(guid) == "string" and guid ~= "" then
+            local blocked = false
+            local eggName = getInventoryEggName(eggData)
+
+            if type(eggData) == "table" then
+                blocked = eggData.isEquipped == true
+                    or eggData.equipped == true
+                    or eggData.locked == true
+                    or eggData.isLocked == true
+                    or isEggReadyToHatch(eggData, eggName)
+
+                if not blocked and type(nameFilter) == "table" and next(nameFilter) ~= nil then
+                    blocked = type(eggName) ~= "string" or not nameFilter[eggName]
+                end
+            end
+
+            if not blocked then
+                table.insert(eggGuids, guid)
+            end
+        end
+    end
+
+    return eggGuids
+end
+
+local function isNurseryReady(model)
+    local placedEgg = tonumber(model:GetAttribute("PlacedEgg"))
+    local timeLeftToHatch = tonumber(model:GetAttribute("TimeLeftToHatch"))
+    local itemName = model:GetAttribute("ItemName")
+
+    if not placedEgg or not timeLeftToHatch or type(itemName) ~= "string" then
+        return false
+    end
+
+    local decorationConfig = PenDecorations[itemName]
+    local reductionRate = 1 + ((decorationConfig and decorationConfig.TimeReductionRate) or 0)
+    local remaining = timeLeftToHatch - (os.time() - placedEgg) * reductionRate
+    return math.max(0, remaining) <= 0
+end
+
+local function getReadyNurseryGuids()
+    local pen = findPlayerPen()
+    if not pen then
+        return {}
+    end
+
+    local readyGuids = {}
+    local seen = {}
+
+    for _, candidate in ipairs(pen:GetDescendants()) do
+        if candidate:IsA("Model") then
+            local nurseryGuid = candidate:GetAttribute("GUID")
+            local itemName = candidate:GetAttribute("ItemName")
+
+            if type(nurseryGuid) == "string"
+                and nurseryGuid ~= ""
+                and type(itemName) == "string"
+                and string.find(string.lower(itemName), "nursery", 1, true)
+                and modelHasNurseryEggTag(candidate)
+                and isNurseryReady(candidate)
+                and not seen[nurseryGuid] then
+                seen[nurseryGuid] = true
+                table.insert(readyGuids, nurseryGuid)
+            end
+        end
+    end
+
+    return readyGuids
+end
+
+local function startAutoPlaceNurseryEggs()
+    if autoPlaceNurseryEggsLoop then
+        return
+    end
+
+    autoPlaceNurseryEggsLoop = true
+    task.spawn(function()
+        local nurseryService = nil
+
+        while autoPlaceNurseryEggsEnabled do
+            if not nurseryService then
+                pcall(function()
+                    nurseryService = Knit.GetService("NurseryService")
+                end)
+            end
+
+            if nurseryService and nurseryService.RequestEggNurseryPlacement then
+                local emptyNurseries = getEmptyNurseryGuids()
+
+                if #emptyNurseries > 0 then
+                    local activeFilter = nil
+                    if useCustomNurseryEggFilter then
+                        activeFilter = nurseryEggFilters
+                    end
+
+                    local eggGuids = getAvailableEggGuids(activeFilter)
+                    local placements = math.min(#emptyNurseries, #eggGuids)
+
+                    for i = 1, placements do
+                        if not autoPlaceNurseryEggsEnabled then
+                            break
+                        end
+
+                        local nurseryGuid = emptyNurseries[i]
+                        local eggGuid = eggGuids[i]
+
+                        pcall(function()
+                            nurseryService.RequestEggNurseryPlacement:Fire(nurseryGuid, eggGuid)
+                        end)
+
+                        task.wait(math.max(0.05, tonumber(nurseryPlaceDelay) or 0.2))
+                    end
+
+                end
+            end
+
+            task.wait(1)
+        end
+
+        autoPlaceNurseryEggsLoop = false
+    end)
+end
+
+local function startAutoRetrieveNurseryEggs()
+    if autoRetrieveNurseryEggsLoop then
+        return
+    end
+
+    autoRetrieveNurseryEggsLoop = true
+    task.spawn(function()
+        local nurseryService = nil
+
+        while autoRetrieveNurseryEggsEnabled do
+            if not nurseryService then
+                pcall(function()
+                    nurseryService = Knit.GetService("NurseryService")
+                end)
+            end
+
+            if nurseryService and nurseryService.RequestEggNurseryRetrieval then
+                local readyNurseries = getReadyNurseryGuids()
+
+                for i = 1, #readyNurseries do
+                    if not autoRetrieveNurseryEggsEnabled then
+                        break
+                    end
+
+                    local nurseryGuid = readyNurseries[i]
+                    pcall(function()
+                        nurseryService.RequestEggNurseryRetrieval:Fire(nurseryGuid)
+                    end)
+
+                    task.wait(math.max(0.05, tonumber(nurseryRetrieveDelay) or 0.2))
+                end
+            end
+
+            task.wait(1)
+        end
+
+        autoRetrieveNurseryEggsLoop = false
+    end)
+end
+
 local function getToolbarController()
     local ok, controller = pcall(function()
         return Knit.GetController("toolbarUI")
@@ -1515,7 +1892,7 @@ local function refreshInventoryUI()
     end
 end
 
-local function autoSellEggsOnce(rarity, enabledVar)
+local function autoSellEggsOnce()
     local remotes = ReplicatedStorage:WaitForChild("Remotes")
     local getEggInventory = remotes:WaitForChild("getEggInventory")
     local sellEgg = remotes:WaitForChild("sellEgg")
@@ -1535,7 +1912,7 @@ local function autoSellEggsOnce(rarity, enabledVar)
     end
 
     local didSellInPass = true
-    while enabledVar and didSellInPass do
+    while autoSellEggsEnabled and didSellInPass do
         local eggs = getEggInventory:InvokeServer()
         if type(eggs) ~= "table" then
             return
@@ -1543,10 +1920,11 @@ local function autoSellEggsOnce(rarity, enabledVar)
 
         didSellInPass = false
         for guid, egg in pairs(eggs) do
-            if not enabledVar then
+            if not autoSellEggsEnabled then
                 break
             end
-            if egg and egg.rarity == rarity then
+            local eggName = getInventoryEggName(egg)
+            if eggName and autoSellEggFilters[eggName] then
                 local ok = trySellEgg(guid)
                 if ok then
                     didSellInPass = true
@@ -1563,26 +1941,26 @@ local function autoSellEggsOnce(rarity, enabledVar)
     end
     
     if totalSold > 0 then
-        notify(string.format("Sold %d %s egg%s", totalSold, rarity, totalSold > 1 and "s" or ""))
+        notify(string.format("Sold %d selected egg%s", totalSold, totalSold > 1 and "s" or ""))
     end
 end
 
-local function autoSellLegendaryEggsOnce()
-    autoSellEggsOnce("Legendary", autoSellLegendaryEggsEnabled)
-end
-
-local function startAutoSellMythicalEggs()
-    if autoSellMythicalEggsLoop then
+local function startAutoSellEggs()
+    if autoSellEggsLoop then
         return
     end
 
-    autoSellMythicalEggsLoop = true
+    autoSellEggsLoop = true
     task.spawn(function()
-        while autoSellMythicalEggsEnabled do
-            autoSellEggsOnce("Mythical", autoSellMythicalEggsEnabled)
+        while autoSellEggsEnabled do
+            if next(autoSellEggFilters) == nil then
+                task.wait(1)
+            else
+                autoSellEggsOnce()
+            end
             task.wait(5)
         end
-        autoSellMythicalEggsLoop = false
+        autoSellEggsLoop = false
     end)
 end
 
@@ -1660,23 +2038,11 @@ local function startAutoCycleSaves()
     end)
 end
 
-local function startAutoSellLegendaryEggs()
-    if autoSellLegendaryEggsLoop then
-        return
+task.spawn(function()
+    while true do
+        pcall(scanPets)
+        task.wait(0.2)
     end
-
-    autoSellLegendaryEggsLoop = true
-    task.spawn(function()
-        while autoSellLegendaryEggsEnabled do
-            autoSellLegendaryEggsOnce()
-            task.wait(5)
-        end
-        autoSellLegendaryEggsLoop = false
-    end)
-end
-
-RunService.Heartbeat:Connect(function(dt)
-    scanPets()
 end)
 
 local function setupAutoBuyFood()
@@ -2377,6 +2743,269 @@ CreateButton("Catching", "Configure Custom Pets", function()
     end)
 end)
 
+local nurseryEggSelectionCountLabel = nil
+local autoSellEggSelectionCountLabel = nil
+
+local function countSelectedEggs(filterTable)
+    local count = 0
+    for _ in pairs(filterTable) do
+        count = count + 1
+    end
+    return count
+end
+
+local function updateEggSelectionLabels()
+    if nurseryEggSelectionCountLabel then
+        if useCustomNurseryEggFilter then
+            nurseryEggSelectionCountLabel.Text = "Selected eggs: " .. countSelectedEggs(nurseryEggFilters)
+        else
+            nurseryEggSelectionCountLabel.Text = "Selected eggs: All"
+        end
+    end
+
+    if autoSellEggSelectionCountLabel then
+        autoSellEggSelectionCountLabel.Text = "Selected eggs: " .. countSelectedEggs(autoSellEggFilters)
+    end
+end
+
+local eggSelectorMenu = Instance.new("Frame")
+eggSelectorMenu.Name = "EggSelector"
+eggSelectorMenu.Size = UDim2.new(0, 700, 0, 550)
+eggSelectorMenu.Position = UDim2.new(0.5, -350, 0.5, -275)
+eggSelectorMenu.BackgroundColor3 = Color3.fromRGB(18, 18, 21)
+eggSelectorMenu.BorderSizePixel = 0
+eggSelectorMenu.Visible = false
+eggSelectorMenu.ZIndex = 100
+eggSelectorMenu.Parent = uiRoot
+Instance.new("UICorner", eggSelectorMenu).CornerRadius = UDim.new(0, 12)
+
+do
+    local ok, dragDetector = pcall(function()
+        return Instance.new("UIDragDetector")
+    end)
+    if ok and dragDetector then
+        dragDetector.Parent = eggSelectorMenu
+        pcall(function()
+            dragDetector.DragStyle = Enum.UIDragDetectorDragStyle.TranslatePlane
+        end)
+    end
+end
+
+local eggSelectorTitle = Instance.new("TextLabel", eggSelectorMenu)
+eggSelectorTitle.Size = UDim2.new(1, -20, 0, 30)
+eggSelectorTitle.Position = UDim2.new(0, 10, 0, 5)
+eggSelectorTitle.BackgroundTransparency = 1
+eggSelectorTitle.Text = "Configure Eggs"
+eggSelectorTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+eggSelectorTitle.TextSize = 16
+eggSelectorTitle.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+eggSelectorTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+local eggSearchBox = Instance.new("TextBox", eggSelectorMenu)
+eggSearchBox.Size = UDim2.new(1, -20, 0, 35)
+eggSearchBox.Position = UDim2.new(0, 10, 0, 40)
+eggSearchBox.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+eggSearchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+eggSearchBox.PlaceholderText = "Search eggs..."
+eggSearchBox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+eggSearchBox.TextSize = 14
+eggSearchBox.FontFace = Font.new("rbxasset://fonts/families/Roboto.json")
+eggSearchBox.ClearTextOnFocus = false
+eggSearchBox.Text = ""
+Instance.new("UICorner", eggSearchBox).CornerRadius = UDim.new(0, 6)
+
+local eggScrollFrame = Instance.new("ScrollingFrame", eggSelectorMenu)
+eggScrollFrame.Size = UDim2.new(1, -20, 1, -138)
+eggScrollFrame.Position = UDim2.new(0, 10, 0, 85)
+eggScrollFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
+eggScrollFrame.BorderSizePixel = 0
+eggScrollFrame.ScrollBarThickness = 8
+Instance.new("UICorner", eggScrollFrame).CornerRadius = UDim.new(0, 8)
+
+local eggGridLayout = Instance.new("UIGridLayout", eggScrollFrame)
+eggGridLayout.CellSize = UDim2.new(0, 120, 0, 130)
+eggGridLayout.CellPadding = UDim2.new(0, 6, 0, 6)
+eggGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local eggGridPadding = Instance.new("UIPadding", eggScrollFrame)
+eggGridPadding.PaddingTop = UDim.new(0, 5)
+eggGridPadding.PaddingLeft = UDim.new(0, 5)
+
+local eggButtonsRow = Instance.new("Frame", eggSelectorMenu)
+eggButtonsRow.Size = UDim2.new(1, -20, 0, 35)
+eggButtonsRow.Position = UDim2.new(0, 10, 1, -45)
+eggButtonsRow.BackgroundTransparency = 1
+
+local eggClearAllButton = Instance.new("TextButton", eggButtonsRow)
+eggClearAllButton.Size = UDim2.new(0, 140, 1, 0)
+eggClearAllButton.Position = UDim2.new(0, 0, 0, 0)
+eggClearAllButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+eggClearAllButton.Text = "Clear All"
+eggClearAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+eggClearAllButton.TextSize = 15
+eggClearAllButton.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+Instance.new("UICorner", eggClearAllButton).CornerRadius = UDim.new(0, 6)
+
+local eggApplyButton = Instance.new("TextButton", eggButtonsRow)
+eggApplyButton.Size = UDim2.new(0, 140, 1, 0)
+eggApplyButton.Position = UDim2.new(1, -140, 0, 0)
+eggApplyButton.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
+eggApplyButton.Text = "Apply & Close"
+eggApplyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+eggApplyButton.TextSize = 15
+eggApplyButton.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+Instance.new("UICorner", eggApplyButton).CornerRadius = UDim.new(0, 6)
+
+local eggSelectorMode = "Nursery"
+local tempEggFilters = {}
+local eggEntries = {}
+
+local function updateEggCanvasSize()
+    eggScrollFrame.CanvasSize = UDim2.new(0, 0, 0, eggGridLayout.AbsoluteContentSize.Y + 10)
+end
+
+local function setEggEntrySelected(entry, selected)
+    entry.button.BackgroundColor3 = selected and Color3.fromRGB(0, 115, 200) or Color3.fromRGB(32, 32, 38)
+end
+
+local function refreshEggSelectionVisuals()
+    for _, entry in ipairs(eggEntries) do
+        setEggEntrySelected(entry, tempEggFilters[entry.name] == true)
+    end
+end
+
+local function applyEggSearchFilter(text)
+    local needle = string.lower(text or "")
+    for _, entry in ipairs(eggEntries) do
+        local matches = needle == "" or string.find(string.lower(entry.name), needle, 1, true) or string.find(string.lower(entry.rarity), needle, 1, true)
+        entry.button.Visible = matches
+    end
+    runOnRenderStep(updateEggCanvasSize)
+end
+
+local function buildEggGrid()
+    for _, entry in ipairs(eggEntries) do
+        if entry.button and entry.button.Parent then
+            entry.button:Destroy()
+        end
+    end
+    eggEntries = {}
+
+    local eggNames = {}
+    for eggName in pairs(eggsConfig) do
+        table.insert(eggNames, eggName)
+    end
+    table.sort(eggNames)
+
+    for i, eggName in ipairs(eggNames) do
+        local eggData = eggsConfig[eggName] or {}
+        local button = Instance.new("TextButton")
+        button.Name = "EggEntry_" .. tostring(i)
+        button.Size = UDim2.new(0, 120, 0, 130)
+        button.BackgroundColor3 = Color3.fromRGB(32, 32, 38)
+        button.BorderSizePixel = 0
+        button.AutoButtonColor = false
+        button.Text = ""
+        button.LayoutOrder = i
+        button.Parent = eggScrollFrame
+        Instance.new("UICorner", button).CornerRadius = UDim.new(0, 6)
+
+        local image = Instance.new("ImageLabel", button)
+        image.Size = UDim2.new(0, 52, 0, 52)
+        image.Position = UDim2.new(0.5, -26, 0, 6)
+        image.BackgroundTransparency = 1
+        image.Image = (type(eggData.Image) == "string" and eggData.Image ~= "") and eggData.Image or "rbxasset://textures/Ui/GuiImagePlaceholder.png"
+
+        local nameLabel = Instance.new("TextLabel", button)
+        nameLabel.Size = UDim2.new(1, -8, 0, 44)
+        nameLabel.Position = UDim2.new(0, 4, 0, 62)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.TextWrapped = true
+        nameLabel.Text = eggName
+        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        nameLabel.TextSize = 12
+        nameLabel.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+
+        local rarity = tostring(eggData.Rarity or "Unknown")
+        local rarityLabel = Instance.new("TextLabel", button)
+        rarityLabel.Size = UDim2.new(1, -8, 0, 18)
+        rarityLabel.Position = UDim2.new(0, 4, 1, -22)
+        rarityLabel.BackgroundTransparency = 1
+        rarityLabel.Text = rarity
+        rarityLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+        rarityLabel.TextSize = 11
+        rarityLabel.FontFace = Font.new("rbxasset://fonts/families/Roboto.json")
+
+        local entry = {
+            name = eggName,
+            rarity = rarity,
+            button = button
+        }
+        table.insert(eggEntries, entry)
+
+        button.MouseButton1Click:Connect(function()
+            if tempEggFilters[eggName] then
+                tempEggFilters[eggName] = nil
+            else
+                tempEggFilters[eggName] = true
+            end
+            setEggEntrySelected(entry, tempEggFilters[eggName] == true)
+        end)
+    end
+
+    runOnRenderStep(updateEggCanvasSize)
+end
+
+eggSearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+    applyEggSearchFilter(eggSearchBox.Text)
+end)
+
+eggApplyButton.MouseButton1Click:Connect(function()
+    local tabName = eggSelectorMode == "Auto Sell" and "Auto Sell" or "Nursery"
+    local targetFilters = eggSelectorMode == "Auto Sell" and autoSellEggFilters or nurseryEggFilters
+
+    for key in pairs(targetFilters) do
+        targetFilters[key] = nil
+    end
+    for key in pairs(tempEggFilters) do
+        targetFilters[key] = true
+    end
+
+    setConfigSetting(tabName, "Selected Eggs", targetFilters)
+    notify("Applied " .. countSelectedEggs(targetFilters) .. " egg filter(s) for " .. eggSelectorMode)
+
+    task.defer(function()
+        updateEggSelectionLabels()
+        eggSelectorMenu.Visible = false
+    end)
+end)
+
+eggClearAllButton.MouseButton1Click:Connect(function()
+    tempEggFilters = {}
+    task.defer(function()
+        refreshEggSelectionVisuals()
+    end)
+end)
+
+local function openEggSelector(mode)
+    eggSelectorMode = mode
+    eggSelectorTitle.Text = "Configure Eggs - " .. mode
+
+    local source = mode == "Auto Sell" and autoSellEggFilters or nurseryEggFilters
+    tempEggFilters = {}
+    for key in pairs(source) do
+        tempEggFilters[key] = true
+    end
+
+    runOnRenderStep(function()
+        eggSearchBox.Text = ""
+        buildEggGrid()
+        applyEggSearchFilter("")
+        refreshEggSelectionVisuals()
+        eggSelectorMenu.Visible = true
+    end)
+end
+
 local minRPSLabel = CreateValueLabel("Catching", minCatchRPS == 0 and "Catch Minimum RPS: Disabled" or ("Catch Minimum RPS: " .. minCatchRPS))
 
 local minCatchRPSInput = CreateInput("Catching", "Minimum RPS", tostring(minCatchRPS), "Apply", function(textBox)
@@ -2468,6 +3097,43 @@ CreateToggle("Breeding", "Auto Remove Eggs", function(state)
         notify("Auto Remove Eggs disabled")
     end
 end, autoRemoveEggsEnabled)
+
+-- CREATE NURSERY TAB UI
+CreateToggle("Nursery", "Auto Place Eggs", function(state)
+    autoPlaceNurseryEggsEnabled = state.Value
+    if autoPlaceNurseryEggsEnabled then
+        notify("Auto Place Nursery Eggs enabled")
+        startAutoPlaceNurseryEggs()
+    else
+        notify("Auto Place Nursery Eggs disabled")
+    end
+end, autoPlaceNurseryEggsEnabled)
+
+CreateToggle("Nursery", "Use Custom Filter", function(state)
+    useCustomNurseryEggFilter = state.Value
+    setConfigSetting("Nursery", "Use Custom Filter", useCustomNurseryEggFilter)
+    updateEggSelectionLabels()
+    if useCustomNurseryEggFilter then
+        notify("Nursery custom egg filter enabled")
+    else
+        notify("Nursery custom egg filter disabled")
+    end
+end, useCustomNurseryEggFilter)
+
+CreateToggle("Nursery", "Auto Retrieve Eggs", function(state)
+    autoRetrieveNurseryEggsEnabled = state.Value
+    if autoRetrieveNurseryEggsEnabled then
+        notify("Auto Retrieve Nursery Eggs enabled")
+        startAutoRetrieveNurseryEggs()
+    else
+        notify("Auto Retrieve Nursery Eggs disabled")
+    end
+end, autoRetrieveNurseryEggsEnabled)
+
+nurseryEggSelectionCountLabel = CreateValueLabel("Nursery", useCustomNurseryEggFilter and ("Selected eggs: " .. countSelectedEggs(nurseryEggFilters)) or "Selected eggs: All")
+CreateButton("Nursery", "Configure Eggs To Place", function()
+    openEggSelector("Nursery")
+end)
 
 CreateLabel("Breeding", "Custom Pairs")
 
@@ -2585,25 +3251,21 @@ CreateToggle("Auto Buy", "Merchant", function(state)
     setupAutoBuyMerchant()
 end, autoBuyMerchantEnabled)
 
-CreateToggle("Auto Sell", "Legendary Eggs", function(state)
-    autoSellLegendaryEggsEnabled = state.Value
-    if autoSellLegendaryEggsEnabled then
-        notify("Legendary Eggs enabled")
-        startAutoSellLegendaryEggs()
+CreateToggle("Auto Sell", "Auto Sell Eggs", function(state)
+    autoSellEggsEnabled = state.Value
+    setConfigSetting("Auto Sell", "Auto Sell Eggs", autoSellEggsEnabled)
+    if autoSellEggsEnabled then
+        notify("Auto Sell Eggs enabled")
+        startAutoSellEggs()
     else
-        notify("Legendary Eggs disabled")
+        notify("Auto Sell Eggs disabled")
     end
-end, autoSellLegendaryEggsEnabled)
+end, autoSellEggsEnabled)
 
-CreateToggle("Auto Sell", "Mythical Eggs", function(state)
-    autoSellMythicalEggsEnabled = state.Value
-    if autoSellMythicalEggsEnabled then
-        notify("Mythical Eggs enabled")
-        startAutoSellMythicalEggs()
-    else
-        notify("Mythical Eggs disabled")
-    end
-end, autoSellMythicalEggsEnabled)
+autoSellEggSelectionCountLabel = CreateValueLabel("Auto Sell", "Selected eggs: " .. countSelectedEggs(autoSellEggFilters))
+CreateButton("Auto Sell", "Configure Eggs To Sell", function()
+    openEggSelector("Auto Sell")
+end)
 
 -- CREATE PET WARNING TAB UI
 CreateLabel("Pet Warning", "RPS Threshold")
@@ -2870,11 +3532,8 @@ end
 if autoRemoveEggsEnabled then
     startAutoRemoveEggs()
 end
-if autoSellLegendaryEggsEnabled then
-    startAutoSellLegendaryEggs()
-end
-if autoSellMythicalEggsEnabled then
-    startAutoSellMythicalEggs()
+if autoSellEggsEnabled then
+    startAutoSellEggs()
 end
 if autoBuyFoodEnabled then
     setupAutoBuyFood()
@@ -2885,5 +3544,7 @@ end
 if autoCycleSavesEnabled then
     startAutoCycleSaves()
 end
+
+updateEggSelectionLabels()
 
 print("✓ Pet Scanner loaded with UI Library!")

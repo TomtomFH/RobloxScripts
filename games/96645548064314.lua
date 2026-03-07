@@ -54,6 +54,7 @@ local customBreedingEnabled = false  -- Enable custom breeding pairs
 local autoRemoveEggsEnabled = false  -- Auto-remove eggs from pen
 local autoPlaceNurseryEggsEnabled = false  -- Auto-place eggs into empty nurseries
 local autoRetrieveNurseryEggsEnabled = false  -- Auto-retrieve ready eggs from nurseries
+local autoFavoriteReadyEggsEnabled = false  -- Auto-favorite eggs that are ready to hatch
 local useCustomNurseryEggFilter = false  -- Use selected eggs for nursery placement
 local nurseryPlaceDelay = 0.2  -- Delay between nursery placement requests (seconds)
 local nurseryRetrieveDelay = 0.2  -- Delay between nursery retrieval requests (seconds)
@@ -456,6 +457,11 @@ do
 end
 
 do
+    local savedAutoFavoriteReadyEggs = getConfigSetting("Nursery", "Auto Favorite Ready Eggs")
+    if savedAutoFavoriteReadyEggs ~= nil then
+        autoFavoriteReadyEggsEnabled = savedAutoFavoriteReadyEggs
+    end
+
     local savedNurseryCustomFilter = getConfigSetting("Nursery", "Use Custom Filter")
     if savedNurseryCustomFilter ~= nil then
         useCustomNurseryEggFilter = savedNurseryCustomFilter
@@ -879,6 +885,7 @@ local autoBreedLoop = false
 local autoRemoveEggsLoop = false
 local autoPlaceNurseryEggsLoop = false
 local autoRetrieveNurseryEggsLoop = false
+local autoFavoriteReadyEggsLoop = false
 local customBreedingPairs = {}  -- Store custom breeding pairs
 
 -- Load custom breeding pairs from config
@@ -1588,6 +1595,79 @@ local function getInventoryEggName(eggData)
     return nil
 end
 
+local function isEggReadyToHatch(eggData, eggName)
+    if type(eggData) ~= "table" then
+        return false
+    end
+
+    -- Handle direct ready flags if the inventory payload provides them.
+    if eggData.readyToHatch == true
+        or eggData.isReadyToHatch == true
+        or eggData.ReadyToHatch == true
+        or eggData.canHatch == true
+        or eggData.CanHatch == true
+        or eggData.IsReady == true
+        or eggData.isReady == true
+        or eggData.ready == true
+        or eggData.hatchReady == true
+        or eggData.HatchReady == true
+        or eggData.status == "Ready"
+        or eggData.Status == "Ready"
+        or eggData.state == "Ready"
+        or eggData.State == "Ready" then
+        return true
+    end
+
+    -- Handle countdown style payloads where remaining time is explicit.
+    local remaining = tonumber(eggData.timeLeftToHatch)
+        or tonumber(eggData.TimeLeftToHatch)
+        or tonumber(eggData.hatchTimeLeft)
+        or tonumber(eggData.HatchTimeLeft)
+        or tonumber(eggData.remaining)
+        or tonumber(eggData.Remaining)
+        or tonumber(eggData.timeRemaining)
+        or tonumber(eggData.TimeRemaining)
+    if remaining then
+        return remaining <= 0
+    end
+
+    -- Handle absolute ready-at timestamps.
+    local readyAt = tonumber(eggData.readyAt)
+        or tonumber(eggData.ReadyAt)
+        or tonumber(eggData.hatchAt)
+        or tonumber(eggData.HatchAt)
+        or tonumber(eggData.endTime)
+        or tonumber(eggData.EndTime)
+        or tonumber(eggData.finishTime)
+        or tonumber(eggData.FinishTime)
+    if readyAt then
+        return os.time() >= readyAt
+    end
+
+    -- Handle timestamp style payloads: placedAt + duration.
+    local placedAt = tonumber(eggData.placedEgg)
+        or tonumber(eggData.PlacedEgg)
+        or tonumber(eggData.startTime)
+        or tonumber(eggData.StartTime)
+        or tonumber(eggData.createdAt)
+        or tonumber(eggData.CreatedAt)
+    local duration = tonumber(eggData.timeLeftToHatch)
+        or tonumber(eggData.TimeLeftToHatch)
+        or tonumber(eggData.totalDuration)
+        or tonumber(eggData.TotalDuration)
+
+    if not duration and type(eggName) == "string" then
+        local configData = eggsConfig[eggName] or EggsConfig[eggName]
+        duration = configData and tonumber(configData.HatchTime) or nil
+    end
+
+    if placedAt and duration then
+        return (duration - (os.time() - placedAt)) <= 0
+    end
+
+    return false
+end
+
 local function getAvailableEggGuids(nameFilter)
     local remotes = ReplicatedStorage:FindFirstChild("Remotes")
     if not remotes then
@@ -1605,79 +1685,6 @@ local function getAvailableEggGuids(nameFilter)
 
     if not ok or type(eggs) ~= "table" then
         return {}
-    end
-
-    local function isEggReadyToHatch(eggData, eggName)
-        if type(eggData) ~= "table" then
-            return false
-        end
-
-        -- Handle direct ready flags if the inventory payload provides them.
-        if eggData.readyToHatch == true
-            or eggData.isReadyToHatch == true
-            or eggData.ReadyToHatch == true
-            or eggData.canHatch == true
-            or eggData.CanHatch == true
-            or eggData.IsReady == true
-            or eggData.isReady == true
-            or eggData.ready == true
-            or eggData.hatchReady == true
-            or eggData.HatchReady == true
-            or eggData.status == "Ready"
-            or eggData.Status == "Ready"
-            or eggData.state == "Ready"
-            or eggData.State == "Ready" then
-            return true
-        end
-
-        -- Handle countdown style payloads where remaining time is explicit.
-        local remaining = tonumber(eggData.timeLeftToHatch)
-            or tonumber(eggData.TimeLeftToHatch)
-            or tonumber(eggData.hatchTimeLeft)
-            or tonumber(eggData.HatchTimeLeft)
-            or tonumber(eggData.remaining)
-            or tonumber(eggData.Remaining)
-            or tonumber(eggData.timeRemaining)
-            or tonumber(eggData.TimeRemaining)
-        if remaining then
-            return remaining <= 0
-        end
-
-        -- Handle absolute ready-at timestamps.
-        local readyAt = tonumber(eggData.readyAt)
-            or tonumber(eggData.ReadyAt)
-            or tonumber(eggData.hatchAt)
-            or tonumber(eggData.HatchAt)
-            or tonumber(eggData.endTime)
-            or tonumber(eggData.EndTime)
-            or tonumber(eggData.finishTime)
-            or tonumber(eggData.FinishTime)
-        if readyAt then
-            return os.time() >= readyAt
-        end
-
-        -- Handle timestamp style payloads: placedAt + duration.
-        local placedAt = tonumber(eggData.placedEgg)
-            or tonumber(eggData.PlacedEgg)
-            or tonumber(eggData.startTime)
-            or tonumber(eggData.StartTime)
-            or tonumber(eggData.createdAt)
-            or tonumber(eggData.CreatedAt)
-        local duration = tonumber(eggData.timeLeftToHatch)
-            or tonumber(eggData.TimeLeftToHatch)
-            or tonumber(eggData.totalDuration)
-            or tonumber(eggData.TotalDuration)
-
-        if not duration and type(eggName) == "string" then
-            local configData = eggsConfig[eggName] or EggsConfig[eggName]
-            duration = configData and tonumber(configData.HatchTime) or nil
-        end
-
-        if placedAt and duration then
-            return (duration - (os.time() - placedAt)) <= 0
-        end
-
-        return false
     end
 
     local eggGuids = {}
@@ -1705,6 +1712,86 @@ local function getAvailableEggGuids(nameFilter)
     end
 
     return eggGuids
+end
+
+local refreshInventoryUI
+
+local function autoFavoriteReadyEggsOnce()
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if not remotes then
+        return 0
+    end
+
+    local getEggInventory = remotes:FindFirstChild("getEggInventory")
+    local retrieveData = remotes:FindFirstChild("retrieveData")
+    local toggleFavorite = remotes:FindFirstChild("toggleFavorite")
+    if not (getEggInventory and retrieveData and toggleFavorite) then
+        return 0
+    end
+
+    local okData, playerData = pcall(function()
+        return retrieveData:InvokeServer()
+    end)
+    local favoritedItems = (okData and type(playerData) == "table" and type(playerData.favoritedItems) == "table") and playerData.favoritedItems or {}
+
+    local okInventory, eggs = pcall(function()
+        return getEggInventory:InvokeServer()
+    end)
+    if not okInventory or type(eggs) ~= "table" then
+        return 0
+    end
+
+    local favoritedCount = 0
+    for guid, eggData in pairs(eggs) do
+        if not autoFavoriteReadyEggsEnabled then
+            break
+        end
+
+        if type(guid) == "string" and guid ~= "" and type(eggData) == "table" then
+            local eggName = getInventoryEggName(eggData)
+            if isEggReadyToHatch(eggData, eggName) and favoritedItems[guid] ~= true then
+                local okToggle, nowFavorited = pcall(function()
+                    return toggleFavorite:InvokeServer(guid)
+                end)
+                if okToggle and nowFavorited == true then
+                    favoritedItems[guid] = true
+                    favoritedCount = favoritedCount + 1
+                end
+                task.wait(0.1)
+            end
+        end
+    end
+
+    if favoritedCount > 0 and refreshInventoryUI then
+        task.wait(0.2)
+        refreshInventoryUI()
+    end
+
+    return favoritedCount
+end
+
+local function startAutoFavoriteReadyEggs()
+    if autoFavoriteReadyEggsLoop then
+        return
+    end
+
+    autoFavoriteReadyEggsLoop = true
+    task.spawn(function()
+        while autoFavoriteReadyEggsEnabled do
+            local favoritedCount = 0
+            pcall(function()
+                favoritedCount = autoFavoriteReadyEggsOnce()
+            end)
+
+            if favoritedCount > 0 then
+                notify(string.format("Favorited %d hatch-ready egg%s", favoritedCount, favoritedCount > 1 and "s" or ""))
+            end
+
+            task.wait(2)
+        end
+
+        autoFavoriteReadyEggsLoop = false
+    end)
 end
 
 local function isNurseryReady(model)
@@ -1863,7 +1950,7 @@ local function getToolbarController()
     return nil
 end
 
-local function refreshInventoryUI()
+refreshInventoryUI = function()
     local toolbarUI = getToolbarController()
     if toolbarUI and toolbarUI.initializeInventory and toolbarUI.initializeInventory.forceCleanup then
         toolbarUI.initializeInventory.forceCleanup()
@@ -2952,6 +3039,17 @@ CreateToggle("Nursery", "Auto Retrieve Eggs", function(state)
     end
 end, autoRetrieveNurseryEggsEnabled)
 
+CreateToggle("Nursery", "Auto Favorite Ready Eggs", function(state)
+    autoFavoriteReadyEggsEnabled = state.Value
+    setConfigSetting("Nursery", "Auto Favorite Ready Eggs", autoFavoriteReadyEggsEnabled)
+    if autoFavoriteReadyEggsEnabled then
+        notify("Auto Favorite Ready Eggs enabled")
+        startAutoFavoriteReadyEggs()
+    else
+        notify("Auto Favorite Ready Eggs disabled")
+    end
+end, autoFavoriteReadyEggsEnabled)
+
 nurseryEggSelectionCountLabel = CreateValueLabel("Nursery", useCustomNurseryEggFilter and ("Selected eggs: " .. countSelectedEggs(nurseryEggFilters)) or "Selected eggs: All")
 CreateButton("Nursery", "Configure Eggs To Place", function()
     openEggSelector("Nursery")
@@ -3356,6 +3454,9 @@ if autoRemoveEggsEnabled then
 end
 if autoSellEggsEnabled then
     startAutoSellEggs()
+end
+if autoFavoriteReadyEggsEnabled then
+    startAutoFavoriteReadyEggs()
 end
 if autoBuyFoodEnabled then
     setupAutoBuyFood()

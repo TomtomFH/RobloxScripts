@@ -55,6 +55,9 @@ local autoRemoveEggsEnabled = false  -- Auto-remove eggs from pen
 local autoPlaceNurseryEggsEnabled = false  -- Auto-place eggs into empty nurseries
 local autoRetrieveNurseryEggsEnabled = false  -- Auto-retrieve ready eggs from nurseries
 local autoFavoriteReadyEggsEnabled = false  -- Auto-favorite eggs that are ready to hatch
+local nurseryTypeNurseryEnabled = true  -- Include standard Nursery type
+local nurseryTypeLegendaryEnabled = true  -- Include Legendary Nursery type
+local nurseryTypeCosmicEnabled = true  -- Include Cosmic Nursery type
 local useCustomNurseryEggFilter = false  -- Use selected eggs for nursery placement
 local nurseryPlaceDelay = 0.2  -- Delay between nursery placement requests (seconds)
 local nurseryRetrieveDelay = 0.2  -- Delay between nursery retrieval requests (seconds)
@@ -460,6 +463,21 @@ do
     local savedAutoFavoriteReadyEggs = getConfigSetting("Nursery", "Auto Favorite Ready Eggs")
     if savedAutoFavoriteReadyEggs ~= nil then
         autoFavoriteReadyEggsEnabled = savedAutoFavoriteReadyEggs
+    end
+
+    local savedNurseryTypeNursery = getConfigSetting("Nursery", "Type Nursery")
+    if savedNurseryTypeNursery ~= nil then
+        nurseryTypeNurseryEnabled = savedNurseryTypeNursery
+    end
+
+    local savedNurseryTypeLegendary = getConfigSetting("Nursery", "Type Legendary Nursery")
+    if savedNurseryTypeLegendary ~= nil then
+        nurseryTypeLegendaryEnabled = savedNurseryTypeLegendary
+    end
+
+    local savedNurseryTypeCosmic = getConfigSetting("Nursery", "Type Cosmic Nursery")
+    if savedNurseryTypeCosmic ~= nil then
+        nurseryTypeCosmicEnabled = savedNurseryTypeCosmic
     end
 
     local savedNurseryCustomFilter = getConfigSetting("Nursery", "Use Custom Filter")
@@ -1545,6 +1563,27 @@ local function modelHasNurseryEggTag(model)
     return CollectionService:HasTag(model, "NurseryEgg")
 end
 
+local function isNurseryTypeEnabled(itemName)
+    if type(itemName) ~= "string" then
+        return false
+    end
+
+    local lowered = string.lower(itemName)
+    if not string.find(lowered, "nursery", 1, true) then
+        return false
+    end
+
+    if string.find(lowered, "cosmic nursery", 1, true) then
+        return nurseryTypeCosmicEnabled
+    end
+
+    if string.find(lowered, "legendary nursery", 1, true) then
+        return nurseryTypeLegendaryEnabled
+    end
+
+    return nurseryTypeNurseryEnabled
+end
+
 local function getEmptyNurseryGuids()
     local pen = findPlayerPen()
     if not pen then
@@ -1562,7 +1601,7 @@ local function getEmptyNurseryGuids()
             if type(nurseryGuid) == "string"
                 and nurseryGuid ~= ""
                 and type(itemName) == "string"
-                and string.find(string.lower(itemName), "nursery", 1, true)
+                and isNurseryTypeEnabled(itemName)
                 and not modelHasNurseryEggTag(candidate)
                 and not seen[nurseryGuid] then
                 seen[nurseryGuid] = true
@@ -1826,7 +1865,7 @@ local function getReadyNurseryGuids()
             if type(nurseryGuid) == "string"
                 and nurseryGuid ~= ""
                 and type(itemName) == "string"
-                and string.find(string.lower(itemName), "nursery", 1, true)
+                and isNurseryTypeEnabled(itemName)
                 and modelHasNurseryEggTag(candidate)
                 and isNurseryReady(candidate)
                 and not seen[nurseryGuid] then
@@ -3017,6 +3056,24 @@ CreateToggle("Nursery", "Auto Place Eggs", function(state)
         notify("Auto Place Nursery Eggs disabled")
     end
 end, autoPlaceNurseryEggsEnabled)
+
+CreateToggle("Nursery", "Nursery", function(state)
+    nurseryTypeNurseryEnabled = state.Value
+    setConfigSetting("Nursery", "Type Nursery", nurseryTypeNurseryEnabled)
+    notify("Nursery type filter: Nursery " .. (nurseryTypeNurseryEnabled and "enabled" or "disabled"))
+end, nurseryTypeNurseryEnabled)
+
+CreateToggle("Nursery", "Legendary Nursery", function(state)
+    nurseryTypeLegendaryEnabled = state.Value
+    setConfigSetting("Nursery", "Type Legendary Nursery", nurseryTypeLegendaryEnabled)
+    notify("Nursery type filter: Legendary Nursery " .. (nurseryTypeLegendaryEnabled and "enabled" or "disabled"))
+end, nurseryTypeLegendaryEnabled)
+
+CreateToggle("Nursery", "Cosmic Nursery", function(state)
+    nurseryTypeCosmicEnabled = state.Value
+    setConfigSetting("Nursery", "Type Cosmic Nursery", nurseryTypeCosmicEnabled)
+    notify("Nursery type filter: Cosmic Nursery " .. (nurseryTypeCosmicEnabled and "enabled" or "disabled"))
+end, nurseryTypeCosmicEnabled)
 
 CreateToggle("Nursery", "Use Custom Filter", function(state)
     useCustomNurseryEggFilter = state.Value

@@ -754,6 +754,136 @@ function CreateContainer(tabName, height, transparent)
     return frame
 end
 
+function GetUiRoot()
+    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+
+    if type(gethui) == "function" then
+        local ok, hui = pcall(gethui)
+        if ok and hui then
+            local gui = hui:FindFirstChild(LibName) or hui:WaitForChild(LibName, 3)
+            if gui then
+                return gui
+            end
+        end
+    end
+
+    local coreUi = CoreGui:FindFirstChild(LibName) or CoreGui:WaitForChild(LibName, 3)
+    if coreUi then
+        return coreUi
+    end
+
+    return playerGui:FindFirstChild(LibName) or playerGui:WaitForChild(LibName)
+end
+
+local function tryEnableDrag(frame)
+    local ok, dragDetector = pcall(function()
+        return Instance.new("UIDragDetector")
+    end)
+
+    if ok and dragDetector then
+        dragDetector.Parent = frame
+        pcall(function()
+            dragDetector.DragStyle = Enum.UIDragDetectorDragStyle.TranslatePlane
+        end)
+    end
+end
+
+function CreateSelectorPopup(options)
+    options = options or {}
+
+    local popup = Instance.new("Frame")
+    popup.Name = options.name or "SelectorPopup"
+    popup.Size = options.size or UDim2.new(0, 700, 0, 550)
+    popup.Position = options.position or UDim2.new(0.5, -350, 0.5, -275)
+    popup.BackgroundColor3 = options.backgroundColor or Color3.fromRGB(18, 18, 21)
+    popup.BorderSizePixel = 0
+    popup.Visible = false
+    popup.ZIndex = options.zIndex or 100
+    popup.Parent = options.parent or GetUiRoot()
+    Instance.new("UICorner", popup).CornerRadius = options.cornerRadius or UDim.new(0, 12)
+
+    if options.draggable ~= false then
+        tryEnableDrag(popup)
+    end
+
+    local title = Instance.new("TextLabel", popup)
+    title.Size = UDim2.new(1, -20, 0, 30)
+    title.Position = UDim2.new(0, 10, 0, 5)
+    title.BackgroundTransparency = 1
+    title.Text = options.title or "Configure Selection"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextSize = 16
+    title.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+    title.TextXAlignment = Enum.TextXAlignment.Left
+
+    local searchBox = Instance.new("TextBox", popup)
+    searchBox.Size = UDim2.new(1, -20, 0, 35)
+    searchBox.Position = UDim2.new(0, 10, 0, 40)
+    searchBox.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    searchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    searchBox.PlaceholderText = options.searchPlaceholder or "Search..."
+    searchBox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+    searchBox.TextSize = 14
+    searchBox.FontFace = Font.new("rbxasset://fonts/families/Roboto.json")
+    searchBox.ClearTextOnFocus = false
+    searchBox.Text = ""
+    Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 6)
+
+    local scrollFrame = Instance.new("ScrollingFrame", popup)
+    scrollFrame.Size = UDim2.new(1, -20, 1, -(options.bottomOffset or 138))
+    scrollFrame.Position = UDim2.new(0, 10, 0, 85)
+    scrollFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
+    scrollFrame.BorderSizePixel = 0
+    scrollFrame.ScrollBarThickness = 8
+    Instance.new("UICorner", scrollFrame).CornerRadius = UDim.new(0, 8)
+
+    local gridLayout = Instance.new("UIGridLayout", scrollFrame)
+    gridLayout.CellSize = options.gridCellSize or UDim2.new(0, 100, 0, 120)
+    gridLayout.CellPadding = options.gridCellPadding or UDim2.new(0, 5, 0, 5)
+    gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    local gridPadding = Instance.new("UIPadding", scrollFrame)
+    gridPadding.PaddingTop = UDim.new(0, 5)
+    gridPadding.PaddingLeft = UDim.new(0, 5)
+
+    local buttonsRow = Instance.new("Frame", popup)
+    buttonsRow.Size = UDim2.new(1, -20, 0, 35)
+    buttonsRow.Position = UDim2.new(0, 10, 1, -45)
+    buttonsRow.BackgroundTransparency = 1
+
+    local clearButton = Instance.new("TextButton", buttonsRow)
+    clearButton.Size = UDim2.new(0, 140, 1, 0)
+    clearButton.Position = UDim2.new(0, 0, 0, 0)
+    clearButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    clearButton.Text = options.clearButtonText or "Clear All"
+    clearButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    clearButton.TextSize = 15
+    clearButton.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+    Instance.new("UICorner", clearButton).CornerRadius = UDim.new(0, 6)
+
+    local applyButton = Instance.new("TextButton", buttonsRow)
+    applyButton.Size = UDim2.new(0, 140, 1, 0)
+    applyButton.Position = UDim2.new(1, -140, 0, 0)
+    applyButton.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
+    applyButton.Text = options.applyButtonText or "Apply & Close"
+    applyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    applyButton.TextSize = 15
+    applyButton.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+    Instance.new("UICorner", applyButton).CornerRadius = UDim.new(0, 6)
+
+    return {
+        Popup = popup,
+        Title = title,
+        SearchBox = searchBox,
+        ScrollFrame = scrollFrame,
+        GridLayout = gridLayout,
+        GridPadding = gridPadding,
+        ButtonsRow = buttonsRow,
+        ClearButton = clearButton,
+        ApplyButton = applyButton
+    }
+end
+
 function CreateInput(tabName, labelText, defaultText, buttonText, actionFunction)
     local tab = Tabs[tabName]
     if not tab then return end

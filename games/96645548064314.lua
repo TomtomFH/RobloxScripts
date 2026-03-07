@@ -304,29 +304,7 @@ CreateTab("Catch And Tame", "Main", "Save Cycling")
 CreateTab("Catch And Tame", "Main", "Menus")
 CreateTab("Catch And Tame", "Main", "Feedback")
 
-local function resolveUiRoot()
-    local playerGui = player:WaitForChild("PlayerGui")
-
-    if type(gethui) == "function" then
-        local ok, hui = pcall(gethui)
-        if ok and hui then
-            local gui = hui:FindFirstChild("TomtomFHUI") or hui:WaitForChild("TomtomFHUI", 3)
-            if gui then
-                return gui
-            end
-        end
-    end
-
-    local coreGui = game:GetService("CoreGui")
-    local coreUi = coreGui:FindFirstChild("TomtomFHUI") or coreGui:WaitForChild("TomtomFHUI", 3)
-    if coreUi then
-        return coreUi
-    end
-
-    return playerGui:WaitForChild("TomtomFHUI")
-end
-
-local uiRoot = resolveUiRoot()
+local uiRoot = type(GetUiRoot) == "function" and GetUiRoot() or player:WaitForChild("PlayerGui")
 local warningLabel = Instance.new("TextLabel")
 warningLabel.Size = UDim2.new(0, 520, 0, 60)
 warningLabel.Position = UDim2.new(0.5, -260, 0, 10)
@@ -2351,106 +2329,21 @@ end)
 -- CREATE CATCHING SETTINGS UI
 
 -- Create custom pet selector menu
-local customSelectorMenu = Instance.new("Frame")
-customSelectorMenu.Name = "CustomPetSelector"
-customSelectorMenu.Size = UDim2.new(0, 700, 0, 550)
-customSelectorMenu.Position = UDim2.new(0.5, -350, 0.5, -275)
-customSelectorMenu.BackgroundColor3 = Color3.fromRGB(18, 18, 21)
-customSelectorMenu.BorderSizePixel = 0
-customSelectorMenu.Visible = false
-customSelectorMenu.ZIndex = 100
-customSelectorMenu.Parent = uiRoot
+local customSelectorPopup = CreateSelectorPopup({
+    parent = uiRoot,
+    name = "CustomPetSelector",
+    title = "Select Custom Pets/Mutations",
+    searchPlaceholder = "Search pets or mutations...",
+    gridCellSize = UDim2.new(0, 100, 0, 120),
+    gridCellPadding = UDim2.new(0, 5, 0, 5)
+})
 
-Instance.new("UICorner", customSelectorMenu).CornerRadius = UDim.new(0, 12)
-
--- Add drag functionality with UIDragDetector
-do
-    local ok, dragDetector = pcall(function()
-        return Instance.new("UIDragDetector")
-    end)
-
-    if ok and dragDetector then
-        dragDetector.Parent = customSelectorMenu
-        pcall(function()
-            dragDetector.DragStyle = Enum.UIDragDetectorDragStyle.TranslatePlane
-        end)
-    end
-end
-
--- Title
-local selectorTitle = Instance.new("TextLabel", customSelectorMenu)
-selectorTitle.Size = UDim2.new(1, -20, 0, 30)
-selectorTitle.Position = UDim2.new(0, 10, 0, 5)
-selectorTitle.BackgroundTransparency = 1
-selectorTitle.Text = "Select Custom Pets/Mutations"
-selectorTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-selectorTitle.TextSize = 16
-selectorTitle.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
-selectorTitle.TextXAlignment = Enum.TextXAlignment.Left
-
--- Search box
-local searchBox = Instance.new("TextBox", customSelectorMenu)
-searchBox.Size = UDim2.new(1, -20, 0, 35)
-searchBox.Position = UDim2.new(0, 10, 0, 40)
-searchBox.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-searchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-searchBox.PlaceholderText = "Search pets or mutations..."
-searchBox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
-searchBox.TextSize = 14
-searchBox.FontFace = Font.new("rbxasset://fonts/families/Roboto.json")
-searchBox.ClearTextOnFocus = false
-searchBox.Text = ""
-
-Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 6)
-
--- Scroll frame for pet grid
-local scrollFrame = Instance.new("ScrollingFrame", customSelectorMenu)
-scrollFrame.Size = UDim2.new(1, -20, 1, -138)
-scrollFrame.Position = UDim2.new(0, 10, 0, 85)
-scrollFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
-scrollFrame.BorderSizePixel = 0
-scrollFrame.ScrollBarThickness = 8
-
-Instance.new("UICorner", scrollFrame).CornerRadius = UDim.new(0, 8)
-
-local gridLayout = Instance.new("UIGridLayout", scrollFrame)
-gridLayout.CellSize = UDim2.new(0, 100, 0, 120)
-gridLayout.CellPadding = UDim2.new(0, 5, 0, 5)
-gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
-local gridPadding = Instance.new("UIPadding", scrollFrame)
-gridPadding.PaddingTop = UDim.new(0, 5)
-gridPadding.PaddingLeft = UDim.new(0, 5)
-
--- Bottom buttons container
-local buttonContainer = Instance.new("Frame", customSelectorMenu)
-buttonContainer.Size = UDim2.new(1, -20, 0, 35)
-buttonContainer.Position = UDim2.new(0, 10, 1, -45)
-buttonContainer.BackgroundTransparency = 1
-
--- Clear All button
-local clearAllButton = Instance.new("TextButton", buttonContainer)
-clearAllButton.Size = UDim2.new(0, 140, 1, 0)
-clearAllButton.Position = UDim2.new(0, 0, 0, 0)
-clearAllButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-clearAllButton.Text = "Clear All"
-clearAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-clearAllButton.TextSize = 15
-clearAllButton.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
-
-Instance.new("UICorner", clearAllButton).CornerRadius = UDim.new(0, 6)
-
--- Apply button
-local applyButton = Instance.new("TextButton", buttonContainer)
-applyButton.Size = UDim2.new(0, 140, 1, 0)
-applyButton.Position = UDim2.new(1, -140, 0, 0)
-applyButton.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
-applyButton.Text = "Apply & Close"
-applyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-applyButton.TextSize = 15
-applyButton.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
-
-Instance.new("UICorner", applyButton).CornerRadius = UDim.new(0, 6)
+local customSelectorMenu = customSelectorPopup.Popup
+local searchBox = customSelectorPopup.SearchBox
+local scrollFrame = customSelectorPopup.ScrollFrame
+local gridLayout = customSelectorPopup.GridLayout
+local clearAllButton = customSelectorPopup.ClearButton
+local applyButton = customSelectorPopup.ApplyButton
 
 -- Temporary selection state (not saved until Apply is clicked)
 local tempCustomFilters = {}
@@ -2768,93 +2661,22 @@ local function updateEggSelectionLabels()
     end
 end
 
-local eggSelectorMenu = Instance.new("Frame")
-eggSelectorMenu.Name = "EggSelector"
-eggSelectorMenu.Size = UDim2.new(0, 700, 0, 550)
-eggSelectorMenu.Position = UDim2.new(0.5, -350, 0.5, -275)
-eggSelectorMenu.BackgroundColor3 = Color3.fromRGB(18, 18, 21)
-eggSelectorMenu.BorderSizePixel = 0
-eggSelectorMenu.Visible = false
-eggSelectorMenu.ZIndex = 100
-eggSelectorMenu.Parent = uiRoot
-Instance.new("UICorner", eggSelectorMenu).CornerRadius = UDim.new(0, 12)
+local eggSelectorPopup = CreateSelectorPopup({
+    parent = uiRoot,
+    name = "EggSelector",
+    title = "Configure Eggs",
+    searchPlaceholder = "Search eggs...",
+    gridCellSize = UDim2.new(0, 120, 0, 130),
+    gridCellPadding = UDim2.new(0, 6, 0, 6)
+})
 
-do
-    local ok, dragDetector = pcall(function()
-        return Instance.new("UIDragDetector")
-    end)
-    if ok and dragDetector then
-        dragDetector.Parent = eggSelectorMenu
-        pcall(function()
-            dragDetector.DragStyle = Enum.UIDragDetectorDragStyle.TranslatePlane
-        end)
-    end
-end
-
-local eggSelectorTitle = Instance.new("TextLabel", eggSelectorMenu)
-eggSelectorTitle.Size = UDim2.new(1, -20, 0, 30)
-eggSelectorTitle.Position = UDim2.new(0, 10, 0, 5)
-eggSelectorTitle.BackgroundTransparency = 1
-eggSelectorTitle.Text = "Configure Eggs"
-eggSelectorTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-eggSelectorTitle.TextSize = 16
-eggSelectorTitle.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
-eggSelectorTitle.TextXAlignment = Enum.TextXAlignment.Left
-
-local eggSearchBox = Instance.new("TextBox", eggSelectorMenu)
-eggSearchBox.Size = UDim2.new(1, -20, 0, 35)
-eggSearchBox.Position = UDim2.new(0, 10, 0, 40)
-eggSearchBox.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-eggSearchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-eggSearchBox.PlaceholderText = "Search eggs..."
-eggSearchBox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
-eggSearchBox.TextSize = 14
-eggSearchBox.FontFace = Font.new("rbxasset://fonts/families/Roboto.json")
-eggSearchBox.ClearTextOnFocus = false
-eggSearchBox.Text = ""
-Instance.new("UICorner", eggSearchBox).CornerRadius = UDim.new(0, 6)
-
-local eggScrollFrame = Instance.new("ScrollingFrame", eggSelectorMenu)
-eggScrollFrame.Size = UDim2.new(1, -20, 1, -138)
-eggScrollFrame.Position = UDim2.new(0, 10, 0, 85)
-eggScrollFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
-eggScrollFrame.BorderSizePixel = 0
-eggScrollFrame.ScrollBarThickness = 8
-Instance.new("UICorner", eggScrollFrame).CornerRadius = UDim.new(0, 8)
-
-local eggGridLayout = Instance.new("UIGridLayout", eggScrollFrame)
-eggGridLayout.CellSize = UDim2.new(0, 120, 0, 130)
-eggGridLayout.CellPadding = UDim2.new(0, 6, 0, 6)
-eggGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
-local eggGridPadding = Instance.new("UIPadding", eggScrollFrame)
-eggGridPadding.PaddingTop = UDim.new(0, 5)
-eggGridPadding.PaddingLeft = UDim.new(0, 5)
-
-local eggButtonsRow = Instance.new("Frame", eggSelectorMenu)
-eggButtonsRow.Size = UDim2.new(1, -20, 0, 35)
-eggButtonsRow.Position = UDim2.new(0, 10, 1, -45)
-eggButtonsRow.BackgroundTransparency = 1
-
-local eggClearAllButton = Instance.new("TextButton", eggButtonsRow)
-eggClearAllButton.Size = UDim2.new(0, 140, 1, 0)
-eggClearAllButton.Position = UDim2.new(0, 0, 0, 0)
-eggClearAllButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-eggClearAllButton.Text = "Clear All"
-eggClearAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-eggClearAllButton.TextSize = 15
-eggClearAllButton.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
-Instance.new("UICorner", eggClearAllButton).CornerRadius = UDim.new(0, 6)
-
-local eggApplyButton = Instance.new("TextButton", eggButtonsRow)
-eggApplyButton.Size = UDim2.new(0, 140, 1, 0)
-eggApplyButton.Position = UDim2.new(1, -140, 0, 0)
-eggApplyButton.BackgroundColor3 = Color3.fromRGB(0, 115, 200)
-eggApplyButton.Text = "Apply & Close"
-eggApplyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-eggApplyButton.TextSize = 15
-eggApplyButton.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
-Instance.new("UICorner", eggApplyButton).CornerRadius = UDim.new(0, 6)
+local eggSelectorMenu = eggSelectorPopup.Popup
+local eggSelectorTitle = eggSelectorPopup.Title
+local eggSearchBox = eggSelectorPopup.SearchBox
+local eggScrollFrame = eggSelectorPopup.ScrollFrame
+local eggGridLayout = eggSelectorPopup.GridLayout
+local eggClearAllButton = eggSelectorPopup.ClearButton
+local eggApplyButton = eggSelectorPopup.ApplyButton
 
 local eggSelectorMode = "Nursery"
 local tempEggFilters = {}

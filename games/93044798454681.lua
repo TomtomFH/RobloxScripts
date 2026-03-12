@@ -15,6 +15,33 @@ end
 local walkSpeedEnabled = false
 local walkSpeedLoop = false
 local walkSpeedConn = nil
+
+-- Fullbright feature state
+local fullbrightEnabled = false
+local lighting = game:GetService("Lighting")
+local originalLighting = {
+    Brightness = lighting.Brightness,
+    ClockTime = lighting.ClockTime,
+    FogEnd = lighting.FogEnd,
+    GlobalShadows = lighting.GlobalShadows,
+    OutdoorAmbient = lighting.OutdoorAmbient,
+}
+
+local function applyFullbright()
+    lighting.Brightness = 2
+    lighting.ClockTime = 14
+    lighting.FogEnd = 100000
+    lighting.GlobalShadows = false
+    lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+end
+
+local function restoreLighting()
+    lighting.Brightness = originalLighting.Brightness
+    lighting.ClockTime = originalLighting.ClockTime
+    lighting.FogEnd = originalLighting.FogEnd
+    lighting.GlobalShadows = originalLighting.GlobalShadows
+    lighting.OutdoorAmbient = originalLighting.OutdoorAmbient
+end
 -- ============================================================
 -- SERVICE SETUP
 -- ============================================================
@@ -404,7 +431,7 @@ end, itemsESPEnabled)
 
 CreateTab("Deadly Delivery", "Main", "Player")
 
-CreateLabel("Player", "Modify your walk speed")
+CreateLabel("Player", "Modify your walk speed and lighting")
 local walkSpeedInput = CreateInput("Player", "Walk Speed", tostring(getSavedWalkSpeed()), "Apply", function(textBox)
     local value = tonumber(textBox.Text)
     if value and value > 0 then
@@ -458,6 +485,15 @@ CreateToggle("Player", "Enable Walk Speed", function(state)
         end
     end)
 end, walkSpeedEnabled)
+
+CreateToggle("Player", "Fullbright", function(state)
+    fullbrightEnabled = state.Value
+    if fullbrightEnabled then
+        applyFullbright()
+    else
+        restoreLighting()
+    end
+end, fullbrightEnabled)
 -- ============================================================
 -- END OF SCRIPT
 -- Force walk speed on script load if enabled

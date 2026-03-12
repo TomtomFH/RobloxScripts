@@ -4,6 +4,8 @@
 -- SETTINGS - Modify these to customize default behavior
 -- ============================================================
 
+-- TODO: Auto Catching boss: spam update progress with 1 until its caught, implement ignore bosses toggle
+
 -- Breeding Configuration
 local crossBreedingPairs = {
     -- Cross-breeding pairs

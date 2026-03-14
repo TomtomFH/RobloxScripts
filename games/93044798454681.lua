@@ -278,9 +278,9 @@ end
 local function createLootESP(item)
     if item:IsA("Tool") then
         local folder = item:FindFirstChild("Folder")
-        if not folder then print("[DEBUG] Tool has no Folder: " .. item.Name) return end
+        if not folder then return end
         local interactable = folder:FindFirstChild("Interactable")
-        if not interactable then print("[DEBUG] Tool Folder has no Interactable: " .. item.Name) return end
+        if not interactable then return end
         local old = interactable:FindFirstChild("ESPBillboard")
         if old then old:Destroy() end
 
@@ -470,7 +470,7 @@ end
 
 local function enableNPCsESP()
     npcsESPEnabled = true
-    local npcs = workspace:FindFirstChild("NPCs")
+    local npcs = workspace:FindFirstChild("GameSystem"):FindFirstChild("NPCModels")
     if not npcs then return end
 
     for _, model in ipairs(npcs:GetChildren()) do

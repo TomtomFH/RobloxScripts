@@ -1,5 +1,3 @@
--- DEADLY DELIVERY (https://www.roblox.com/games/93044798454681/)
-
 local containersESPEnabled = false
 local currencyESPEnabled = false
 local itemsESPEnabled = false
@@ -17,9 +15,14 @@ local players = game:GetService("Players")
 local lighting = game:GetService("Lighting")
 local HttpService = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
+local CollectionService = game:GetService("CollectionService")
 
 local player = players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+local character = player.Character or player.CharacterAdded:Wait()
+local hrp = character:WaitForChild("HumanoidRootPart")
+
+local TEvent = require(game.ReplicatedStorage.Shared.Core.TEvent)
 
 local function notify(msg, isError)
     local ok = pcall(function()
@@ -87,6 +90,13 @@ local originalLighting = {
     OutdoorAmbient = lighting.OutdoorAmbient,
 }
 
+local activeESPs = {}
+local containersESPs = {}
+local currencyESPs = {}
+local itemsESPs = {}
+local monstersESPs = {}
+local npcsESPs = {}
+
 local function applyFullbright()
     lighting.Brightness = 2
     lighting.ClockTime = 14
@@ -102,13 +112,6 @@ local function restoreLighting()
     lighting.GlobalShadows = originalLighting.GlobalShadows
     lighting.OutdoorAmbient = originalLighting.OutdoorAmbient
 end
-
-local activeESPs = {}
-local containersESPs = {}
-local currencyESPs = {}
-local itemsESPs = {}
-local monstersESPs = {}
-local npcsESPs = {}
 
 local function clearESPs(espTable)
     for inst, _ in pairs(espTable) do
@@ -137,9 +140,9 @@ local function getESPAdornee(model)
     if model.PrimaryPart then
         return model.PrimaryPart
     end
-    local hrp = model:FindFirstChild("HumanoidRootPart", true)
-    if hrp then
-        return hrp
+    local foundHrp = model:FindFirstChild("HumanoidRootPart", true)
+    if foundHrp then
+        return foundHrp
     end
     local interactable = model:FindFirstChild("Interactable", true)
     if interactable then
@@ -239,8 +242,7 @@ local function createESP(model, color, trackerTable, labelText)
         return
     end
 
-    local priceText = nil
-    local b = buildBillboard(interactable, color or Color3.new(1, 1, 1), labelText or priceText or getBaseName(model.Name))
+    local b = buildBillboard(interactable, color or Color3.new(1, 1, 1), labelText or getBaseName(model.Name))
 
     activeESPs[b] = true
     if trackerTable then
@@ -573,12 +575,12 @@ local function disableNPCsESP()
 end
 
 local function applyWalkSpeed()
-    local char = player.Character
-    if not char then
+    local currentCharacter = player.Character
+    if not currentCharacter then
         return
     end
 
-    local humanoid = char:FindFirstChild("Humanoid")
+    local humanoid = currentCharacter:FindFirstChild("Humanoid")
     if not humanoid then
         return
     end
@@ -602,10 +604,89 @@ local function applyWalkSpeed()
     end
 end
 
+local function getCurrentCharacter()
+    character = player.Character or player.CharacterAdded:Wait()
+    hrp = character:WaitForChild("HumanoidRootPart")
+    return character, hrp
+end
+
+local function getSpawnLocation()
+    local namedFolder = workspace:FindFirstChild("\231\148\181\230\162\175")
+    if namedFolder and namedFolder:FindFirstChild("Left4") then
+        return namedFolder.Left4:FindFirstChild("SpawnLocation")
+    end
+    return nil
+end
+
+local function tooCloseToSpawn(posPart)
+    local spawn = getSpawnLocation()
+    if spawn and posPart then
+        return (posPart.Position - spawn.Position).Magnitude <= 10
+    end
+    return false
+end
+
+local function autoCollectStep1()
+    local gameSystem = workspace:FindFirstChild("GameSystem")
+    local interactiveItem = gameSystem and gameSystem:FindFirstChild("InteractiveItem")
+    if not interactiveItem then
+        notify("InteractiveItem folder not found", true)
+        return
+    end
+
+    for _, obj in ipairs(CollectionService:GetTagged("Interactable")) do
+        if obj:IsDescendantOf(interactiveItem) then
+            pcall(function()
+                TEvent.FireRemote("Interactable", obj)
+            end)
+        end
+    end
+
+    notify("Auto Collect Step 1 finished")
+end
+
+local function autoCollectStep2()
+    local _, root = getCurrentCharacter()
+    local gameSystem = workspace:FindFirstChild("GameSystem")
+    local loots = gameSystem and gameSystem:FindFirstChild("Loots")
+    local worldLoots = loots and loots:FindFirstChild("World")
+    if not worldLoots then
+        notify("Loots.World folder not found", true)
+        return
+    end
+
+    for _, obj in ipairs(CollectionService:GetTagged("Interactable")) do
+        if obj:IsDescendantOf(worldLoots) and not obj:IsA("Tool") then
+            local model = obj
+            if obj:IsA("BasePart") then
+                model = obj.Parent
+            end
+
+            local lootPos = nil
+            if model and model:IsA("Model") then
+                lootPos = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+            end
+            if not lootPos and obj:IsA("BasePart") then
+                lootPos = obj
+            end
+
+            if lootPos and not tooCloseToSpawn(lootPos) then
+                root.CFrame = lootPos.CFrame + Vector3.new(0, 3, 0)
+                task.wait(0.2)
+                pcall(function()
+                    TEvent.FireRemote("Interactable", obj)
+                end)
+            end
+        end
+    end
+
+    notify("Auto Collect Step 2 finished")
+end
+
 do
-    local char = player.Character
-    if char and char:FindFirstChild("Humanoid") then
-        char.Humanoid.WalkSpeed = getSavedWalkSpeed()
+    local currentCharacter = player.Character
+    if currentCharacter and currentCharacter:FindFirstChild("Humanoid") then
+        currentCharacter.Humanoid.WalkSpeed = getSavedWalkSpeed()
     end
 end
 
@@ -616,6 +697,9 @@ CreateTab("Deadly Delivery", "Main", "Visuals")
 
 CreateGroup("Deadly Delivery", "Player")
 CreateTab("Deadly Delivery", "Player", "Player")
+
+CreateGroup("Deadly Delivery", "Auto Collect")
+CreateTab("Deadly Delivery", "Auto Collect", "Auto Collect")
 
 CreateLabel("Visuals", "ESP highlights Containers, Currency, Items, Monsters, and NPCs")
 
@@ -728,8 +812,17 @@ CreateToggle("Player", "Fullbright", function(state)
     end
 end, fullbrightEnabled)
 
+CreateButton("Auto Collect", "Step 1 - Fire Interactive Items", function()
+    autoCollectStep1()
+end)
+
+CreateButton("Auto Collect", "Step 2 - Collect Lootables", function()
+    autoCollectStep2()
+end)
+
 player.CharacterAdded:Connect(function()
     task.wait(0.2)
+    getCurrentCharacter()
     applyWalkSpeed()
     if fullbrightEnabled then
         applyFullbright()

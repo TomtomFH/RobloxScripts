@@ -102,7 +102,18 @@ end
 
 local function getESPAdornee(model)
     if not model or not model:IsA("Model") then return nil end
-    return model:FindFirstChild("HumanoidRootPart", true)
+    if model.PrimaryPart then
+        return model.PrimaryPart
+    end
+    local hrp = model:FindFirstChild("HumanoidRootPart", true)
+    if hrp then
+        return hrp
+    end
+    local interactable = model:FindFirstChild("Interactable")
+    if interactable then
+        return interactable
+    end
+    return nil
 end
 
 local function createESP(model, color)

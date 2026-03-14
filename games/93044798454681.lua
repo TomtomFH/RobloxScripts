@@ -1,13 +1,11 @@
 -- DEADLY DELIVERY (https://www.roblox.com/games/93044798454681/)
 
--- ============================================================
--- SETTINGS - Modify these to customize default behavior
-
 local containersESPEnabled = false
 local currencyESPEnabled = false
 local itemsESPEnabled = false
+local monstersESPEnabled = false
+local npcsESPEnabled = false
 
--- Player Feature Default States
 local playerWalkSpeed = 16
 local function getSavedWalkSpeed()
     return tonumber(loadedConfig and loadedConfig.Player and loadedConfig.Player["Walk Speed"]) or playerWalkSpeed
@@ -16,7 +14,6 @@ local walkSpeedEnabled = false
 local walkSpeedLoop = false
 local walkSpeedConn = nil
 
--- Fullbright feature state
 local fullbrightEnabled = false
 local lighting = game:GetService("Lighting")
 local originalLighting = {
@@ -42,9 +39,6 @@ local function restoreLighting()
     lighting.GlobalShadows = originalLighting.GlobalShadows
     lighting.OutdoorAmbient = originalLighting.OutdoorAmbient
 end
--- ============================================================
--- SERVICE SETUP
--- ============================================================
 
 local workspace = game:GetService("Workspace")
 local players = game:GetService("Players")
@@ -53,10 +47,8 @@ local player = players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local HttpService = game:GetService("HttpService")
 
--- Load UI Library
 loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/Lib.lua", true))()
 
--- Manual config load
 local configPath = "TomtomFHUI/TomtomFHUI_" .. tostring(game.PlaceId) .. ".json"
 local loadedConfig = nil
 if type(isfile) == "function" and isfile(configPath) then
@@ -69,7 +61,6 @@ if type(isfile) == "function" and isfile(configPath) then
     end
 end
 
--- Force walk speed from config immediately after config is loaded
 do
     local char = players.LocalPlayer.Character
     local ws = tonumber(Config and Config.Player and Config.Player["Walk Speed"]) or 16
@@ -79,13 +70,12 @@ do
     end
 end
 
--- ============================================================
--- ESP Implementation (from Pressure Hadal Blacksite)
--- ============================================================
 local activeESPs = {}
 local containersESPs = {}
 local currencyESPs = {}
 local itemsESPs = {}
+local monstersESPs = {}
+local npcsESPs = {}
 
 local function clearESPs(espTable)
     for inst,_ in pairs(espTable) do
@@ -93,6 +83,7 @@ local function clearESPs(espTable)
             pcall(function() inst:Destroy() end)
         end
         espTable[inst] = nil
+        activeESPs[inst] = nil
     end
 end
 
@@ -100,22 +91,29 @@ local function splitCamelCase(name)
     return name:gsub("(%l)(%u)", "%1 %2")
 end
 
-
 local function getBaseName(name)
-    -- Remove everything after and including _
     local under = string.find(name, "_")
     if under then
         name = string.sub(name, 1, under - 1)
     end
-    -- If CamelCase, split at capital letters and join with spaces
     local spaced = name:gsub("(%l)(%u)", "%1 %2")
     return spaced
+end
+
+local function getESPAdornee(model)
+    if not model or not model:IsA("Model") then return nil end
+    return model:FindFirstChild("HumanoidRootPart", true)
 end
 
 local function createESP(model, color)
     if not model or not model:IsA("Model") then return end
     local interactable = model:FindFirstChild("Interactable")
     if not interactable then return end
+
+    local old = interactable:FindFirstChild("ESPBillboard")
+    if old then
+        old:Destroy()
+    end
 
     local b = Instance.new("BillboardGui")
     b.Name = "ESPBillboard"
@@ -150,7 +148,6 @@ local function createESP(model, color)
     l.BackgroundTransparency = 1
     l.Position = UDim2.new(0, 0, 0.5, 24)
     l.Size = UDim2.new(1, 0, 0.2, 0)
-    -- Use loot price as ESP label if available
     local price = nil
     local lootUI = interactable:FindFirstChild("LootUI")
     if lootUI and lootUI:FindFirstChild("Frame") and lootUI.Frame:FindFirstChild("Price") then
@@ -165,20 +162,21 @@ local function createESP(model, color)
     ls.Parent = l
 
     activeESPs[b] = true
-    -- Track by type
     if color and color.r == 0 and color.g == 1 and color.b == 0 then
         containersESPs[b] = true
     elseif color and color.r == 1 and color.g == 1 and color.b == 0 then
         currencyESPs[b] = true
     end
 
-    -- Remove ESP if model's 'Open' attribute becomes true
     local function openListener()
         if model:GetAttribute("Open") == true then
             for espGui, _ in pairs(activeESPs) do
                 if espGui.Adornee == interactable then
                     pcall(function() espGui:Destroy() end)
                     activeESPs[espGui] = nil
+                    containersESPs[espGui] = nil
+                    currencyESPs[espGui] = nil
+                    itemsESPs[espGui] = nil
                 end
             end
         end
@@ -190,6 +188,79 @@ local function createESP(model, color)
     return b
 end
 
+local function createHumanoidESP(model, color, trackerTable, labelText)
+    if not model or not model:IsA("Model") then return end
+
+    local adornee = getESPAdornee(model)
+    if not adornee then return end
+
+    local old = adornee:FindFirstChild("ESPBillboard")
+    if old then
+        old:Destroy()
+    end
+
+    local b = Instance.new("BillboardGui")
+    b.Name = "ESPBillboard"
+    b.Adornee = adornee
+    b.AlwaysOnTop = true
+    b.Size = UDim2.new(0, 100, 0, 100)
+    b.Parent = adornee
+
+    local f = Instance.new("Frame")
+    f.Parent = b
+    f.AnchorPoint = Vector2.new(0.5, 0.5)
+    f.BackgroundColor3 = color
+    f.Position = UDim2.new(0.5, 0, 0.5, 0)
+    f.Size = UDim2.new(0, 10, 0, 10)
+
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(1, 0)
+    c.Parent = f
+
+    local g = Instance.new("UIGradient")
+    g.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.new(0.5, 0.5, 0.5))
+    g.Rotation = 90
+    g.Parent = f
+
+    local s = Instance.new("UIStroke")
+    s.Thickness = 2.5
+    s.Parent = f
+
+    local l = Instance.new("TextLabel")
+    l.Parent = b
+    l.AnchorPoint = Vector2.new(0, 0.5)
+    l.BackgroundTransparency = 1
+    l.Position = UDim2.new(0, 0, 0.5, 24)
+    l.Size = UDim2.new(1, 0, 0.2, 0)
+    l.Text = labelText or getBaseName(model.Name)
+    l.TextColor3 = color
+    l.TextScaled = true
+
+    local ls = Instance.new("UIStroke")
+    ls.Thickness = 2.5
+    ls.Parent = l
+
+    activeESPs[b] = true
+    trackerTable[b] = true
+
+    return b
+end
+
+local function removeModelESP(model, trackerTable)
+    for espGui, _ in pairs(trackerTable) do
+        if espGui and espGui.Parent then
+            local adornee = espGui.Adornee
+            if adornee and adornee:IsDescendantOf(model) then
+                pcall(function() espGui:Destroy() end)
+            end
+        end
+        if not espGui or not espGui.Parent then
+            trackerTable[espGui] = nil
+            activeESPs[espGui] = nil
+        end
+    end
+end
+
 local function clearAllESPs()
     for inst,_ in pairs(activeESPs) do
         if inst and inst.Parent then
@@ -197,33 +268,19 @@ local function clearAllESPs()
         end
         activeESPs[inst] = nil
     end
+    containersESPs = {}
+    currencyESPs = {}
+    itemsESPs = {}
+    monstersESPs = {}
+    npcsESPs = {}
 end
 
--- ============================================================
--- ESP Feature Implementation
--- ============================================================
 local function createLootESP(item)
-    print("idk someone called this function with", item.Name, "of type", item.ClassName)
-    if item:isA("Tool") then
-        print("[DEBUG] Tool detected: " .. item.Name)
+    if item:IsA("Tool") then
         local folder = item:FindFirstChild("Folder")
-        print("[DEBUG] Folder ref: " .. tostring(folder))
         if not folder then print("[DEBUG] Tool has no Folder: " .. item.Name) return end
-        print("[DEBUG] Folder children: " .. table.concat((function()
-            local names = {}
-            for _,v in ipairs(folder:GetChildren()) do table.insert(names, v.Name) end
-            return names
-        end)(), ", "))
         local interactable = folder:FindFirstChild("Interactable")
-        print("[DEBUG] Interactable ref: " .. tostring(interactable))
         if not interactable then print("[DEBUG] Tool Folder has no Interactable: " .. item.Name) return end
-        print("[DEBUG] Adding ESP to Folder.Interactable for tool: " .. item.Name)
-        print("[DEBUG] interactable children before ESP: " .. table.concat((function()
-            local names = {}
-            for _,v in ipairs(interactable:GetChildren()) do table.insert(names, v.Name) end
-            return names
-        end)(), ", "))
-        -- Remove any existing ESP
         local old = interactable:FindFirstChild("ESPBillboard")
         if old then old:Destroy() end
 
@@ -233,12 +290,6 @@ local function createLootESP(item)
         b.AlwaysOnTop = true
         b.Size = UDim2.new(0, 100, 0, 100)
         b.Parent = interactable
-
-        print("[DEBUG] interactable children after ESP: " .. table.concat((function()
-            local names = {}
-            for _,v in ipairs(interactable:GetChildren()) do table.insert(names, v.Name) end
-            return names
-        end)(), ", "))
 
         local f = Instance.new("Frame")
         f.Parent = b
@@ -266,7 +317,6 @@ local function createLootESP(item)
         l.BackgroundTransparency = 1
         l.Position = UDim2.new(0, 0, 0.5, 24)
         l.Size = UDim2.new(1, 0, 0.2, 0)
-        -- Use loot price as ESP label if available
         local price = nil
         local lootUI = interactable:FindFirstChild("LootUI")
         if lootUI and lootUI:FindFirstChild("Frame") and lootUI.Frame:FindFirstChild("Price") then
@@ -312,6 +362,7 @@ local function enableContainersESP()
                 if espGui.Adornee == child then
                     pcall(function() espGui:Destroy() end)
                     activeESPs[espGui] = nil
+                    containersESPs[espGui] = nil
                 end
             end
         end)
@@ -331,17 +382,20 @@ local function enableCurrencyESP()
                 createLootESP(item)
             end
         end
-        worldLoots.ChildAdded:Connect(function(item)
-            if currencyESPEnabled and item:IsA("Model") then
-                createLootESP(item)
-            end
-        end)
-        worldLoots.ChildRemoved:Connect(function(item)
-            if item:IsA("Model") then
-                local esp = item:FindFirstChild("ESPBillboard")
-                if esp then esp:Destroy() end
-            end
-        end)
+        if not _G.DeadlyDeliveryCurrencyESPListener then
+            worldLoots.ChildAdded:Connect(function(item)
+                if currencyESPEnabled and item:IsA("Model") then
+                    createLootESP(item)
+                end
+            end)
+            worldLoots.ChildRemoved:Connect(function(item)
+                if item:IsA("Model") then
+                    local esp = item:FindFirstChild("ESPBillboard")
+                    if esp then esp:Destroy() end
+                end
+            end)
+            _G.DeadlyDeliveryCurrencyESPListener = true
+        end
     end
 end
 
@@ -362,36 +416,109 @@ local function enableItemsESP()
             createLootESP(item)
         end
     end
-    worldLoots.ChildAdded:Connect(function(item)
-        print("[DEBUG] ChildAdded: " .. item.Name .. " type: " .. item.ClassName)
-        if itemsESPEnabled and item:IsA("Tool") then
-            print("[DEBUG] ChildAdded Tool: " .. item.Name)
-            createLootESP(item)
-        end
-    end)
-    worldLoots.ChildRemoved:Connect(function(item)
-        if item:IsA("Tool") then
-            local folder = item:FindFirstChild("Folder")
-            local interactable = folder and folder:FindFirstChild("Interactable")
-            if interactable then
-                local esp = interactable:FindFirstChild("ESPBillboard")
-                if esp then esp:Destroy() end
+    if not _G.DeadlyDeliveryItemsESPListener then
+        worldLoots.ChildAdded:Connect(function(item)
+            print("[DEBUG] ChildAdded: " .. item.Name .. " type: " .. item.ClassName)
+            if itemsESPEnabled and item:IsA("Tool") then
+                print("[DEBUG] ChildAdded Tool: " .. item.Name)
+                createLootESP(item)
             end
+        end)
+        worldLoots.ChildRemoved:Connect(function(item)
+            if item:IsA("Tool") then
+                local folder = item:FindFirstChild("Folder")
+                local interactable = folder and folder:FindFirstChild("Interactable")
+                if interactable then
+                    local esp = interactable:FindFirstChild("ESPBillboard")
+                    if esp then esp:Destroy() end
+                end
+            end
+        end)
+        _G.DeadlyDeliveryItemsESPListener = true
+    end
+end
+
+local function enableMonstersESP()
+    monstersESPEnabled = true
+    local gameSystem = workspace:FindFirstChild("GameSystem")
+    if not gameSystem then return end
+    local monsters = gameSystem:FindFirstChild("Monsters")
+    if not monsters then return end
+
+    for _, model in ipairs(monsters:GetChildren()) do
+        if model:IsA("Model") then
+            createHumanoidESP(model, Color3.fromRGB(255, 0, 0), monstersESPs)
         end
-    end)
+    end
+
+    if not _G.DeadlyDeliveryMonstersESPListener then
+        monsters.ChildAdded:Connect(function(child)
+            if monstersESPEnabled and child:IsA("Model") then
+                createHumanoidESP(child, Color3.fromRGB(255, 0, 0), monstersESPs)
+            end
+        end)
+
+        monsters.ChildRemoved:Connect(function(child)
+            if child:IsA("Model") then
+                removeModelESP(child, monstersESPs)
+            end
+        end)
+
+        _G.DeadlyDeliveryMonstersESPListener = true
+    end
+end
+
+local function enableNPCsESP()
+    npcsESPEnabled = true
+    local npcs = workspace:FindFirstChild("NPCs")
+    if not npcs then return end
+
+    for _, model in ipairs(npcs:GetChildren()) do
+        if model:IsA("Model") then
+            createHumanoidESP(model, Color3.fromRGB(0, 0, 255), npcsESPs)
+        end
+    end
+
+    if not _G.DeadlyDeliveryNPCsESPListener then
+        npcs.ChildAdded:Connect(function(child)
+            if npcsESPEnabled and child:IsA("Model") then
+                createHumanoidESP(child, Color3.fromRGB(0, 0, 255), npcsESPs)
+            end
+        end)
+
+        npcs.ChildRemoved:Connect(function(child)
+            if child:IsA("Model") then
+                removeModelESP(child, npcsESPs)
+            end
+        end)
+
+        _G.DeadlyDeliveryNPCsESPListener = true
+    end
 end
 
 local function disableContainersESP()
     containersESPEnabled = false
     clearESPs(containersESPs)
 end
+
 local function disableCurrencyESP()
     currencyESPEnabled = false
     clearESPs(currencyESPs)
 end
+
 local function disableItemsESP()
     itemsESPEnabled = false
     clearESPs(itemsESPs)
+end
+
+local function disableMonstersESP()
+    monstersESPEnabled = false
+    clearESPs(monstersESPs)
+end
+
+local function disableNPCsESP()
+    npcsESPEnabled = false
+    clearESPs(npcsESPs)
 end
 
 local function disableESP()
@@ -399,14 +526,11 @@ local function disableESP()
     clearAllESPs()
 end
 
--- ============================================================
--- UI Setup
--- ============================================================
 CreateMenu("Deadly Delivery")
 CreateGroup("Deadly Delivery", "Main")
 CreateTab("Deadly Delivery", "Main", "Visuals")
 
-CreateLabel("Visuals", "ESP highlights Containers, Currency, and Items")
+CreateLabel("Visuals", "ESP highlights Containers, Currency, Items, Monsters, and NPCs")
 CreateToggle("Visuals", "Containers ESP", function(state)
     if state.Value then
         enableContainersESP()
@@ -428,6 +552,20 @@ CreateToggle("Visuals", "Items ESP", function(state)
         disableItemsESP()
     end
 end, itemsESPEnabled)
+CreateToggle("Visuals", "Monsters ESP", function(state)
+    if state.Value then
+        enableMonstersESP()
+    else
+        disableMonstersESP()
+    end
+end, monstersESPEnabled)
+CreateToggle("Visuals", "NPCs ESP", function(state)
+    if state.Value then
+        enableNPCsESP()
+    else
+        disableNPCsESP()
+    end
+end, npcsESPEnabled)
 
 CreateTab("Deadly Delivery", "Main", "Player")
 
@@ -437,12 +575,10 @@ local walkSpeedInput = CreateInput("Player", "Walk Speed", tostring(getSavedWalk
     if value and value > 0 then
         playerWalkSpeed = value
         print("[Deadly Delivery] Walk speed set to " .. value)
-        -- Update loadedConfig for immediate effect
         if loadedConfig and loadedConfig.Player then
             loadedConfig.Player["Walk Speed"] = tostring(value)
         end
         SaveConfig()
-        -- Immediately enforce new walk speed if enabled
         if walkSpeedEnabled then
             local char = players.LocalPlayer.Character or players.LocalPlayer.CharacterAdded:Wait()
             if char and char:FindFirstChild("Humanoid") then
@@ -477,7 +613,6 @@ CreateToggle("Player", "Enable Walk Speed", function(state)
         end
     end
     applyWalkSpeed()
-    -- Listen for character respawn
     players.LocalPlayer.CharacterAdded:Connect(function()
         if walkSpeedEnabled then
             task.wait(0.2)
@@ -494,9 +629,7 @@ CreateToggle("Player", "Fullbright", function(state)
         restoreLighting()
     end
 end, fullbrightEnabled)
--- ============================================================
--- END OF SCRIPT
--- Force walk speed on script load if enabled
+
 players.LocalPlayer.CharacterAdded:Connect(function(char)
     if walkSpeedEnabled and char and char:FindFirstChild("Humanoid") then
         local ws = getSavedWalkSpeed()
@@ -506,7 +639,6 @@ players.LocalPlayer.CharacterAdded:Connect(function(char)
     end
 end)
 
--- Apply walk speed immediately if enabled and character exists
 do
     local char = players.LocalPlayer.Character
     if walkSpeedEnabled and char and char:FindFirstChild("Humanoid") then
@@ -516,4 +648,3 @@ do
         print("[Deadly Delivery] Walk speed applied on load: " .. ws)
     end
 end
--- ============================================================

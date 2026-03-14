@@ -16,9 +16,27 @@ local workspace = game:GetService("Workspace")
 local players = game:GetService("Players")
 local lighting = game:GetService("Lighting")
 local HttpService = game:GetService("HttpService")
+local StarterGui = game:GetService("StarterGui")
 
 local player = players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+
+local function notify(msg, isError)
+    local ok = pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = "Deadly Delivery",
+            Text = tostring(msg),
+            Duration = 4
+        })
+    end)
+    if not ok then
+        if isError then
+            warn(msg)
+        else
+            print(msg)
+        end
+    end
+end
 
 loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/Lib.lua", true))()
 
@@ -33,6 +51,24 @@ if type(isfile) == "function" and isfile(configPath) then
             loadedConfig = parsed
         end
     end
+end
+
+local function saveCurrentConfig()
+    if type(SaveConfig) == "function" then
+        local ok = pcall(SaveConfig)
+        if ok then
+            return true
+        end
+    end
+
+    if type(writefile) == "function" and Config then
+        local ok = pcall(function()
+            writefile(configPath, HttpService:JSONEncode(Config))
+        end)
+        return ok
+    end
+
+    return false
 end
 
 local function getLootESPMinValue()
@@ -127,104 +163,7 @@ local function removeTrackedESPByAdornee(targetAdornee, trackerTable)
     end
 end
 
-local function createESP(model, color, trackerTable, labelText)
-    if not model or not model:IsA("Model") then
-        return
-    end
-
-    local interactable = model:FindFirstChild("Interactable", true)
-    if not interactable then
-        return
-    end
-
-    local old = interactable:FindFirstChild("ESPBillboard")
-    if old then
-        old:Destroy()
-    end
-
-    local b = Instance.new("BillboardGui")
-    b.Name = "ESPBillboard"
-    b.Adornee = interactable
-    b.AlwaysOnTop = true
-    b.Size = UDim2.new(0, 100, 0, 100)
-    b.Parent = interactable
-
-    local f = Instance.new("Frame")
-    f.Parent = b
-    f.AnchorPoint = Vector2.new(0.5, 0.5)
-    f.BackgroundColor3 = color or Color3.new(1, 1, 1)
-    f.Position = UDim2.new(0.5, 0, 0.5, 0)
-    f.Size = UDim2.new(0, 10, 0, 10)
-
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(1, 0)
-    c.Parent = f
-
-    local g = Instance.new("UIGradient")
-    g.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.new(0.5, 0.5, 0.5))
-    g.Rotation = 90
-    g.Parent = f
-
-    local s = Instance.new("UIStroke")
-    s.Thickness = 2.5
-    s.Parent = f
-
-    local l = Instance.new("TextLabel")
-    l.Parent = b
-    l.AnchorPoint = Vector2.new(0, 0.5)
-    l.BackgroundTransparency = 1
-    l.Position = UDim2.new(0, 0, 0.5, 24)
-    l.Size = UDim2.new(1, 0, 0.2, 0)
-
-    local price = nil
-    local lootUI = interactable:FindFirstChild("LootUI")
-    if lootUI and lootUI:FindFirstChild("Frame") and lootUI.Frame:FindFirstChild("Price") then
-        price = lootUI.Frame.Price.Text
-    end
-
-    l.Text = labelText or price or getBaseName(model.Name)
-    l.TextColor3 = color or Color3.new(1, 1, 1)
-    l.TextScaled = true
-
-    local ls = Instance.new("UIStroke")
-    ls.Thickness = 2.5
-    ls.Parent = l
-
-    activeESPs[b] = true
-    if trackerTable then
-        trackerTable[b] = true
-    end
-
-    local function openListener()
-        if model:GetAttribute("Open") == true then
-            pcall(function()
-                b:Destroy()
-            end)
-            activeESPs[b] = nil
-            if trackerTable then
-                trackerTable[b] = nil
-            end
-        end
-    end
-
-    model:GetAttributeChangedSignal("Open"):Connect(openListener)
-    if model:GetAttribute("Open") == true then
-        openListener()
-    end
-
-    return b
-end
-
-local function createHumanoidESP(model, color, trackerTable, labelText)
-    if not model or not model:IsA("Model") then
-        return
-    end
-
-    local adornee = getESPAdornee(model)
-    if not adornee then
-        return
-    end
-
+local function buildBillboard(adornee, color, text)
     local old = adornee:FindFirstChild("ESPBillboard")
     if old then
         old:Destroy()
@@ -263,13 +202,82 @@ local function createHumanoidESP(model, color, trackerTable, labelText)
     l.BackgroundTransparency = 1
     l.Position = UDim2.new(0, 0, 0.5, 24)
     l.Size = UDim2.new(1, 0, 0.2, 0)
-    l.Text = labelText or getBaseName(model.Name)
+    l.Text = text
     l.TextColor3 = color
     l.TextScaled = true
 
     local ls = Instance.new("UIStroke")
     ls.Thickness = 2.5
     ls.Parent = l
+
+    return b
+end
+
+local function getPriceFromInteractable(interactable)
+    if not interactable then
+        return nil, nil
+    end
+
+    local lootUI = interactable:FindFirstChild("LootUI")
+    if lootUI and lootUI:FindFirstChild("Frame") and lootUI.Frame:FindFirstChild("Price") then
+        local priceText = lootUI.Frame.Price.Text
+        local cleaned = tostring(priceText):gsub("[^%d%.%-]", "")
+        local priceNum = tonumber(cleaned)
+        return priceText, priceNum
+    end
+
+    return nil, nil
+end
+
+local function createESP(model, color, trackerTable, labelText)
+    if not model or not model:IsA("Model") then
+        return
+    end
+
+    local interactable = model:FindFirstChild("Interactable", true)
+    if not interactable then
+        return
+    end
+
+    local priceText = nil
+    local b = buildBillboard(interactable, color or Color3.new(1, 1, 1), labelText or priceText or getBaseName(model.Name))
+
+    activeESPs[b] = true
+    if trackerTable then
+        trackerTable[b] = true
+    end
+
+    local function openListener()
+        if model:GetAttribute("Open") == true then
+            pcall(function()
+                b:Destroy()
+            end)
+            activeESPs[b] = nil
+            if trackerTable then
+                trackerTable[b] = nil
+            end
+        end
+    end
+
+    model:GetAttributeChangedSignal("Open"):Connect(openListener)
+    if model:GetAttribute("Open") == true then
+        openListener()
+    end
+
+    return b
+end
+
+local function createHumanoidESP(model, color, trackerTable, labelText)
+    if not model or not model:IsA("Model") then
+        return
+    end
+
+    local adornee = getESPAdornee(model)
+    if not adornee then
+        return
+    end
+
+    local b = buildBillboard(adornee, color, labelText or getBaseName(model.Name))
 
     activeESPs[b] = true
     trackerTable[b] = true
@@ -322,70 +330,31 @@ local function createLootESP(item, trackerTable)
             return
         end
 
-        local lootUI = interactable:FindFirstChild("LootUI")
-        local price = nil
-        if lootUI and lootUI:FindFirstChild("Frame") and lootUI.Frame:FindFirstChild("Price") then
-            price = lootUI.Frame.Price.Text
-        end
-
-        local priceNum = tonumber(price)
+        local priceText, priceNum = getPriceFromInteractable(interactable)
         local minValue = getLootESPMinValue()
         if priceNum and priceNum < minValue then
             return
         end
 
-        local old = interactable:FindFirstChild("ESPBillboard")
-        if old then
-            old:Destroy()
-        end
-
-        local b = Instance.new("BillboardGui")
-        b.Name = "ESPBillboard"
-        b.Adornee = interactable
-        b.AlwaysOnTop = true
-        b.Size = UDim2.new(0, 100, 0, 100)
-        b.Parent = interactable
-
-        local f = Instance.new("Frame")
-        f.Parent = b
-        f.AnchorPoint = Vector2.new(0.5, 0.5)
-        f.BackgroundColor3 = Color3.fromRGB(255, 255, 0)
-        f.Position = UDim2.new(0.5, 0, 0.5, 0)
-        f.Size = UDim2.new(0, 10, 0, 10)
-
-        local c = Instance.new("UICorner")
-        c.CornerRadius = UDim.new(1, 0)
-        c.Parent = f
-
-        local g = Instance.new("UIGradient")
-        g.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.new(0.5, 0.5, 0.5))
-        g.Rotation = 90
-        g.Parent = f
-
-        local s = Instance.new("UIStroke")
-        s.Thickness = 2.5
-        s.Parent = f
-
-        local l = Instance.new("TextLabel")
-        l.Parent = b
-        l.AnchorPoint = Vector2.new(0, 0.5)
-        l.BackgroundTransparency = 1
-        l.Position = UDim2.new(0, 0, 0.5, 24)
-        l.Size = UDim2.new(1, 0, 0.2, 0)
-        l.Text = price or getBaseName(item.Name)
-        l.TextColor3 = Color3.fromRGB(255, 255, 0)
-        l.TextScaled = true
-
-        local ls = Instance.new("UIStroke")
-        ls.Thickness = 2.5
-        ls.Parent = l
+        local b = buildBillboard(interactable, Color3.fromRGB(255, 255, 0), priceText or getBaseName(item.Name))
 
         activeESPs[b] = true
         if trackerTable then
             trackerTable[b] = true
         end
     elseif item:IsA("Model") then
-        createESP(item, Color3.fromRGB(255, 255, 0), trackerTable)
+        local interactable = item:FindFirstChild("Interactable", true)
+        if not interactable then
+            return
+        end
+
+        local priceText, priceNum = getPriceFromInteractable(interactable)
+        local minValue = getLootESPMinValue()
+        if priceNum and priceNum < minValue then
+            return
+        end
+
+        createESP(item, Color3.fromRGB(255, 255, 0), trackerTable, priceText or getBaseName(item.Name))
     end
 end
 
@@ -652,19 +621,31 @@ CreateLabel("Visuals", "ESP highlights Containers, Currency, Items, Monsters, an
 
 CreateInput("Visuals", "Loot ESP Min Value", tostring(getLootESPMinValue()), "Apply", function(textBox)
     local value = tonumber(textBox.Text)
-    if value and value >= 0 then
-        lootESPMinValue = value
-        if Config and Config.Visuals then
-            Config.Visuals["Loot ESP Min Value"] = tostring(value)
-        end
-        SaveConfig()
-        notify("Loot ESP min value set to " .. value)
-        if itemsESPEnabled then
-            disableItemsESP()
-            enableItemsESP()
-        end
-    else
+    if not value or value < 0 then
         notify("Invalid loot ESP min value", true)
+        return
+    end
+
+    lootESPMinValue = value
+
+    Config = Config or {}
+    Config.Visuals = Config.Visuals or {}
+    Config.Visuals["Loot ESP Min Value"] = tostring(value)
+    loadedConfig = loadedConfig or {}
+    loadedConfig.Visuals = loadedConfig.Visuals or {}
+    loadedConfig.Visuals["Loot ESP Min Value"] = tostring(value)
+
+    saveCurrentConfig()
+    notify("Loot ESP min value set to " .. tostring(value))
+
+    if itemsESPEnabled then
+        disableItemsESP()
+        enableItemsESP()
+    end
+
+    if currencyESPEnabled then
+        disableCurrencyESP()
+        enableCurrencyESP()
     end
 end)
 
@@ -710,19 +691,27 @@ end, npcsESPEnabled)
 
 CreateInput("Player", "Walk Speed", tostring(getSavedWalkSpeed()), "Apply", function(textBox)
     local value = tonumber(textBox.Text)
-    if value and value > 0 then
-        playerWalkSpeed = value
-        if Config and Config.Player then
-            Config.Player["Walk Speed"] = tostring(value)
-        end
-        SaveConfig()
-        if walkSpeedEnabled then
-            applyWalkSpeed()
-        end
-        notify("Walk speed set to " .. value)
-    else
+    if not value or value <= 0 then
         notify("Invalid walk speed", true)
+        return
     end
+
+    playerWalkSpeed = value
+
+    Config = Config or {}
+    Config.Player = Config.Player or {}
+    Config.Player["Walk Speed"] = tostring(value)
+    loadedConfig = loadedConfig or {}
+    loadedConfig.Player = loadedConfig.Player or {}
+    loadedConfig.Player["Walk Speed"] = tostring(value)
+
+    saveCurrentConfig()
+
+    if walkSpeedEnabled then
+        applyWalkSpeed()
+    end
+
+    notify("Walk speed set to " .. tostring(value))
 end)
 
 CreateToggle("Player", "Walk Speed Enabled", function(state)

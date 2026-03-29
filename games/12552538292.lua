@@ -394,7 +394,7 @@ end
 local eyefestationConns = {}
 
 local function setEyefestationActiveFalse(eyefestation)
-    local active = eyefestation:FindFirstChild("Active")
+    local active = eyefestation:WaitForChild("Active")
     if active and active:IsA("BoolValue") then
         active.Value = false
         -- Listen for changes and force off

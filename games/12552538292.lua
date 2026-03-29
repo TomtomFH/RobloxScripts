@@ -803,6 +803,13 @@ local workspaceTargetList = {
     { Name = "RidgeMirage", Color = Color3.fromRGB(255, 0, 0), Label = "Mirage", CustomLabel = "Keep fucking moving dumbass"  },
     { Name = "Harbinger", Color = Color3.fromRGB(255, 0, 0), Label = "Harbinger", CustomLabel = "ur cooked. give up" },
     { Name = "RidgeHarbinger", Color = Color3.fromRGB(255, 0, 0), Label = "Harbinger", CustomLabel = "ur cooked. give up" },
+    { Name = "Anglemonium", Color = Color3.fromRGB(255, 0, 0), Label = "Anglemonium" },
+    { Name = "Pinkimonium", Color = Color3.fromRGB(255, 0, 0), Label = "Pinkimonium" },
+    { Name = "Frogermonium", Color = Color3.fromRGB(255, 0, 0), Label = "Frogermonium" },
+    { Name = "Pandesmoker", Color = Color3.fromRGB(255, 0, 0), Label = "Pandesmoker" },
+    { Name = "Blitzemonium", Color = Color3.fromRGB(255, 0, 0), Label = "Blitzemonium" },
+    { Name = "Bleach", Color = Color3.fromRGB(255, 0, 0), Label = "Bleach" },
+    { Name = "A200", Color = Color3.fromRGB(255, 0, 0), Label = "A200" },
 }
 
 local function normalizeName(str)

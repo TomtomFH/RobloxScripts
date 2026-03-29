@@ -360,10 +360,46 @@ local featureState = {
     ForceHidePopups = false,
     DisableEyefestation = false,
     AutoCrouchEvent = false,
+    RemoveAtmosphere = false,
 }
 
 local activeESPs = {}
 local activeTracers = {}
+-- Store connection for RemoveAtmosphere
+local atmosphereConn = nil
+local playerFogConn = nil
+
+local function removeAllAtmospheres()
+    local Lighting = game:GetService("Lighting")
+    for _, inst in ipairs(Lighting:GetChildren()) do
+        if inst.ClassName == "Atmosphere" then
+            pcall(function() inst:Destroy() end)
+        end
+    end
+    if char.HumanoidRootPart.FogParticle then
+        char.HumanoidRootPart.FogParticle:Destroy()
+    end
+end
+
+local function setupAtmosphereListener()
+    local Lighting = game:GetService("Lighting")
+    if atmosphereConn then pcall(function() atmosphereConn:Disconnect() end) atmosphereConn = nil end
+    atmosphereConn = Lighting.ChildAdded:Connect(function(child)
+        if featureState.RemoveAtmosphere and child.ClassName == "Atmosphere" then
+            pcall(function() child:Destroy() end)
+        end
+    end)
+    if playerFogConn then pcall(function() playerFogConn:Disconnect() end) playerFogConn = nil end
+    playerFogConn = char.HumanoidRootPart.ChildAdded:Connect(function(child)
+        if featureState.RemoveAtmosphere and child.ClassName == "FogParticle" then
+            pcall(function() child:Destroy() end)
+        end
+    end)
+end
+
+local function cleanupAtmosphereListener()
+    if atmosphereConn then pcall(function() atmosphereConn:Disconnect() end) atmosphereConn = nil end
+end
 -- Store thread for AutoCrouchEvent
 local autoCrouchThread = nil
 
@@ -1036,6 +1072,13 @@ local function setFeature(name, enabled)
             -- show existing items immediately
             scanExistingItemsInRooms()
         end
+    elseif name == "RemoveAtmosphere" then
+        if enabled then
+            removeAllAtmospheres()
+            setupAtmosphereListener()
+        else
+            cleanupAtmosphereListener()
+        end
     elseif name == "AutoCrouchEvent" then
         if enabled then
             featureState.AutoCrouchEvent = true
@@ -1134,4 +1177,8 @@ end, false)
 
 CreateToggle("World", "Auto Crouch Event", function(state)
     setFeature("AutoCrouchEvent", state.Value)
+end, false)
+
+CreateToggle("World", "Remove Fog", function(state)
+    setFeature("RemoveAtmosphere", state.Value)
 end, false)

@@ -31,11 +31,15 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScript
 - **Pressure (Lobby)**
 	- Place ID: 12411473842
 	- Script: games/12411473842.lua
-	- https://www.roblox.com/games/12411473842/Pressure
+	- https://www.roblox.com/games/12411473842/
 - **Pressure (Hadal Blacksite)**
 	- Place ID: 12552538292
 	- Script: games/12552538292.lua
-	- https://www.roblox.com/games/12552538292/Pressure
+	- https://www.roblox.com/games/12552538292/
+- **Deadly Delivery**
+	- Place ID: 93044798454681
+	- Script: games/93044798454681.lua
+	- https://www.roblox.com/games/93044798454681/
 
 ## Notes
 

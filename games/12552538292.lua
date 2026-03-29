@@ -377,8 +377,6 @@ local function node_connectRoomToPrevious(room)
                                 beam.Parent = prevExit
                                 prevExit.Transparency = 0
                                 currEntrance.Transparency = 0
-                                table.insert(nodeInterRoomBeams[room], att0)
-                                table.insert(nodeInterRoomBeams[room], att1)
                                 table.insert(nodeInterRoomBeams[room], beam)
                                 connectedAny = true
                             end

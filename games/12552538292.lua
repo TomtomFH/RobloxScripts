@@ -412,8 +412,8 @@ local function scanAndDisableAllEyefestation()
     for _,conn in ipairs(eyefestationConns) do pcall(function() conn:Disconnect() end) end
     eyefestationConns = {}
     -- Find all Eyefestation descendants in workspace
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj.Name == "Eyefestation" and obj:IsA("Folder") then
+    for _, obj in ipairs(workspace.GameplayFolder.Rooms:GetDescendants()) do
+        if obj.Name == "Eyefestation" and obj:IsA("Model") then
             setEyefestationActiveFalse(obj)
         end
     end
@@ -421,7 +421,7 @@ end
 
 local function setupEyefestationListener()
     -- Listen for new Eyefestation folders
-    local conn = workspace.DescendantAdded:Connect(function(obj)
+    local conn = workspace.GameplayFolder.Rooms.DescendantAdded:Connect(function(obj)
         if featureState.DisableEyefestation and obj.Name == "Eyefestation" and obj:IsA("Model") then
             setEyefestationActiveFalse(obj)
         end

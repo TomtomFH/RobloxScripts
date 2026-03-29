@@ -844,15 +844,25 @@ local function CreateNotification(text, color, duration)
 end
 
 local function createESP(target, color, customName)
-    if not target or not target:IsA("BasePart") then
+    if not target then
         return nil
     end
+
+    local adornee = target
+    if target:IsA("Model") then
+        adornee = target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart")
+    end
+
+    if not adornee or not adornee:IsA("BasePart") then
+        return nil
+    end
+
     local b = Instance.new("BillboardGui")
     b.Name = "ESPBillboard"
-    b.Adornee = target
+    b.Adornee = adornee
     b.AlwaysOnTop = true
     b.Size = UDim2.new(0, 100, 0, 100)
-    b.Parent = playerGui
+    b.Parent = adornee
 
     local f = Instance.new("Frame")
     f.Parent = b
@@ -888,10 +898,7 @@ local function createESP(target, color, customName)
     ls.Thickness = 2.5
     ls.Parent = l
 
-    -- register for cleanup
     activeESPs[b] = true
-    -- optional ESP type attribute is set by callers via fourth argument (backwards compatible)
-    -- note: some calls may update attribute after creation
     return b
 end
 

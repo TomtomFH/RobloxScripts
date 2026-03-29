@@ -155,6 +155,20 @@ CreateMenu("Pressure Lobby")
 CreateGroup("Pressure Lobby", "Main")
 CreateTab("Pressure Lobby", "Main", "Teleporter")
 
+
+local playerLabel, _ = CreateValueLabel("Teleporter", "Tracking: None")
+local function updatePlayerLabel()
+    if not playerLabel then return end
+    local target = getSelectedPlayer()
+    if selectedPlayerName == "" then
+        playerLabel.Text = "No target set."
+    elseif target then
+        playerLabel.Text = "Tracking: " .. target.DisplayName .. " (@" .. target.Name .. ")"
+    else
+        playerLabel.Text = "Player not found: " .. selectedPlayerName
+    end
+end
+
 CreateLabel("Teleporter", "Track one player and auto join/leave their teleporter")
 
 CreateInput("Teleporter", "Target Player", selectedPlayerName, "Set", function(textBox)
@@ -168,8 +182,13 @@ CreateInput("Teleporter", "Target Player", selectedPlayerName, "Set", function(t
     else
         notify("Target cleared")
     end
+    updatePlayerLabel()
 end)
+
+-- Initial label update
+updatePlayerLabel()
 
 CreateToggle("Teleporter", "Auto Follow Target", function(state)
     setEnabled(state.Value)
+    updatePlayerLabel()
 end, false)

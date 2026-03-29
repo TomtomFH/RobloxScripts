@@ -16,7 +16,7 @@ local function notify(message)
     end)
 end
 
-local teleRoot = Workspace:FindFirstChild("Teleporters") or Workspace:WaitForChild("Teleporters", 15)
+local teleRoot = Workspace:FindFirstChild("TeleportersV2") or Workspace:WaitForChild("TeleportersV2", 15)
 local eventsFolder = ReplicatedStorage:FindFirstChild("Events") or ReplicatedStorage:WaitForChild("Events", 10)
 local exitEvent = eventsFolder and (eventsFolder:FindFirstChild("ExitMatch") or eventsFolder:WaitForChild("ExitMatch", 10))
 
@@ -84,7 +84,7 @@ end
 local function bindTeleporter(teleporter)
     local main = teleporter:FindFirstChild("Main") or teleporter:WaitForChild("Main", 5)
     local billboardGui = main and (main:FindFirstChild("BillboardGui") or main:WaitForChild("BillboardGui", 5))
-    local frame = billboardGui and (billboardGui:FindFirstChild("Frame") or billboardGui:WaitForChild("Frame", 5))
+    local frame = billboardGui and (billboardGui:FindFirstChild("Hosted") or billboardGui:WaitForChild("Hosted", 5))
     local slots = frame and (frame:FindFirstChild("Frame") or frame:WaitForChild("Frame", 5))
     if not slots then
         return

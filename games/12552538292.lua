@@ -798,7 +798,7 @@ local workspaceTargetList = {
     { Name = "A60", Color = Color3.fromRGB(255, 0, 0), Label = "A60" },
     { Name = "RidgeA60", Color = Color3.fromRGB(255, 0, 0), Label = "A60" },
     { Name = "Pipsqueak", Color = Color3.fromRGB(255, 0, 0), Label = "Pipsqueak", remove = true },
-    { Name = "Parasite", Color = Color3.fromRGB(255, 0, 0), Label = "Parasite", remove = true },
+    { Name = "Parasite", Color = Color3.fromRGB(255, 0, 0), Label = "Parasite"},
     { Name = "Mirage", Color = Color3.fromRGB(255, 0, 0), Label = "Mirage", CustomLabel = "Keep fucking moving dumbass" },
     { Name = "RidgeMirage", Color = Color3.fromRGB(255, 0, 0), Label = "Mirage", CustomLabel = "Keep fucking moving dumbass"  },
     { Name = "Harbinger", Color = Color3.fromRGB(255, 0, 0), Label = "Harbinger", CustomLabel = "ur cooked. give up" },

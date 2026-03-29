@@ -12,6 +12,10 @@ local gameplayFolder = workspace:WaitForChild("GameplayFolder", 60)
 local roomsFolder = gameplayFolder:WaitForChild("Rooms", 60)
 local monstersFolder = gameplayFolder:WaitForChild("Monsters", 60)
 
+local player = players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local char = player.Character or player.CharacterAdded:Wait()
+
 -- BEGIN Inlined Node Visualizer
 local do_node_visualizer = true
 local nodeRoomDrawn = {}
@@ -353,10 +357,108 @@ local featureState = {
     ItemESP = false,
     Notifications = false,
     MonsterVisuals = false,
+    ForceHidePopups = false,
+    DisableEyefestation = false,
+    AutoCrouchEvent = false,
 }
 
 local activeESPs = {}
 local activeTracers = {}
+-- Store thread for AutoCrouchEvent
+local autoCrouchThread = nil
+
+local function startAutoCrouchEvent()
+    if autoCrouchThread then return end
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local remote = ReplicatedStorage:WaitForChild("CrouchEvent")
+    autoCrouchThread = task.spawn(function()
+        while featureState.AutoCrouchEvent do
+            pcall(function()
+                remote:FireServer(true)
+            end)
+            task.wait(0.5)
+            pcall(function()
+                remote:FireServer(false)
+            end)
+            task.wait(0.5)
+        end
+        autoCrouchThread = nil
+    end)
+end
+
+local function stopAutoCrouchEvent()
+    featureState.AutoCrouchEvent = false
+    -- thread will exit on next loop
+end
+-- Store connections for Eyefestation disabling
+local eyefestationConns = {}
+
+local function setEyefestationActiveFalse(eyefestation)
+    local active = eyefestation:FindFirstChild("Active")
+    if active and active:IsA("BoolValue") then
+        active.Value = false
+        -- Listen for changes and force off
+        local conn = active:GetPropertyChangedSignal("Value"):Connect(function()
+            if featureState.DisableEyefestation then
+                active.Value = false
+            end
+        end)
+        table.insert(eyefestationConns, conn)
+    end
+end
+
+local function scanAndDisableAllEyefestation()
+    -- Disconnect previous
+    for _,conn in ipairs(eyefestationConns) do pcall(function() conn:Disconnect() end) end
+    eyefestationConns = {}
+    -- Find all Eyefestation descendants in workspace
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj.Name == "Eyefestation" and obj:IsA("Folder") then
+            setEyefestationActiveFalse(obj)
+        end
+    end
+end
+
+local function setupEyefestationListener()
+    -- Listen for new Eyefestation folders
+    local conn = workspace.DescendantAdded:Connect(function(obj)
+        if featureState.DisableEyefestation and obj.Name == "Eyefestation" and obj:IsA("Model") then
+            setEyefestationActiveFalse(obj)
+        end
+    end)
+    table.insert(eyefestationConns, conn)
+end
+
+local function cleanupEyefestationConns()
+    for _,conn in ipairs(eyefestationConns) do pcall(function() conn:Disconnect() end) end
+    eyefestationConns = {}
+end
+
+-- Store connection for cleanup
+local popupsConn = nil
+
+local function setPopupsVisibleFalse()
+    local main = playerGui:WaitForChild("Main")
+    if not main then return end
+    local popups = main:WaitForChild("Popups")
+    if not popups then return end
+    popups.Visible = false
+    if popupsConn then pcall(function() popupsConn:Disconnect() end) popupsConn = nil end
+    popupsConn = popups:GetPropertyChangedSignal("Visible"):Connect(function()
+        if featureState.ForceHidePopups then
+            popups.Visible = false
+        end
+    end)
+end
+
+local function cleanupPopupsConn()
+    if popupsConn then pcall(function() popupsConn:Disconnect() end) popupsConn = nil end
+    local main = playerGui:WaitForChild("Main")
+    if not main then return end
+    local popups = main:WaitForChild("Popups")
+    if not popups then return end
+    popups.Visible = true
+end
 
 -- store original lighting so we can restore when toggled off
 local originalLighting = {
@@ -382,10 +484,6 @@ local function restoreLighting()
     lighting.GlobalShadows = originalLighting.GlobalShadows
     lighting.OutdoorAmbient = originalLighting.OutdoorAmbient
 end
-
-local player = players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
-local char = player.Character or player.CharacterAdded:Wait()
 
 -- Load UI Library
 loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/Lib.lua", true))()
@@ -938,6 +1036,26 @@ local function setFeature(name, enabled)
             -- show existing items immediately
             scanExistingItemsInRooms()
         end
+    elseif name == "AutoCrouchEvent" then
+        if enabled then
+            featureState.AutoCrouchEvent = true
+            startAutoCrouchEvent()
+        else
+            stopAutoCrouchEvent()
+        end
+    elseif name == "DisableEyefestation" then
+        if enabled then
+            scanAndDisableAllEyefestation()
+            setupEyefestationListener()
+        else
+            cleanupEyefestationConns()
+        end
+    elseif name == "ForceHidePopups" then
+        if enabled then
+            setPopupsVisibleFalse()
+        else
+            cleanupPopupsConn()
+        end
     elseif name == "DoorHandling" then
         if not enabled then
             clearESPsOfType("Door")
@@ -993,6 +1111,10 @@ CreateToggle("Visuals", "Door Visuals", function(state)
     setFeature("DoorHandling", state.Value)
 end, false)
 
+CreateToggle("Visuals", "Force Hide Popups", function(state)
+    setFeature("ForceHidePopups", state.Value)
+end, false)
+
 CreateLabel("World", "Environment and utility features")
 CreateToggle("World", "Fullbright", function(state)
     setFeature("Fullbright", state.Value)
@@ -1004,4 +1126,12 @@ end, false)
 
 CreateToggle("World", "Notifications", function(state)
     setFeature("Notifications", state.Value)
+end, false)
+
+CreateToggle("World", "Disable Eyefestation", function(state)
+    setFeature("DisableEyefestation", state.Value)
+end, false)
+
+CreateToggle("World", "Auto Crouch Event", function(state)
+    setFeature("AutoCrouchEvent", state.Value)
 end, false)

@@ -1,8 +1,6 @@
 -- PRESSURE (https://www.roblox.com/games/12552538292/)
 -- PART: Hadal Blacksite
-
 -- Visual Node Path: inlined below (previously loaded remotely)
-
 local workspace = game:GetService("Workspace")
 local lighting = game:GetService("Lighting")
 local players = game:GetService("Players")
@@ -26,7 +24,9 @@ local nodeVisualizerEnabled = false
 
 local function node_getConnections(part)
     local folder = part and part:FindFirstChild("Connections")
-    if not folder then return {} end
+    if not folder then
+        return {}
+    end
     local t = {}
     for _, obj in ipairs(folder:GetChildren()) do
         if obj:IsA("ObjectValue") and obj.Value then
@@ -37,14 +37,21 @@ local function node_getConnections(part)
 end
 
 local function node_buildPath(startNode, endNode)
-    if not startNode or not endNode then return nil end
+    if not startNode or not endNode then
+        return nil
+    end
     local queue = {startNode}
-    local visited = {[startNode] = true}
+    local visited = {
+        [startNode] = true
+    }
     local parent = {}
     local found = false
     while #queue > 0 do
         local current = table.remove(queue, 1)
-        if current == endNode then found = true; break end
+        if current == endNode then
+            found = true;
+            break
+        end
         for _, nxt in ipairs(node_getConnections(current)) do
             if nxt and not visited[nxt] then
                 visited[nxt] = true
@@ -53,7 +60,9 @@ local function node_buildPath(startNode, endNode)
             end
         end
     end
-    if not found then return nil end
+    if not found then
+        return nil
+    end
     local path = {}
     local n = endNode
     while n do
@@ -64,7 +73,9 @@ local function node_buildPath(startNode, endNode)
 end
 
 local function node_drawPath(path, room)
-    if not path then return end
+    if not path then
+        return
+    end
     nodeRoomDrawn[room] = nodeRoomDrawn[room] or {}
     for _, part in ipairs(path) do
         if part and part:IsA("BasePart") then
@@ -103,24 +114,36 @@ local function node_clearRoomDrawings(room)
     local list = nodeRoomDrawn[room]
     if list then
         for _, inst in ipairs(list) do
-            if inst and inst.Parent then pcall(function() inst:Destroy() end) end
+            if inst and inst.Parent then
+                pcall(function()
+                    inst:Destroy()
+                end)
+            end
         end
         nodeRoomDrawn[room] = nil
     end
     if nodeInterRoomBeams[room] then
         for _, b in ipairs(nodeInterRoomBeams[room]) do
-            if b and b.Parent then pcall(function() b:Destroy() end) end
+            if b and b.Parent then
+                pcall(function()
+                    b:Destroy()
+                end)
+            end
         end
         nodeInterRoomBeams[room] = nil
     end
     if nodeRoomParts[room] then
-        for part,_ in pairs(nodeRoomParts[room]) do
+        for part, _ in pairs(nodeRoomParts[room]) do
             if part then
                 if nodeOriginalTransparency[part] ~= nil then
-                    pcall(function() part.Transparency = nodeOriginalTransparency[part] end)
+                    pcall(function()
+                        part.Transparency = nodeOriginalTransparency[part]
+                    end)
                     nodeOriginalTransparency[part] = nil
                 else
-                    pcall(function() part.Transparency = 1 end)
+                    pcall(function()
+                        part.Transparency = 1
+                    end)
                 end
             end
         end
@@ -129,12 +152,16 @@ local function node_clearRoomDrawings(room)
 end
 
 local function node_getClosestExitNode(entrance, nodesFolder)
-    if not nodesFolder then return nil end
+    if not nodesFolder then
+        return nil
+    end
     local closestExit = nil
     local closestDistance = math.huge
     for _, node in ipairs(nodesFolder:GetChildren()) do
         if node and node:IsA("BasePart") and node.Name:match("Exit") then
-            local ok, dist = pcall(function() return (node.Position - entrance.Position).Magnitude end)
+            local ok, dist = pcall(function()
+                return (node.Position - entrance.Position).Magnitude
+            end)
             if ok and dist and dist < closestDistance then
                 closestDistance = dist
                 closestExit = node
@@ -146,7 +173,7 @@ end
 
 local function node_validateAndFixNodeConnections(room)
     task.spawn(function()
-        while true do
+        while room and room.Parent do
             local nodesFolder = room:FindFirstChild("EntityNodes")
             if nodesFolder then
                 for _, node in ipairs(nodesFolder:GetChildren()) do
@@ -157,35 +184,59 @@ local function node_validateAndFixNodeConnections(room)
                             conFolder.Name = "Connections"
                             conFolder.Parent = node
                         end
-                        local prevExists = conFolder:FindFirstChild("Previous") and conFolder.Previous:IsA("ObjectValue") and conFolder.Previous.Value ~= nil
-                        local nextExists = conFolder:FindFirstChild("Next") and conFolder.Next:IsA("ObjectValue") and conFolder.Next.Value ~= nil
+                        local prevExists = conFolder:FindFirstChild("Previous") and
+                                               conFolder.Previous:IsA("ObjectValue") and conFolder.Previous.Value ~= nil
+                        local nextExists = conFolder:FindFirstChild("Next") and conFolder.Next:IsA("ObjectValue") and
+                                               conFolder.Next.Value ~= nil
                         if not conFolder:FindFirstChild("Previous") then
-                            local prev = Instance.new("ObjectValue") prev.Name = "Previous" prev.Parent = conFolder
+                            local prev = Instance.new("ObjectValue")
+                            prev.Name = "Previous"
+                            prev.Parent = conFolder
                         end
                         if not conFolder:FindFirstChild("Next") then
-                            local next = Instance.new("ObjectValue") next.Name = "Next" next.Parent = conFolder
+                            local next = Instance.new("ObjectValue")
+                            next.Name = "Next"
+                            next.Parent = conFolder
                         end
                         if not prevExists then
                             local allNodes = nodesFolder:GetChildren()
                             local closestPrev, closestDist = nil, math.huge
                             for _, other in ipairs(allNodes) do
                                 if other ~= node and other:IsA("BasePart") then
-                                    local ok, dist = pcall(function() return (node.Position - other.Position).Magnitude end)
-                                    if ok and dist and dist < closestDist then closestDist = dist; closestPrev = other end
+                                    local ok, dist = pcall(function()
+                                        return (node.Position - other.Position).Magnitude
+                                    end)
+                                    if ok and dist and dist < closestDist then
+                                        closestDist = dist;
+                                        closestPrev = other
+                                    end
                                 end
                             end
-                            if closestPrev then pcall(function() conFolder.Previous.Value = closestPrev end) end
+                            if closestPrev then
+                                pcall(function()
+                                    conFolder.Previous.Value = closestPrev
+                                end)
+                            end
                         end
                         if not nextExists then
                             local allNodes = nodesFolder:GetChildren()
                             local closestNext, closestDist = nil, math.huge
                             for _, other in ipairs(allNodes) do
                                 if other ~= node and other:IsA("BasePart") then
-                                    local ok, dist = pcall(function() return (node.Position - other.Position).Magnitude end)
-                                    if ok and dist and dist < closestDist then closestDist = dist; closestNext = other end
+                                    local ok, dist = pcall(function()
+                                        return (node.Position - other.Position).Magnitude
+                                    end)
+                                    if ok and dist and dist < closestDist then
+                                        closestDist = dist;
+                                        closestNext = other
+                                    end
                                 end
                             end
-                            if closestNext then pcall(function() conFolder.Next.Value = closestNext end) end
+                            if closestNext then
+                                pcall(function()
+                                    conFolder.Next.Value = closestNext
+                                end)
+                            end
                         end
                     end
                 end
@@ -196,29 +247,47 @@ local function node_validateAndFixNodeConnections(room)
 end
 
 local function node_drawRoomNodeConnections(room)
-    if not nodeVisualizerEnabled then node_clearRoomDrawings(room); return end
+    if not nodeVisualizerEnabled then
+        node_clearRoomDrawings(room);
+        return
+    end
     node_clearRoomDrawings(room)
     local nodesFolder = room and room:FindFirstChild("EntityNodes")
-    if not nodesFolder then return end
+    if not nodesFolder then
+        return
+    end
     nodeRoomDrawn[room] = nodeRoomDrawn[room] or {}
     for _, node in ipairs(nodesFolder:GetChildren()) do
         if node and node:IsA("BasePart") then
             local conFolder = node:FindFirstChild("Connections")
             if conFolder then
                 for _, child in ipairs(conFolder:GetChildren()) do
-                    if child.Name:match("^Previous") and child:IsA("ObjectValue") and child.Value and child.Value:IsA("BasePart") then
+                    if child.Name:match("^Previous") and child:IsA("ObjectValue") and child.Value and
+                        child.Value:IsA("BasePart") then
                         local a, b = node, child.Value
                         -- record original transparency before changing
-                        if nodeOriginalTransparency[a] == nil then nodeOriginalTransparency[a] = a.Transparency end
-                        if nodeOriginalTransparency[b] == nil then nodeOriginalTransparency[b] = b.Transparency end
+                        if nodeOriginalTransparency[a] == nil then
+                            nodeOriginalTransparency[a] = a.Transparency
+                        end
+                        if nodeOriginalTransparency[b] == nil then
+                            nodeOriginalTransparency[b] = b.Transparency
+                        end
                         nodeRoomParts[room] = nodeRoomParts[room] or {}
                         nodeRoomParts[room][a] = true
                         nodeRoomParts[room][b] = true
                         a.Transparency = 0
                         b.Transparency = 0
-                        local att0 = Instance.new("Attachment") att0.Parent = a
-                        local att1 = Instance.new("Attachment") att1.Parent = b
-                        local beam = Instance.new("Beam") beam.Attachment0 = att0 beam.Attachment1 = att1 beam.FaceCamera = true beam.Width0 = 0.2 beam.Width1 = 0.2 beam.Parent = a
+                        local att0 = Instance.new("Attachment")
+                        att0.Parent = a
+                        local att1 = Instance.new("Attachment")
+                        att1.Parent = b
+                        local beam = Instance.new("Beam")
+                        beam.Attachment0 = att0
+                        beam.Attachment1 = att1
+                        beam.FaceCamera = true
+                        beam.Width0 = 0.2
+                        beam.Width1 = 0.2
+                        beam.Parent = a
                         table.insert(nodeRoomDrawn[room], att0)
                         table.insert(nodeRoomDrawn[room], att1)
                         table.insert(nodeRoomDrawn[room], beam)
@@ -232,7 +301,9 @@ local function node_drawRoomNodeConnections(room)
         local closestExit = node_getClosestExitNode(entrance, nodesFolder)
         if closestExit then
             local path = node_buildPath(entrance, closestExit)
-            if path then node_drawPath(path, room) end
+            if path then
+                node_drawPath(path, room)
+            end
         end
     end
 end
@@ -242,7 +313,9 @@ local function node_connectRoomInternal(room)
         while true do
             local nodes = room:FindFirstChild("EntityNodes")
             if nodes then
-                if nodeVisualizerEnabled then node_drawRoomNodeConnections(room) end
+                if nodeVisualizerEnabled then
+                    node_drawRoomNodeConnections(room)
+                end
                 break
             end
             task.wait(0.2)
@@ -253,45 +326,68 @@ end
 local function node_connectRoomToPrevious(room)
     task.spawn(function()
         while true do
-            local entrancesFolder = room:FindFirstChild("Entrances")
-            if entrancesFolder then
-                if not nodeVisualizerEnabled then
-                    if nodeInterRoomBeams[room] then
-                        for _, b in ipairs(nodeInterRoomBeams[room]) do if b and b.Parent then pcall(function() b:Destroy() end) end end
-                        nodeInterRoomBeams[room] = nil
-                    end
-                    break
-                end
+            local entrancesFolder = room:WaitForChild("Entrances", 5)
+            if not entrancesFolder then
+                return
+            end
+            if not nodeVisualizerEnabled then
                 if nodeInterRoomBeams[room] then
-                    for _, beam in ipairs(nodeInterRoomBeams[room]) do if beam and beam.Parent then beam:Destroy() end end
+                    for _, b in ipairs(nodeInterRoomBeams[room]) do
+                        if b and b.Parent then
+                            pcall(function()
+                                b:Destroy()
+                            end)
+                        end
+                    end
+                    nodeInterRoomBeams[room] = nil
                 end
-                nodeInterRoomBeams[room] = {}
-                local connectedAny = false
-                for _, door in ipairs(entrancesFolder:GetChildren()) do
-                    local exitRef = door:FindFirstChild("Exit")
-                    local enterRef = door:FindFirstChild("Enter")
-                    if exitRef and exitRef.Value and enterRef and enterRef.Value then
-                        local prevRoom = exitRef.Value
-                        local prevNodes = prevRoom:FindFirstChild("EntityNodes")
-                        local currNodes = room:FindFirstChild("EntityNodes")
-                        if prevNodes and currNodes then
-                            local currEntrance = currNodes:FindFirstChild("Entrance")
-                            if currEntrance then
-                                local prevExit = node_getClosestExitNode(currEntrance, prevNodes)
-                                if prevExit and prevExit:IsA("BasePart") and currEntrance:IsA("BasePart") then
-                                    local att0 = Instance.new("Attachment") att0.Parent = prevExit
-                                    local att1 = Instance.new("Attachment") att1.Parent = currEntrance
-                                    local beam = Instance.new("Beam") beam.Attachment0 = att0 beam.Attachment1 = att1 beam.FaceCamera = true beam.Width0 = 0.2 beam.Width1 = 0.2 beam.Parent = prevExit
-                                    prevExit.Transparency = 0
-                                    currEntrance.Transparency = 0
-                                    table.insert(nodeInterRoomBeams[room], beam)
-                                    connectedAny = true
-                                end
+                break
+            end
+            if nodeInterRoomBeams[room] then
+                for _, beam in ipairs(nodeInterRoomBeams[room]) do
+                    if beam and beam.Parent then
+                        beam:Destroy()
+                    end
+                end
+            end
+            nodeInterRoomBeams[room] = {}
+            local connectedAny = false
+            for _, door in ipairs(entrancesFolder:GetChildren()) do
+                local exitRef = door:FindFirstChild("Exit")
+                local enterRef = door:FindFirstChild("Enter")
+                if exitRef and exitRef.Value and enterRef and enterRef.Value then
+                    local prevRoom = exitRef.Value
+                    local prevNodes = prevRoom:FindFirstChild("EntityNodes")
+                    local currNodes = room:FindFirstChild("EntityNodes")
+                    if prevNodes and currNodes then
+                        local currEntrance = currNodes:FindFirstChild("Entrance")
+                        if currEntrance then
+                            local prevExit = node_getClosestExitNode(currEntrance, prevNodes)
+                            if prevExit and prevExit:IsA("BasePart") and currEntrance:IsA("BasePart") then
+                                local att0 = Instance.new("Attachment")
+                                att0.Parent = prevExit
+                                local att1 = Instance.new("Attachment")
+                                att1.Parent = currEntrance
+                                local beam = Instance.new("Beam")
+                                beam.Attachment0 = att0
+                                beam.Attachment1 = att1
+                                beam.FaceCamera = true
+                                beam.Width0 = 0.2
+                                beam.Width1 = 0.2
+                                beam.Parent = prevExit
+                                prevExit.Transparency = 0
+                                currEntrance.Transparency = 0
+                                table.insert(nodeInterRoomBeams[room], att0)
+                                table.insert(nodeInterRoomBeams[room], att1)
+                                table.insert(nodeInterRoomBeams[room], beam)
+                                connectedAny = true
                             end
                         end
                     end
                 end
-                if connectedAny then break end
+            end
+            if connectedAny then
+                break
             end
             task.wait(0.2)
         end
@@ -301,18 +397,18 @@ end
 local function node_setupNodeListener(room)
     task.spawn(function()
         while true do
-            local nodes = room:FindFirstChild("EntityNodes")
-            if nodes then
-                nodes.ChildAdded:Connect(function()
-                    node_drawRoomNodeConnections(room)
-                    node_connectRoomToPrevious(room)
-                end)
-                nodes.ChildRemoved:Connect(function()
-                    node_drawRoomNodeConnections(room)
-                    node_connectRoomToPrevious(room)
-                end)
-                break
+            local nodes = room:WaitForChild("EntityNodes", 5)
+            if not nodes then
+                return
             end
+            nodes.ChildAdded:Connect(function()
+                node_drawRoomNodeConnections(room)
+                node_connectRoomToPrevious(room)
+            end)
+            nodes.ChildRemoved:Connect(function()
+                node_drawRoomNodeConnections(room)
+                node_connectRoomToPrevious(room)
+            end)
             task.wait(0.2)
         end
     end)
@@ -325,8 +421,12 @@ local function node_setupRoom(room)
     node_validateAndFixNodeConnections(room)
 end
 
-for _, room in ipairs(roomsFolder:GetChildren()) do node_setupRoom(room) end
-roomsFolder.ChildAdded:Connect(function(room) node_setupRoom(room) end)
+for _, room in ipairs(roomsFolder:GetChildren()) do
+    node_setupRoom(room)
+end
+roomsFolder.ChildAdded:Connect(function(room)
+    node_setupRoom(room)
+end)
 
 local function enableVisualizer()
     nodeVisualizerEnabled = true
@@ -338,7 +438,9 @@ end
 
 local function disableVisualizer()
     nodeVisualizerEnabled = false
-    for _, room in ipairs(roomsFolder:GetChildren()) do node_clearRoomDrawings(room) end
+    for _, room in ipairs(roomsFolder:GetChildren()) do
+        node_clearRoomDrawings(room)
+    end
 end
 
 -- expose for compatibility
@@ -349,8 +451,6 @@ _G.NodeVisualizerDisable = disableVisualizer
 
 -- Feature manager state and registries
 local featureState = {
-    ESP = false,
-    Tracers = false,
     Fullbright = false,
     NodeVisualizer = false,
     DoorHandling = false,
@@ -360,51 +460,186 @@ local featureState = {
     ForceHidePopups = false,
     DisableEyefestation = false,
     AutoCrouchEvent = false,
-    RemoveAtmosphere = false,
+    RemoveAtmosphere = false
 }
 
 local activeESPs = {}
 local activeTracers = {}
--- Store connection for RemoveAtmosphere
 local atmosphereConn = nil
 local playerFogConn = nil
+local playerFogDescConn = nil
+local playerFogLoopId = 0
 
-local function removeAllAtmospheres()
-    local Lighting = game:GetService("Lighting")
-    for _, inst in ipairs(Lighting:GetChildren()) do
-        if inst.ClassName == "Atmosphere" then
-            pcall(function() inst:Destroy() end)
+local function destroyFogLikeObject(obj)
+    if not obj then
+        return
+    end
+
+    if obj:IsA("Atmosphere") then
+        pcall(function()
+            obj:Destroy()
+        end)
+        return
+    end
+
+    if obj.Name == "FogParticle" then
+        pcall(function()
+            obj:Destroy()
+        end)
+        return
+    end
+end
+
+local function removeFogParticle()
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then
+        return
+    end
+
+    local fog = hrp:FindFirstChild("FogParticle")
+    if fog then
+        pcall(function()
+            fog:Destroy()
+        end)
+    end
+
+    for _, inst in ipairs(hrp:GetChildren()) do
+        if inst.Name == "FogParticle" then
+            pcall(function()
+                inst:Destroy()
+            end)
         end
     end
-    if char.HumanoidRootPart.FogParticle then
-        char.HumanoidRootPart.FogParticle:Destroy()
+
+    for _, inst in ipairs(hrp:GetDescendants()) do
+        if inst.Name == "FogParticle" then
+            pcall(function()
+                inst:Destroy()
+            end)
+        end
     end
+end
+
+local function removeAllAtmospheres()
+    for _, inst in ipairs(lighting:GetChildren()) do
+        if inst:IsA("Atmosphere") then
+            pcall(function()
+                inst:Destroy()
+            end)
+        end
+    end
+
+    removeFogParticle()
+end
+
+local function bindPlayerFogListener()
+    local hrp = char and char:WaitForChild("HumanoidRootPart", 10)
+    if not hrp then
+        return
+    end
+
+    if playerFogConn then
+        pcall(function()
+            playerFogConn:Disconnect()
+        end)
+        playerFogConn = nil
+    end
+
+    if playerFogDescConn then
+        pcall(function()
+            playerFogDescConn:Disconnect()
+        end)
+        playerFogDescConn = nil
+    end
+
+    removeFogParticle()
+
+    playerFogConn = hrp.ChildAdded:Connect(function(child)
+        if featureState.RemoveAtmosphere and child.Name == "FogParticle" then
+            pcall(function()
+                child:Destroy()
+            end)
+        end
+    end)
+
+    playerFogDescConn = hrp.DescendantAdded:Connect(function(desc)
+        if featureState.RemoveAtmosphere and desc.Name == "FogParticle" then
+            pcall(function()
+                desc:Destroy()
+            end)
+        end
+    end)
+
+    playerFogLoopId = playerFogLoopId + 1
+    local loopId = playerFogLoopId
+
+    task.spawn(function()
+        while featureState.RemoveAtmosphere and char and char.Parent and loopId == playerFogLoopId do
+            removeFogParticle()
+            task.wait(0.1)
+        end
+    end)
 end
 
 local function setupAtmosphereListener()
-    local Lighting = game:GetService("Lighting")
-    if atmosphereConn then pcall(function() atmosphereConn:Disconnect() end) atmosphereConn = nil end
-    atmosphereConn = Lighting.ChildAdded:Connect(function(child)
-        if featureState.RemoveAtmosphere and child.ClassName == "Atmosphere" then
-            pcall(function() child:Destroy() end)
+    if atmosphereConn then
+        pcall(function()
+            atmosphereConn:Disconnect()
+        end)
+        atmosphereConn = nil
+    end
+
+    atmosphereConn = lighting.ChildAdded:Connect(function(child)
+        if featureState.RemoveAtmosphere and child:IsA("Atmosphere") then
+            pcall(function()
+                child:Destroy()
+            end)
         end
     end)
-    if playerFogConn then pcall(function() playerFogConn:Disconnect() end) playerFogConn = nil end
-    playerFogConn = char.HumanoidRootPart.ChildAdded:Connect(function(child)
-        if featureState.RemoveAtmosphere and child.ClassName == "FogParticle" then
-            pcall(function() child:Destroy() end)
-        end
-    end)
+
+    bindPlayerFogListener()
 end
 
 local function cleanupAtmosphereListener()
-    if atmosphereConn then pcall(function() atmosphereConn:Disconnect() end) atmosphereConn = nil end
+    playerFogLoopId = playerFogLoopId + 1
+
+    if atmosphereConn then
+        pcall(function()
+            atmosphereConn:Disconnect()
+        end)
+        atmosphereConn = nil
+    end
+
+    if playerFogConn then
+        pcall(function()
+            playerFogConn:Disconnect()
+        end)
+        playerFogConn = nil
+    end
+
+    if playerFogDescConn then
+        pcall(function()
+            playerFogDescConn:Disconnect()
+        end)
+        playerFogDescConn = nil
+    end
 end
--- Store thread for AutoCrouchEvent
+
+player.CharacterAdded:Connect(function(newChar)
+    char = newChar
+    local hrp = newChar:WaitForChild("HumanoidRootPart", 10)
+    if featureState.RemoveAtmosphere and hrp then
+        setupAtmosphereListener()
+        removeAllAtmospheres()
+    end
+end)
+
 local autoCrouchThread = nil
 
 local function startAutoCrouchEvent()
-    if autoCrouchThread then return end
+    if autoCrouchThread then
+        return
+    end
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local remote = ReplicatedStorage:WaitForChild("CrouchEvent")
     autoCrouchThread = task.spawn(function()
@@ -430,22 +665,27 @@ end
 local eyefestationConns = {}
 
 local function setEyefestationActiveFalse(eyefestation)
-    local active = eyefestation:WaitForChild("Active")
-    if active and active:IsA("BoolValue") then
-        active.Value = false
-        -- Listen for changes and force off
-        local conn = active:GetPropertyChangedSignal("Value"):Connect(function()
-            if featureState.DisableEyefestation then
-                active.Value = false
-            end
-        end)
-        table.insert(eyefestationConns, conn)
+    local active = eyefestation:FindFirstChild("Active") or eyefestation:WaitForChild("Active", 5)
+    if not active or not active:IsA("BoolValue") then
+        return
     end
+    active.Value = false
+    -- Listen for changes and force off
+    local conn = active:GetPropertyChangedSignal("Value"):Connect(function()
+        if featureState.DisableEyefestation then
+            active.Value = false
+        end
+    end)
+    table.insert(eyefestationConns, conn)
 end
 
 local function scanAndDisableAllEyefestation()
     -- Disconnect previous
-    for _,conn in ipairs(eyefestationConns) do pcall(function() conn:Disconnect() end) end
+    for _, conn in ipairs(eyefestationConns) do
+        pcall(function()
+            conn:Disconnect()
+        end)
+    end
     eyefestationConns = {}
     -- Find all Eyefestation descendants in workspace
     for _, obj in ipairs(workspace.GameplayFolder.Rooms:GetDescendants()) do
@@ -466,7 +706,11 @@ local function setupEyefestationListener()
 end
 
 local function cleanupEyefestationConns()
-    for _,conn in ipairs(eyefestationConns) do pcall(function() conn:Disconnect() end) end
+    for _, conn in ipairs(eyefestationConns) do
+        pcall(function()
+            conn:Disconnect()
+        end)
+    end
     eyefestationConns = {}
 end
 
@@ -474,12 +718,21 @@ end
 local popupsConn = nil
 
 local function setPopupsVisibleFalse()
-    local main = playerGui:WaitForChild("Main")
-    if not main then return end
-    local popups = main:WaitForChild("Popups")
-    if not popups then return end
+    local main = playerGui:FindFirstChild("Main") or playerGui:WaitForChild("Main", 5)
+    if not main then
+        return
+    end
+    local popups = main:FindFirstChild("Popups") or main:WaitForChild("Popups", 5)
+    if not popups then
+        return
+    end
     popups.Visible = false
-    if popupsConn then pcall(function() popupsConn:Disconnect() end) popupsConn = nil end
+    if popupsConn then
+        pcall(function()
+            popupsConn:Disconnect()
+        end)
+        popupsConn = nil
+    end
     popupsConn = popups:GetPropertyChangedSignal("Visible"):Connect(function()
         if featureState.ForceHidePopups then
             popups.Visible = false
@@ -488,24 +741,36 @@ local function setPopupsVisibleFalse()
 end
 
 local function cleanupPopupsConn()
-    if popupsConn then pcall(function() popupsConn:Disconnect() end) popupsConn = nil end
+    if popupsConn then
+        pcall(function()
+            popupsConn:Disconnect()
+        end)
+        popupsConn = nil
+    end
     local main = playerGui:WaitForChild("Main")
-    if not main then return end
+    if not main then
+        return
+    end
     local popups = main:WaitForChild("Popups")
-    if not popups then return end
+    if not popups then
+        return
+    end
     popups.Visible = true
 end
 
 -- store original lighting so we can restore when toggled off
-local originalLighting = {
-    Brightness = lighting.Brightness,
-    ClockTime = lighting.ClockTime,
-    FogEnd = lighting.FogEnd,
-    GlobalShadows = lighting.GlobalShadows,
-    OutdoorAmbient = lighting.OutdoorAmbient,
-}
+local originalLighting = nil
 
 local function applyFullbright()
+    if not originalLighting then
+        originalLighting = {
+            Brightness = lighting.Brightness,
+            ClockTime = lighting.ClockTime,
+            FogEnd = lighting.FogEnd,
+            GlobalShadows = lighting.GlobalShadows,
+            OutdoorAmbient = lighting.OutdoorAmbient,
+        }
+    end
     lighting.Brightness = 2
     lighting.ClockTime = 14
     lighting.FogEnd = 100000
@@ -514,11 +779,13 @@ local function applyFullbright()
 end
 
 local function restoreLighting()
+    if not originalLighting then return end
     lighting.Brightness = originalLighting.Brightness
     lighting.ClockTime = originalLighting.ClockTime
     lighting.FogEnd = originalLighting.FogEnd
     lighting.GlobalShadows = originalLighting.GlobalShadows
     lighting.OutdoorAmbient = originalLighting.OutdoorAmbient
+    originalLighting = nil
 end
 
 -- Load UI Library
@@ -532,7 +799,9 @@ local function splitCamelCase(name)
 end
 
 local function CreateNotification(text, color, duration)
-    if not featureState.Notifications then return end
+    if not featureState.Notifications then
+        return
+    end
     duration = duration or 2.5
     color = color or Color3.fromRGB(255, 0, 0)
 
@@ -554,12 +823,18 @@ local function CreateNotification(text, color, duration)
     label.TextTransparency = 1
     label.Parent = gui
 
-    local fadeIn = tweenService:Create(label, TweenInfo.new(0.25), {TextTransparency = 0, TextStrokeTransparency = 0.5})
+    local fadeIn = tweenService:Create(label, TweenInfo.new(0.25), {
+        TextTransparency = 0,
+        TextStrokeTransparency = 0.5
+    })
     fadeIn:Play()
 
     fadeIn.Completed:Connect(function()
         task.delay(duration, function()
-            local fadeOut = tweenService:Create(label, TweenInfo.new(0.5), {TextTransparency = 1, TextStrokeTransparency = 1})
+            local fadeOut = tweenService:Create(label, TweenInfo.new(0.5), {
+                TextTransparency = 1,
+                TextStrokeTransparency = 1
+            })
             fadeOut:Play()
             fadeOut.Completed:Connect(function()
                 gui:Destroy()
@@ -569,12 +844,15 @@ local function CreateNotification(text, color, duration)
 end
 
 local function createESP(target, color, customName)
+    if not target or not target:IsA("BasePart") then
+        return nil
+    end
     local b = Instance.new("BillboardGui")
     b.Name = "ESPBillboard"
     b.Adornee = target
     b.AlwaysOnTop = true
     b.Size = UDim2.new(0, 100, 0, 100)
-    b.Parent = target
+    b.Parent = playerGui
 
     local f = Instance.new("Frame")
     f.Parent = b
@@ -618,13 +896,21 @@ local function createESP(target, color, customName)
 end
 
 local function clearESPsOfType(espType)
-    for inst,_ in pairs(activeESPs) do
-        if inst and inst.Parent then
+    for inst, _ in pairs(activeESPs) do
+        local remove = false
+        if not inst or not inst.Parent then
+            remove = true
+        else
             local t = inst:GetAttribute("ESPType")
             if t == espType then
-                pcall(function() inst:Destroy() end)
-                activeESPs[inst] = nil
+                pcall(function()
+                    inst:Destroy()
+                end)
+                remove = true
             end
+        end
+        if remove then
+            activeESPs[inst] = nil
         end
     end
 end
@@ -660,11 +946,9 @@ local function createTracer(target, color, espType)
         local targetPos = getTargetPosition(target)
         if targetPos then
             local viewportPos, onScreen = workspace.CurrentCamera:WorldToViewportPoint(targetPos)
-            if viewportPos.Z > 0 then
-                local screenCenter = Vector2.new(
-                    workspace.CurrentCamera.ViewportSize.X / 2,
-                    (workspace.CurrentCamera.ViewportSize.Y / 2) + 30
-                )
+            if onScreen and viewportPos.Z > 0 then
+                local screenCenter = Vector2.new(workspace.CurrentCamera.ViewportSize.X / 2,
+                    (workspace.CurrentCamera.ViewportSize.Y / 2) + 30)
                 tracer.From = screenCenter
                 tracer.To = Vector2.new(viewportPos.X, viewportPos.Y)
                 tracer.Visible = true
@@ -678,37 +962,38 @@ local function createTracer(target, color, espType)
     ancestryConn = target.AncestryChanged:Connect(function(_, parent)
         if not parent then
             if tracer then
-                pcall(function() tracer:Remove() end)
+                pcall(function()
+                    tracer:Remove()
+                end)
                 activeTracers[tracer] = nil
             end
             if connection then
-                pcall(function() connection:Disconnect() end)
+                pcall(function()
+                    connection:Disconnect()
+                end)
             end
-            if ancestryConn then ancestryConn:Disconnect() end
+            if ancestryConn then
+                ancestryConn:Disconnect()
+            end
         end
     end)
 
     -- register tracer for toggle cleanup (store as table with type)
     if tracer then
-        activeTracers[tracer] = { conn = connection, type = espType }
+        activeTracers[tracer] = {
+            conn = connection,
+            type = espType
+        }
     end
 
     return tracer, connection
 end
 
--- DISABLE SHARKS (figure out how to do this :pensive:)
-local function handleShark(shark)
-    local eyefest = shark:WaitForChild("Eyefestation")
-    if not eyefest then
+local function handleDoor(door)
+    if door:GetAttribute("VisualHandlerBound") then
         return
     end
-    local active = eyefest:WaitForChild("Active")
-    if active then
-        active.Value = false
-    end
-end
-
-local function handleDoor(door)
+    door:SetAttribute("VisualHandlerBound", true)
     -- Track door continuously; only create/cleanup ESP/tracer based on DoorHandling state
     local exitRef = door:FindFirstChild("Exit")
     local prevEntrances = nil
@@ -719,28 +1004,60 @@ local function handleDoor(door)
 
     -- helper to pick a BasePart on which to attach visuals
     local function pickVisualTarget()
-        if door:IsA("BasePart") then return door end
-        if door:IsA("Model") then return door.PrimaryPart or door:FindFirstChildWhichIsA("BasePart") end
-        return door:FindFirstChild("ProxyPart") or door:FindFirstChild("Part") or door:FindFirstChildWhichIsA("BasePart")
+        if door:IsA("BasePart") then
+            return door
+        end
+        if door:IsA("Model") then
+            return door.PrimaryPart or door:FindFirstChildWhichIsA("BasePart")
+        end
+        return door:FindFirstChild("ProxyPart") or door:FindFirstChild("Part") or
+                   door:FindFirstChildWhichIsA("BasePart")
     end
 
     local created = false
     local createdObjects = {}
     local createdTracerConn = nil
+    local openConn
 
     local function cleanupCreated()
-        if createdObjects.esp and createdObjects.esp.Destroy then pcall(function() createdObjects.esp:Destroy() end) end
-        if createdObjects.tracer then pcall(function() createdObjects.tracer:Remove() end) end
-        if createdTracerConn then pcall(function() createdTracerConn:Disconnect() end) end
+        if openConn then
+            pcall(function()
+                openConn:Disconnect()
+            end)
+            openConn = nil
+        end
+        if createdObjects.esp and createdObjects.esp.Destroy then
+            pcall(function()
+                createdObjects.esp:Destroy()
+            end)
+        end
+        if createdObjects.tracer then
+            pcall(function()
+                createdObjects.tracer:Remove()
+            end)
+        end
+        if createdTracerConn then
+            pcall(function()
+                createdTracerConn:Disconnect()
+            end)
+        end
         created = false
     end
 
     local function createVisuals()
-        if created or not featureState.DoorHandling then return end
+        if created or not featureState.DoorHandling then
+            return
+        end
         local visualTarget = pickVisualTarget()
-        if not visualTarget then return end
+        if not visualTarget then
+            return
+        end
         local esp = createESP(visualTarget, Color3.fromRGB(0, 0, 255), "Door")
-        if esp and esp.SetAttribute then pcall(function() esp:SetAttribute("ESPType", "Door") end) end
+        if esp and esp.SetAttribute then
+            pcall(function()
+                esp:SetAttribute("ESPType", "Door")
+            end)
+        end
         local tracer, conn = nil, nil
         tracer, conn = createTracer(visualTarget, Color3.fromRGB(0, 0, 255), "Door")
         createdObjects.esp = esp
@@ -755,8 +1072,14 @@ local function handleDoor(door)
                 cleanupCreated()
                 return
             end
-            openValue:GetPropertyChangedSignal("Value"):Connect(function()
+            openConn = openValue:GetPropertyChangedSignal("Value"):Connect(function()
                 if openValue.Value == true then
+                    if openConn then
+                        pcall(function()
+                            openConn:Disconnect()
+                        end)
+                        openConn = nil
+                    end
                     cleanupCreated()
                 end
             end)
@@ -789,7 +1112,11 @@ local function handleDoor(door)
                     if pv.Value == true then
                         -- create visuals and clear listeners
                         createVisuals()
-                        for _, c in ipairs(listeners) do pcall(function() c:Disconnect() end) end
+                        for _, c in ipairs(listeners) do
+                            pcall(function()
+                                c:Disconnect()
+                            end)
+                        end
                     end
                 end)
                 table.insert(listeners, conn)
@@ -830,44 +1157,72 @@ local function detectItem(v)
 
             if featureState.ItemESP then
                 local b = createESP(v, color, name)
-                if b and b.SetAttribute then pcall(function() b:SetAttribute("ESPType", "Item") end) end
+                if b and b.SetAttribute then
+                    pcall(function()
+                        b:SetAttribute("ESPType", "Item")
+                    end)
+                end
             end
         elseif interactionType == "KeyCard" then
             if featureState.ItemESP then
                 local b = createESP(v, Color3.fromRGB(0, 150, 200), "Keycard")
-                if b and b.SetAttribute then pcall(function() b:SetAttribute("ESPType", "Item") end) end
+                if b and b.SetAttribute then
+                    pcall(function()
+                        b:SetAttribute("ESPType", "Item")
+                    end)
+                end
             end
         elseif interactionType == "PasswordPaper" then
             if featureState.ItemESP then
                 local b = createESP(v, Color3.fromRGB(0, 150, 200), "Password")
-                if b and b.SetAttribute then pcall(function() b:SetAttribute("ESPType", "Item") end) end
+                if b and b.SetAttribute then
+                    pcall(function()
+                        b:SetAttribute("ESPType", "Item")
+                    end)
+                end
             end
         elseif interactionType == "InnerKeyCard" then
             if featureState.ItemESP then
                 local b = createESP(v, Color3.fromRGB(0, 150, 200), "Purple Keycard")
-                if b and b.SetAttribute then pcall(function() b:SetAttribute("ESPType", "Item") end) end
+                if b and b.SetAttribute then
+                    pcall(function()
+                        b:SetAttribute("ESPType", "Item")
+                    end)
+                end
             end
         elseif interactionType == "ItemBase" then
             if featureState.ItemESP then
                 local b = createESP(v, Color3.fromRGB(150, 255, 100))
-                if b and b.SetAttribute then pcall(function() b:SetAttribute("ESPType", "Item") end) end
+                if b and b.SetAttribute then
+                    pcall(function()
+                        b:SetAttribute("ESPType", "Item")
+                    end)
+                end
             end
         elseif interactionType == "Battery" then
             if featureState.ItemESP then
                 local b = createESP(v, Color3.fromRGB(125, 100, 50), "Battery")
-                if b and b.SetAttribute then pcall(function() b:SetAttribute("ESPType", "Item") end) end
+                if b and b.SetAttribute then
+                    pcall(function()
+                        b:SetAttribute("ESPType", "Item")
+                    end)
+                end
             end
         else
             if featureState.ItemESP then
                 local b = createESP(v)
-                if b and b.SetAttribute then pcall(function() b:SetAttribute("ESPType", "Item") end) end
+                if b and b.SetAttribute then
+                    pcall(function()
+                        b:SetAttribute("ESPType", "Item")
+                    end)
+                end
             end
         end
     end
 end
 
 local function handleSpawn(spawn)
-    for _,v in ipairs(spawn:GetChildren()) do
+    for _, v in ipairs(spawn:GetChildren()) do
         detectItem(v)
     end
     spawn.ChildAdded:Connect(function(v)
@@ -876,7 +1231,7 @@ local function handleSpawn(spawn)
 end
 
 local function handleSpawnLocation(spawnLocation)
-    for _,v in ipairs(spawnLocation:GetChildren()) do
+    for _, v in ipairs(spawnLocation:GetChildren()) do
         handleSpawn(v)
     end
     spawnLocation.ChildAdded:Connect(function(v)
@@ -892,7 +1247,7 @@ local function handleRoom(room)
     entrancesFolder.ChildAdded:Connect(function(child)
         processEntrance(child)
     end)
-    for _,v in ipairs(room:GetDescendants()) do
+    for _, v in ipairs(room:GetDescendants()) do
         if v.Name == "SpawnLocations" and v:IsA("Folder") then
             handleSpawnLocation(v)
         end
@@ -916,51 +1271,151 @@ roomsFolder.ChildAdded:Connect(function(newRoom)
     end)
 end)
 
-local workspaceTargetList = {
-    { Name = "Angler", Color = Color3.fromRGB(255, 0, 0), Label = "Angler" },
-    { Name = "RidgeAngler", Color = Color3.fromRGB(255, 0, 0), Label = "Angler" },
-    { Name = "Pinkie", Color = Color3.fromRGB(255, 0, 0), Label = "Pinkie" },
-    { Name = "RidgePinkie", Color = Color3.fromRGB(255, 0, 0), Label = "Pinkie" },
-    { Name = "Chainsmoker", Color = Color3.fromRGB(255, 0, 0), Label = "Chainsmoker" },
-    { Name = "RidgeChainsmoker", Color = Color3.fromRGB(255, 0, 0), Label = "Chainsmoker" },
-    { Name = "Froger", Color = Color3.fromRGB(255, 0, 0), Label = "Froger" },
-    { Name = "RidgeFroger", Color = Color3.fromRGB(255, 0, 0), Label = "Froger" },
-    { Name = "Blitz", Color = Color3.fromRGB(255, 0, 0), Label = "Blitz" },
-    { Name = "RidgeBlitz", Color = Color3.fromRGB(255, 0, 0), Label = "Blitz" },
-    { Name = "Pandemonium", Color = Color3.fromRGB(255, 0, 0), Label = "Pandemonium", remove = true },
-    { Name = "RidgePandemonium", Color = Color3.fromRGB(255, 0, 0), Label = "Pandemonium", remove = true },
-    { Name = "A60", Color = Color3.fromRGB(255, 0, 0), Label = "A60" },
-    { Name = "RidgeA60", Color = Color3.fromRGB(255, 0, 0), Label = "A60" },
-    { Name = "Pipsqueak", Color = Color3.fromRGB(255, 0, 0), Label = "Pipsqueak", remove = true },
-    { Name = "Parasite", Color = Color3.fromRGB(255, 0, 0), Label = "Parasite"},
-    { Name = "Mirage", Color = Color3.fromRGB(255, 0, 0), Label = "Mirage", CustomLabel = "Keep fucking moving dumbass" },
-    { Name = "RidgeMirage", Color = Color3.fromRGB(255, 0, 0), Label = "Mirage", CustomLabel = "Keep fucking moving dumbass"  },
-    { Name = "Harbinger", Color = Color3.fromRGB(255, 0, 0), Label = "Harbinger", CustomLabel = "ur cooked. give up" },
-    { Name = "RidgeHarbinger", Color = Color3.fromRGB(255, 0, 0), Label = "Harbinger", CustomLabel = "ur cooked. give up" },
-    { Name = "Anglemonium", Color = Color3.fromRGB(255, 0, 0), Label = "Anglemonium", remove = true },
-    { Name = "Pinkimonium", Color = Color3.fromRGB(255, 0, 0), Label = "Pinkimonium", remove = true },
-    { Name = "Frogermonium", Color = Color3.fromRGB(255, 0, 0), Label = "Frogermonium", remove = true },
-    { Name = "Pandesmoker", Color = Color3.fromRGB(255, 0, 0), Label = "Pandesmoker", remove = true },
-    { Name = "Blitzemonium", Color = Color3.fromRGB(255, 0, 0), Label = "Blitzemonium", remove = true },
-    { Name = "Bleach", Color = Color3.fromRGB(255, 0, 0), Label = "Bleach" },
-    { Name = "A200", Color = Color3.fromRGB(255, 0, 0), Label = "A200" },
-    { Name = "WitchingHour", Color = Color3.fromRGB(255, 0, 0), Label = "WitchingHour", remove = true },
-}
+local workspaceTargetList = {{
+    Name = "Angler",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Angler"
+}, {
+    Name = "RidgeAngler",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Angler"
+}, {
+    Name = "Pinkie",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Pinkie"
+}, {
+    Name = "RidgePinkie",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Pinkie"
+}, {
+    Name = "Chainsmoker",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Chainsmoker"
+}, {
+    Name = "RidgeChainsmoker",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Chainsmoker"
+}, {
+    Name = "Froger",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Froger"
+}, {
+    Name = "RidgeFroger",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Froger"
+}, {
+    Name = "Blitz",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Blitz"
+}, {
+    Name = "RidgeBlitz",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Blitz"
+}, {
+    Name = "Pandemonium",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Pandemonium",
+    remove = true
+}, {
+    Name = "RidgePandemonium",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Pandemonium",
+    remove = true
+}, {
+    Name = "A60",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "A60"
+}, {
+    Name = "RidgeA60",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "A60"
+}, {
+    Name = "Pipsqueak",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Pipsqueak",
+    remove = true
+}, {
+    Name = "Parasite",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Parasite"
+}, {
+    Name = "Mirage",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Mirage",
+    CustomLabel = "Keep fucking moving dumbass"
+}, {
+    Name = "RidgeMirage",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Mirage",
+    CustomLabel = "Keep fucking moving dumbass"
+}, {
+    Name = "Harbinger",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Harbinger",
+    CustomLabel = "ur cooked. give up"
+}, {
+    Name = "RidgeHarbinger",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Harbinger",
+    CustomLabel = "ur cooked. give up"
+}, {
+    Name = "Anglemonium",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Anglemonium",
+    remove = true
+}, {
+    Name = "Pinkimonium",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Pinkimonium",
+    remove = true
+}, {
+    Name = "Frogermonium",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Frogermonium",
+    remove = true
+}, {
+    Name = "Pandesmoker",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Pandesmoker",
+    remove = true
+}, {
+    Name = "Blitzemonium",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Blitzemonium",
+    remove = true
+}, {
+    Name = "Bleach",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "Bleach"
+}, {
+    Name = "A200",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "A200"
+}, {
+    Name = "WitchingHour",
+    Color = Color3.fromRGB(255, 0, 0),
+    Label = "WitchingHour",
+    remove = true
+}}
 
 local function normalizeName(str)
-    return str:lower():gsub("%s+", "")
+    return tostring(str):lower():gsub("%s+", "")
 end
 
 local function findTarget(target, childName, callback)
     task.spawn(function()
         local found = childName and target:WaitForChild(childName, 1) or target
-        callback(found)
+        if found and (found:IsA("BasePart") or found:IsA("Model")) then
+            callback(found)
+        end
     end)
 end
 
 workspace.ChildAdded:Connect(function(child)
     task.spawn(function()
-        if not (child:IsA("BasePart") or child:IsA("Model")) then return end
+        if not (child:IsA("BasePart") or child:IsA("Model")) then
+            return
+        end
         for _, target in ipairs(workspaceTargetList) do
             if normalizeName(child.Name) == normalizeName(target.Name) then
                 local txt = target.CustomLabel or target.Label
@@ -973,7 +1428,11 @@ workspace.ChildAdded:Connect(function(child)
                     if targetchild then
                         if featureState.MonsterVisuals then
                             local b = createESP(targetchild, target.Color, target.Label)
-                            if b and b.SetAttribute then pcall(function() b:SetAttribute("ESPType", "Monster") end) end
+                            if b and b.SetAttribute then
+                                pcall(function()
+                                    b:SetAttribute("ESPType", "Monster")
+                                end)
+                            end
                             -- Monster visuals include tracers
                             createTracer(targetchild, target.Color, "Monster")
                         end
@@ -989,9 +1448,11 @@ end)
 
 -- Cleanup / toggle helpers
 local function clearAllESPs()
-    for inst,_ in pairs(activeESPs) do
+    for inst, _ in pairs(activeESPs) do
         if inst and inst.Parent then
-            pcall(function() inst:Destroy() end)
+            pcall(function()
+                inst:Destroy()
+            end)
         end
         activeESPs[inst] = nil
     end
@@ -1004,8 +1465,16 @@ local function clearAllTracers(filterType)
         else
             local t = info.type
             if not filterType or t == filterType then
-                if tracer then pcall(function() tracer:Remove() end) end
-                if info.conn then pcall(function() info.conn:Disconnect() end) end
+                if tracer then
+                    pcall(function()
+                        tracer:Remove()
+                    end)
+                end
+                if info.conn then
+                    pcall(function()
+                        info.conn:Disconnect()
+                    end)
+                end
                 activeTracers[tracer] = nil
             end
         end
@@ -1020,12 +1489,18 @@ local function refreshVisuals()
         else
             for _, target in ipairs(workspaceTargetList) do
                 if normalizeName(child.Name) == normalizeName(target.Name) then
-                    if target.remove then break end
+                    if target.remove then
+                        break
+                    end
                     findTarget(child, target.ChildName, function(targetchild)
                         if targetchild then
                             if featureState.MonsterVisuals then
                                 local b = createESP(targetchild, target.Color, target.Label)
-                                if b and b.SetAttribute then pcall(function() b:SetAttribute("ESPType", "Monster") end) end
+                                if b and b.SetAttribute then
+                                    pcall(function()
+                                        b:SetAttribute("ESPType", "Monster")
+                                    end)
+                                end
                                 createTracer(targetchild, target.Color, "Monster")
                             end
                         end
@@ -1040,7 +1515,9 @@ local function refreshVisuals()
         local entrances = room:FindFirstChild("Entrances")
         if entrances then
             for _, door in ipairs(entrances:GetChildren()) do
-                if featureState.DoorHandling then processEntrance(door) end
+                if featureState.DoorHandling then
+                    processEntrance(door)
+                end
             end
         end
     end
@@ -1054,7 +1531,9 @@ local function scanExistingItemsInRooms()
                 for _, spawn in ipairs(desc:GetChildren()) do
                     for _, item in ipairs(spawn:GetChildren()) do
                         task.spawn(function()
-                            pcall(function() detectItem(item) end)
+                            pcall(function()
+                                detectItem(item)
+                            end)
                         end)
                     end
                 end
@@ -1123,12 +1602,20 @@ local function setFeature(name, enabled)
             refreshVisuals()
         end
     elseif name == "Fullbright" then
-        if enabled then applyFullbright() else restoreLighting() end
+        if enabled then
+            applyFullbright()
+        else
+            restoreLighting()
+        end
     elseif name == "NodeVisualizer" then
         if enabled then
-            if enableVisualizer then enableVisualizer() end
+            if enableVisualizer then
+                enableVisualizer()
+            end
         else
-            if disableVisualizer then disableVisualizer() end
+            if disableVisualizer then
+                disableVisualizer()
+            end
         end
     end
 end

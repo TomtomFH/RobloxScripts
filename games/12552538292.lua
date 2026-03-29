@@ -810,6 +810,7 @@ local workspaceTargetList = {
     { Name = "Blitzemonium", Color = Color3.fromRGB(255, 0, 0), Label = "Blitzemonium", remove = true },
     { Name = "Bleach", Color = Color3.fromRGB(255, 0, 0), Label = "Bleach" },
     { Name = "A200", Color = Color3.fromRGB(255, 0, 0), Label = "A200" },
+    { Name = "WitchingHour", Color = Color3.fromRGB(255, 0, 0), Label = "WitchingHour", remove = true },
 }
 
 local function normalizeName(str)

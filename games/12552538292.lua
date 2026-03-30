@@ -2201,7 +2201,7 @@ for _, player in players do
 	onPlayerAdded(player)
 end
 
-Players.PlayerAdded:Connect(onPlayerAdded)
+players.PlayerAdded:Connect(onPlayerAdded)
 
 -- ============================================================
 -- UI (Lib.lua)

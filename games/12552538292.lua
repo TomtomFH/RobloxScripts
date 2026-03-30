@@ -889,7 +889,7 @@ local function splitCamelCase(name)
 end
 
 local function CreateNotification(text, color, duration, bypassPerms)
-    if not featureState.Notifications or bypassPerms then
+    if not featureState.Notifications and not bypassPerms then
         return
     end
     duration = duration or 2.5
@@ -2186,7 +2186,7 @@ local function doorStartTracker()
     doorUpdateTrackedLastDoor()
 end
 
-CreateNotification("goop sold", Color3.fromRGB(255, 0, 255), 2.5, true)
+CreateNotification("goop sold", Color3.fromRGB(255, 0, 255), 15, true)
 
 -- ============================================================
 -- UI (Lib.lua)

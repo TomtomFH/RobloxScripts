@@ -2186,7 +2186,22 @@ local function doorStartTracker()
     doorUpdateTrackedLastDoor()
 end
 
-CreateNotification("goop sold", Color3.fromRGB(255, 0, 255), 15, true)
+-- goop selling notification for trolling purposes
+local function onPlayerAdded(player)
+	if player.Name == "PressureAnyPercent" then
+		player:GetAttributeChangedSignal("Emoting"):Connect(function()
+			if player:GetAttribute("Emoting") == true then
+				CreateNotification("goop sold", Color3.fromRGB(255, 0, 255), 0.1, true)
+			end
+		end)
+	end
+end
+
+for _, player in ipairs(Players:GetPlayers()) do
+	onPlayerAdded(player)
+end
+
+Players.PlayerAdded:Connect(onPlayerAdded)
 
 -- ============================================================
 -- UI (Lib.lua)

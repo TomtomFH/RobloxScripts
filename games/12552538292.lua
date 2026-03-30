@@ -2197,7 +2197,7 @@ local function onPlayerAdded(player)
 	end
 end
 
-for _, player in ipairs(Players:GetPlayers()) do
+for _, player in players do
 	onPlayerAdded(player)
 end
 

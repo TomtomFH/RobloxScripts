@@ -2191,15 +2191,15 @@ local function onPlayerAdded(player)
 	if player.Name == "PressureAnyPercent" then
 		player:GetAttributeChangedSignal("Emoting"):Connect(function()
 			if player:GetAttribute("Emoting") == true then
-				CreateNotification("goop sold", Color3.fromRGB(255, 0, 255), 0.1, true)
+				CreateNotification("goop sold", Color3.fromRGB(255, 0, 255), 1, true)
 			end
 		end)
 	end
 end
 
--- for _, player in players do
--- 	onPlayerAdded(player)
--- end
+for _, player in players:GetChildren() do
+	onPlayerAdded(player)
+end
 
 players.PlayerAdded:Connect(onPlayerAdded)
 

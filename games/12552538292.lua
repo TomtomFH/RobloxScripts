@@ -1,9 +1,10 @@
 -- PRESSURE (https://www.roblox.com/games/12552538292/)
 -- PART: Hadal Blacksite
--- Visual Node Path: inlined below (previously loaded remotely)
+
 local workspace = game:GetService("Workspace")
 local lighting = game:GetService("Lighting")
 local players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
 local tweenService = game:GetService("TweenService")
 local runService = game:GetService("RunService")
 local gameplayFolder = workspace:WaitForChild("GameplayFolder", 60)
@@ -451,7 +452,6 @@ _G.NodeVisualizerDisable = disableVisualizer
 local featureState = {
     Fullbright = false,
     NodeVisualizer = false,
-    DoorHandling = false,
     ItemESP = false,
     Notifications = false,
     MonsterVisuals = false,
@@ -659,60 +659,152 @@ local function stopAutoCrouchEvent()
     featureState.AutoCrouchEvent = false
     -- thread will exit on next loop
 end
--- Store connections for Eyefestation disabling
-local eyefestationConns = {}
 
-local function setEyefestationActiveFalse(eyefestation)
-    local active = eyefestation:FindFirstChild("Active") or eyefestation:WaitForChild("Active", 5)
-    if not active or not active:IsA("BoolValue") then
-        return
-    end
-    active.Value = false
-    -- Listen for changes and force off
-    local conn = active:GetPropertyChangedSignal("Value"):Connect(function()
+local scanAndDisableAllEyefestation
+local setupEyefestationListener
+local cleanupEyefestationConns
+
+do
+    local activeConnections = {}
+    local watchedRooms = {}
+    local roomsFolderConnection = nil
+
+    local function hookActive(active)
+        if not active or not active:IsA("BoolValue") or active.Name ~= "Active" then
+            return
+        end
+
+        if activeConnections[active] then
+            return
+        end
+
         if featureState.DisableEyefestation then
             active.Value = false
         end
-    end)
-    table.insert(eyefestationConns, conn)
-end
 
-local function scanAndDisableAllEyefestation()
-    -- Disconnect previous
-    for _, conn in ipairs(eyefestationConns) do
-        pcall(function()
-            conn:Disconnect()
+        activeConnections[active] = active:GetPropertyChangedSignal("Value"):Connect(function()
+            if featureState.DisableEyefestation then
+                active.Value = false
+            end
+        end)
+
+        active.AncestryChanged:Connect(function(_, parent)
+            if not parent then
+                local conn = activeConnections[active]
+                if conn then
+                    conn:Disconnect()
+                    activeConnections[active] = nil
+                end
+            end
         end)
     end
-    eyefestationConns = {}
-    -- Find all Eyefestation descendants in workspace
-    for _, obj in ipairs(workspace.GameplayFolder.Rooms:GetDescendants()) do
-        if obj.Name == "Eyefestation" and obj:IsA("Model") then
-            setEyefestationActiveFalse(obj)
-        end
-    end
-end
 
-local function setupEyefestationListener()
-    -- Listen for new Eyefestation folders
-    local conn = workspace.GameplayFolder.Rooms.DescendantAdded:Connect(function(obj)
-        if featureState.DisableEyefestation and obj.Name == "Eyefestation" and obj:IsA("Model") then
-            setEyefestationActiveFalse(obj)
+    local function watchEyefestation(eyefestation)
+        if not eyefestation or eyefestation.Name ~= "Eyefestation" then
+            return
         end
-    end)
-    table.insert(eyefestationConns, conn)
-end
 
-local function cleanupEyefestationConns()
-    for _, conn in ipairs(eyefestationConns) do
-        pcall(function()
-            conn:Disconnect()
+        local active = eyefestation:FindFirstChild("Active") or eyefestation:WaitForChild("Active", 5)
+        if active then
+            hookActive(active)
+        end
+
+        eyefestation.ChildAdded:Connect(function(child)
+            if child.Name == "Active" and child:IsA("BoolValue") then
+                hookActive(child)
+            end
         end)
     end
-    eyefestationConns = {}
+
+    local function watchSpawn(spawn)
+        if not spawn or spawn.Name ~= "EyefestationSpawn" then
+            return
+        end
+
+        local eyefestation = spawn:FindFirstChild("Eyefestation") or spawn:WaitForChild("Eyefestation", 5)
+        if eyefestation then
+            watchEyefestation(eyefestation)
+        end
+
+        spawn.ChildAdded:Connect(function(child)
+            if child.Name == "Eyefestation" then
+                watchEyefestation(child)
+            end
+        end)
+    end
+
+    local function watchInteractables(interactables)
+        if not interactables or interactables.Name ~= "Interactables" then
+            return
+        end
+
+        local spawn = interactables:FindFirstChild("EyefestationSpawn") or interactables:WaitForChild("EyefestationSpawn", 5)
+        if spawn then
+            watchSpawn(spawn)
+        end
+
+        interactables.ChildAdded:Connect(function(child)
+            if child.Name == "EyefestationSpawn" then
+                watchSpawn(child)
+            end
+        end)
+    end
+
+    local function watchRoom(room)
+        if not room or not room:IsA("Model") or watchedRooms[room] then
+            return
+        end
+
+        watchedRooms[room] = true
+
+        task.spawn(function()
+            local interactables = room:FindFirstChild("Interactables") or room:WaitForChild("Interactables", 5)
+            if interactables then
+                watchInteractables(interactables)
+            end
+        end)
+
+        room.ChildAdded:Connect(function(child)
+            if child.Name == "Interactables" then
+                watchInteractables(child)
+            end
+        end)
+
+        room.AncestryChanged:Connect(function(_, parent)
+            if not parent then
+                watchedRooms[room] = nil
+            end
+        end)
+    end
+
+    setupEyefestationListener = function()
+        if roomsFolderConnection then
+            return
+        end
+
+        for _, room in ipairs(roomsFolder:GetChildren()) do
+            watchRoom(room)
+        end
+
+        roomsFolderConnection = roomsFolder.ChildAdded:Connect(function(room)
+            watchRoom(room)
+        end)
+    end
+
+    scanAndDisableAllEyefestation = function()
+        for active in pairs(activeConnections) do
+            if active and active.Parent and active:IsA("BoolValue") then
+                active.Value = false
+            end
+        end
+    end
+
+    cleanupEyefestationConns = function()
+    end
+
+    setupEyefestationListener()
 end
 
--- Store connection for cleanup
 local popupsConn = nil
 
 local function setPopupsVisibleFalse()
@@ -1245,13 +1337,6 @@ local function handleSpawnLocation(spawnLocation)
 end
 
 local function handleRoom(room)
-    local entrancesFolder = room:WaitForChild("Entrances")
-    for _, door in ipairs(entrancesFolder:GetChildren()) do
-        processEntrance(door)
-    end
-    entrancesFolder.ChildAdded:Connect(function(child)
-        processEntrance(child)
-    end)
     for _, v in ipairs(room:GetDescendants()) do
         if v.Name == "SpawnLocations" and v:IsA("Folder") then
             handleSpawnLocation(v)
@@ -1516,16 +1601,6 @@ local function refreshVisuals()
         end
     end
 
-    for _, room in ipairs(roomsFolder:GetChildren()) do
-        local entrances = room:FindFirstChild("Entrances")
-        if entrances then
-            for _, door in ipairs(entrances:GetChildren()) do
-                if featureState.DoorHandling then
-                    processEntrance(door)
-                end
-            end
-        end
-    end
 end
 
 local function scanExistingItemsInRooms()
@@ -1573,7 +1648,6 @@ local function setFeature(name, enabled)
     elseif name == "DisableEyefestation" then
         if enabled then
             scanAndDisableAllEyefestation()
-            setupEyefestationListener()
         else
             cleanupEyefestationConns()
         end
@@ -1582,21 +1656,6 @@ local function setFeature(name, enabled)
             setPopupsVisibleFalse()
         else
             cleanupPopupsConn()
-        end
-    elseif name == "DoorHandling" then
-        if not enabled then
-            clearESPsOfType("Door")
-            clearAllTracers("Door")
-        else
-            -- process existing doors
-            for _, room in ipairs(roomsFolder:GetChildren()) do
-                local entrances = room:FindFirstChild("Entrances")
-                if entrances then
-                    for _, door in ipairs(entrances:GetChildren()) do
-                        processEntrance(door)
-                    end
-                end
-            end
         end
     elseif name == "MonsterVisuals" then
         if not enabled then
@@ -1625,6 +1684,508 @@ local function setFeature(name, enabled)
     end
 end
 
+
+local latestRoomLabel
+local latestDoorLabel
+local codeLabel
+
+local doorTracker = {
+    running = false,
+    passwordEnabled = false,
+    autoEnterCodeEnabled = false,
+    roomConnections = {},
+    mainConnections = {},
+    roomState = {},
+    refreshQueued = false,
+    currentLastRoom = nil,
+    currentLastDoor = nil,
+    highlight = nil,
+    autoEnterConnection = nil,
+    hookedDoor = nil
+}
+
+local function doorDisconnectList(list)
+    for i = #list, 1, -1 do
+        list[i]:Disconnect()
+        list[i] = nil
+    end
+end
+
+local function doorGetRooms()
+    local rooms = {}
+    for _, child in ipairs(roomsFolder:GetChildren()) do
+        if child:IsA("Model") then
+            rooms[#rooms + 1] = child
+        end
+    end
+    return rooms
+end
+
+local function doorCleanupHighlight()
+    local existing = CoreGui:FindFirstChild("LatestDoorHighlight")
+    if existing then
+        existing:Destroy()
+    end
+end
+
+local function doorEnsureHighlight()
+    if doorTracker.highlight and doorTracker.highlight.Parent then
+        return doorTracker.highlight
+    end
+
+    doorCleanupHighlight()
+
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "LatestDoorHighlight"
+    highlight.FillColor = Color3.fromRGB(0, 120, 255)
+    highlight.OutlineColor = Color3.fromRGB(0, 120, 255)
+    highlight.FillTransparency = 0.5
+    highlight.OutlineTransparency = 0
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Enabled = false
+    highlight.Parent = CoreGui
+
+    doorTracker.highlight = highlight
+    return highlight
+end
+
+local function doorGetEntrances(room)
+    return room and room:FindFirstChild("Entrances") or nil
+end
+
+local function doorComputeDoorModel(room)
+    local entrances = doorGetEntrances(room)
+    if not entrances then
+        return nil
+    end
+
+    for _, child in ipairs(entrances:GetChildren()) do
+        if child:IsA("Model") then
+            local exitValue = child:FindFirstChild("Exit")
+            if exitValue and exitValue:IsA("ObjectValue") then
+                return child
+            end
+        end
+    end
+
+    return nil
+end
+
+local function doorUpdateRoomState(room)
+    local state = doorTracker.roomState[room]
+    if not state then
+        state = {}
+        doorTracker.roomState[room] = state
+    end
+
+    local doorModel = doorComputeDoorModel(room)
+    state.doorModel = doorModel
+
+    if doorModel then
+        local exitValue = doorModel:FindFirstChild("Exit")
+        if exitValue and exitValue:IsA("ObjectValue") then
+            state.previousRoom = exitValue.Value
+            return
+        end
+    end
+
+    state.previousRoom = nil
+end
+
+local function doorGetOrderedRooms()
+    local rooms = doorGetRooms()
+    local roomSet = {}
+
+    for _, room in ipairs(rooms) do
+        roomSet[room] = true
+        if not doorTracker.roomState[room] then
+            doorUpdateRoomState(room)
+        end
+    end
+
+    local firstRoom = nil
+
+    for _, room in ipairs(rooms) do
+        local state = doorTracker.roomState[room]
+        local previousRoom = state and state.previousRoom
+
+        if not roomSet[previousRoom] then
+            firstRoom = room
+            break
+        end
+    end
+
+    if not firstRoom then
+        return {}
+    end
+
+    local orderedRooms = {}
+    local used = {}
+    local currentRoom = firstRoom
+
+    while currentRoom and not used[currentRoom] do
+        orderedRooms[#orderedRooms + 1] = currentRoom
+        used[currentRoom] = true
+
+        local nextRoom = nil
+
+        for _, room in ipairs(rooms) do
+            if not used[room] then
+                local state = doorTracker.roomState[room]
+                if state and state.previousRoom == currentRoom then
+                    nextRoom = room
+                    break
+                end
+            end
+        end
+
+        currentRoom = nextRoom
+    end
+
+    return orderedRooms
+end
+
+local function doorGetCodeText()
+    if not doorTracker.passwordEnabled then
+        return "No Code"
+    end
+
+    local door = doorTracker.currentLastDoor
+    if not door then
+        return "No Code"
+    end
+
+    local locked = door:GetAttribute("Locked")
+    if not locked then
+        return "No Code"
+    end
+
+    local exitValue = door:FindFirstChild("Exit")
+    if not exitValue or not exitValue:IsA("ObjectValue") then
+        return "No Code"
+    end
+
+    local codeRoom = exitValue.Value
+    if not codeRoom then
+        return "No Code"
+    end
+
+    local passwordPaper = codeRoom:FindFirstChild("PasswordPaper", true)
+    if not passwordPaper then
+        return "No Code"
+    end
+
+    local codeObject = passwordPaper:FindFirstChild("Code")
+    if not codeObject then
+        return "No Code"
+    end
+
+    local surfaceGui = codeObject:FindFirstChild("SurfaceGui")
+    if not surfaceGui then
+        return "No Code"
+    end
+
+    local textLabel = surfaceGui:FindFirstChild("TextLabel")
+    if not textLabel or not textLabel:IsA("TextLabel") then
+        return "No Code"
+    end
+
+    local text = textLabel.Text
+    if type(text) ~= "string" or text == "" then
+        return "No Code"
+    end
+
+    return text
+end
+
+local function doorSetLabels()
+    if latestRoomLabel then
+        if doorTracker.currentLastRoom then
+            latestRoomLabel.Text = "Latest Room: " .. doorTracker.currentLastRoom.Name
+        else
+            latestRoomLabel.Text = "Latest Room: None"
+        end
+    end
+
+    if latestDoorLabel then
+        if doorTracker.currentLastDoor then
+            latestDoorLabel.Text = "Latest Door: " .. doorTracker.currentLastDoor.Name
+        else
+            latestDoorLabel.Text = "Latest Door: None"
+        end
+    end
+
+    if codeLabel then
+        codeLabel.Text = "Code: " .. doorGetCodeText()
+    end
+end
+
+local function doorDisconnectAutoEnter()
+    if doorTracker.autoEnterConnection then
+        doorTracker.autoEnterConnection:Disconnect()
+        doorTracker.autoEnterConnection = nil
+    end
+
+    doorTracker.hookedDoor = nil
+end
+
+local function doorGetPrompt(door)
+    local prompt = door and door:FindFirstChild("ProximityPrompt", true)
+    if prompt and prompt:IsA("ProximityPrompt") then
+        return prompt
+    end
+    return nil
+end
+
+local function doorGetRemote(door)
+    return door and door:FindFirstChild("RemoteFunction", true) or nil
+end
+
+local function doorSetupAutoEnterForCurrentDoor()
+    doorDisconnectAutoEnter()
+
+    if not doorTracker.autoEnterCodeEnabled then
+        return
+    end
+
+    local door = doorTracker.currentLastDoor
+    if not door then
+        return
+    end
+
+    local locked = door:GetAttribute("Locked")
+    if not locked then
+        return
+    end
+
+    local code = doorGetCodeText()
+    if code == "No Code" then
+        return
+    end
+
+    local prompt = doorGetPrompt(door)
+    local remote = doorGetRemote(door)
+
+    if not prompt or not remote then
+        return
+    end
+
+    doorTracker.hookedDoor = door
+    doorTracker.autoEnterConnection = prompt.PromptShown:Connect(function()
+        local latestCode = doorGetCodeText()
+        if latestCode == "No Code" then
+            return
+        end
+
+        pcall(function()
+            local current = ""
+            for i = 1, #latestCode do
+                current = current .. string.sub(latestCode, i, i)
+                remote:InvokeServer(current)
+                task.wait(0.05)
+            end
+        end)
+    end)
+end
+
+local function doorUpdateTrackedLastDoor()
+    local orderedRooms = doorGetOrderedRooms()
+    doorTracker.currentLastRoom = orderedRooms[#orderedRooms]
+
+    if doorTracker.currentLastRoom then
+        local state = doorTracker.roomState[doorTracker.currentLastRoom]
+        doorTracker.currentLastDoor = state and state.doorModel or nil
+    else
+        doorTracker.currentLastDoor = nil
+    end
+
+    local highlight = doorEnsureHighlight()
+
+    if doorTracker.currentLastDoor then
+        highlight.Adornee = doorTracker.currentLastDoor
+        highlight.Enabled = true
+    else
+        highlight.Adornee = nil
+        highlight.Enabled = false
+    end
+
+    doorSetLabels()
+    doorSetupAutoEnterForCurrentDoor()
+end
+
+local function doorQueueRefresh()
+    if not doorTracker.running or doorTracker.refreshQueued then
+        return
+    end
+
+    doorTracker.refreshQueued = true
+
+    task.defer(function()
+        doorTracker.refreshQueued = false
+        if doorTracker.running then
+            doorUpdateTrackedLastDoor()
+        end
+    end)
+end
+
+local function doorRemoveRoomState(room)
+    doorTracker.roomState[room] = nil
+end
+
+local function doorDisconnectRoomConnections(room)
+    local connections = doorTracker.roomConnections[room]
+    if connections then
+        doorDisconnectList(connections)
+        doorTracker.roomConnections[room] = nil
+    end
+    doorRemoveRoomState(room)
+end
+
+local function doorOnRoomStructureChanged(room)
+    if not doorTracker.running or not room.Parent then
+        return
+    end
+
+    doorUpdateRoomState(room)
+    doorQueueRefresh()
+end
+
+local function doorWatchRoom(room)
+    if not room:IsA("Model") then
+        return
+    end
+
+    if doorTracker.roomConnections[room] then
+        return
+    end
+
+    doorUpdateRoomState(room)
+
+    local connections = {}
+    doorTracker.roomConnections[room] = connections
+
+    connections[#connections + 1] = room.AncestryChanged:Connect(function(_, parent)
+        if not parent then
+            doorDisconnectRoomConnections(room)
+            doorQueueRefresh()
+        end
+    end)
+
+    connections[#connections + 1] = room.DescendantAdded:Connect(function(descendant)
+        local entrances = doorGetEntrances(room)
+        if not entrances then
+            return
+        end
+
+        if descendant.Parent == entrances then
+            doorOnRoomStructureChanged(room)
+            return
+        end
+
+        if descendant:IsA("ObjectValue") and descendant.Name == "Exit" and descendant.Parent and descendant.Parent.Parent == entrances then
+            doorOnRoomStructureChanged(room)
+            return
+        end
+
+        if doorTracker.passwordEnabled or doorTracker.autoEnterCodeEnabled then
+            if descendant.Name == "PasswordPaper" or descendant.Name == "TextLabel" or descendant.Name == "Code" or descendant.Name == "ProximityPrompt" or descendant.Name == "RemoteFunction" then
+                doorQueueRefresh()
+            end
+        end
+    end)
+
+    connections[#connections + 1] = room.DescendantRemoving:Connect(function(descendant)
+        local entrances = doorGetEntrances(room)
+        if not entrances then
+            return
+        end
+
+        if descendant.Parent == entrances then
+            doorOnRoomStructureChanged(room)
+            return
+        end
+
+        if descendant:IsA("ObjectValue") and descendant.Name == "Exit" and descendant.Parent and descendant.Parent.Parent == entrances then
+            doorOnRoomStructureChanged(room)
+            return
+        end
+
+        if doorTracker.passwordEnabled or doorTracker.autoEnterCodeEnabled then
+            if descendant.Name == "PasswordPaper" or descendant.Name == "TextLabel" or descendant.Name == "Code" or descendant.Name == "ProximityPrompt" or descendant.Name == "RemoteFunction" then
+                doorQueueRefresh()
+            end
+        end
+    end)
+
+    local entrances = doorGetEntrances(room)
+    if entrances then
+        connections[#connections + 1] = entrances.ChildAdded:Connect(function()
+            doorOnRoomStructureChanged(room)
+        end)
+
+        connections[#connections + 1] = entrances.ChildRemoved:Connect(function()
+            doorOnRoomStructureChanged(room)
+        end)
+    end
+end
+
+local function doorStopTracker()
+    doorTracker.running = false
+    doorTracker.refreshQueued = false
+
+    doorDisconnectAutoEnter()
+
+    for room in pairs(doorTracker.roomConnections) do
+        doorDisconnectRoomConnections(room)
+    end
+
+    doorDisconnectList(doorTracker.mainConnections)
+
+    if doorTracker.highlight then
+        doorTracker.highlight.Adornee = nil
+        doorTracker.highlight.Enabled = false
+    end
+
+    doorTracker.currentLastRoom = nil
+    doorTracker.currentLastDoor = nil
+    doorSetLabels()
+end
+
+local function doorStartTracker()
+    if doorTracker.running then
+        return
+    end
+
+    doorTracker.running = true
+    doorEnsureHighlight()
+
+    for _, room in ipairs(doorGetRooms()) do
+        doorWatchRoom(room)
+    end
+
+    doorTracker.mainConnections[#doorTracker.mainConnections + 1] = roomsFolder.ChildAdded:Connect(function(room)
+        if not doorTracker.running then
+            return
+        end
+        if room:IsA("Model") then
+            doorWatchRoom(room)
+            doorQueueRefresh()
+        end
+    end)
+
+    doorTracker.mainConnections[#doorTracker.mainConnections + 1] = roomsFolder.ChildRemoved:Connect(function(room)
+        if not doorTracker.running then
+            return
+        end
+        if room:IsA("Model") then
+            doorDisconnectRoomConnections(room)
+            doorQueueRefresh()
+        end
+    end)
+
+    doorUpdateTrackedLastDoor()
+end
+
 -- ============================================================
 -- UI (Lib.lua)
 -- ============================================================
@@ -1632,6 +2193,7 @@ CreateMenu("Pressure")
 CreateGroup("Pressure", "Main")
 CreateTab("Pressure", "Main", "Visuals")
 CreateTab("Pressure", "Main", "World")
+CreateTab("Pressure", "Main", "Doors")
 
 CreateLabel("Visuals", "Monster, item and door visuals")
 CreateToggle("Visuals", "Monster Visuals", function(state)
@@ -1642,15 +2204,36 @@ CreateToggle("Visuals", "Item ESP", function(state)
     setFeature("ItemESP", state.Value)
 end, false)
 
-CreateToggle("Visuals", "Door Visuals", function(state)
-    setFeature("DoorHandling", state.Value)
-end, false)
-
 CreateToggle("Visuals", "Force Hide Popups", function(state)
     setFeature("ForceHidePopups", state.Value)
 end, false)
 
 CreateLabel("World", "Environment and utility features")
+
+CreateLabel("Doors", "Latest door tracking")
+latestRoomLabel = CreateValueLabel("Doors", "Latest Room: None")
+latestDoorLabel = CreateValueLabel("Doors", "Latest Door: None")
+codeLabel = CreateValueLabel("Doors", "Code: No Code")
+CreateToggle("Doors", "Track Latest Door", function(state)
+    if state.Value then
+        doorStartTracker()
+    else
+        doorStopTracker()
+    end
+end, true)
+CreateToggle("Doors", "Get Password", function(state)
+    doorTracker.passwordEnabled = state.Value
+    if doorTracker.running then
+        doorUpdateTrackedLastDoor()
+    else
+        doorSetLabels()
+    end
+end, false)
+CreateToggle("Doors", "Auto Enter Code", function(state)
+    doorTracker.autoEnterCodeEnabled = state.Value
+    doorSetupAutoEnterForCurrentDoor()
+end, false)
+
 CreateToggle("World", "Fullbright", function(state)
     setFeature("Fullbright", state.Value)
 end, false)

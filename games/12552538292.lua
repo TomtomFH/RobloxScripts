@@ -933,8 +933,6 @@ local function CreateNotification(text, color, duration)
     end)
 end
 
-CreateNotification("goop sold", Color3.fromRGB(255, 0, 255), 2.5)
-
 local function createESP(target, color, customName)
     if not target then
         return nil
@@ -2187,6 +2185,8 @@ local function doorStartTracker()
 
     doorUpdateTrackedLastDoor()
 end
+
+CreateNotification("goop sold", Color3.fromRGB(255, 0, 255), 2.5)
 
 -- ============================================================
 -- UI (Lib.lua)

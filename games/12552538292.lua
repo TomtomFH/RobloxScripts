@@ -2197,9 +2197,9 @@ local function onPlayerAdded(player)
 	end
 end
 
-for _, player in players do
-	onPlayerAdded(player)
-end
+-- for _, player in players do
+-- 	onPlayerAdded(player)
+-- end
 
 players.PlayerAdded:Connect(onPlayerAdded)
 

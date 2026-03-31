@@ -2186,15 +2186,13 @@ local function doorStartTracker()
     doorUpdateTrackedLastDoor()
 end
 
--- goop selling notification for trolling purposes
 local function onPlayerAdded(player)
-	if player.Name == "PressureAnyPercent" then
-		player:GetAttributeChangedSignal("Emoting"):Connect(function()
-			if player:GetAttribute("Emoting") == true then
-				CreateNotification("goop sold", Color3.fromRGB(255, 0, 255), 1, true)
-			end
-		end)
-	end
+    local health = player:WaitForChild("PlayerFolder"):WaitForChild("Health")
+    health:GetPropertyChangedSignal("Value"):Connect(function()
+        if health.Value <= 0 then
+            CreateNotification(player.DisplayName .. " sold", Color3.fromRGB(255, 0, 0), 2.5, true)
+        end
+    end)
 end
 
 for _, player in players:GetChildren() do

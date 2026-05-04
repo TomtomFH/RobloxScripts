@@ -10,6 +10,12 @@ Run the loader in your executor:
 loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/main.lua", true))()
 ```
 
+Run the current Combat script directly:
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/combat.lua", true))()
+```
+
 ## Supported Games
 
 - **Catch And Tame**

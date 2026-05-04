@@ -631,6 +631,149 @@ function CreateToggle(tabName, toggleText, actionFunction, initialState)
     end)    
 end
 
+function CreateDropdown(tabName, dropdownText, options, actionFunction, initialOption)
+    local tab = Tabs[tabName]
+    if not tab then return end
+
+    options = options or {}
+    initialOption = initialOption or options[1] or ""
+
+    local savedOption = GetConfigValue(tabName, dropdownText)
+    if savedOption ~= nil then
+        initialOption = savedOption
+    end
+
+    local optionLookup = {}
+    for _, option in ipairs(options) do
+        optionLookup[tostring(option)] = true
+    end
+    if not optionLookup[tostring(initialOption)] and options[1] then
+        initialOption = options[1]
+    end
+
+    local button = Instance.new("TextButton", tab)
+    button.BorderSizePixel = 0
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 15
+    button.BackgroundColor3 = Color3.fromRGB(18, 18, 21)
+    button.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+    button.Size = UDim2.new(0, 550, 0, 50)
+    button.Text = ""
+    button.Name = dropdownText
+    button.Selectable = false
+    button.ClipsDescendants = true
+
+    Instance.new("UICorner", button)
+
+    local text = Instance.new("TextLabel", button)
+    text.BorderSizePixel = 0
+    text.TextSize = 15
+    text.TextXAlignment = Enum.TextXAlignment.Left
+    text.BackgroundTransparency = 1
+    text.Size = UDim2.new(0, 260, 0, 35)
+    text.Position = UDim2.new(0, 20, 0, 7)
+    text.TextColor3 = Color3.fromRGB(255, 255, 255)
+    text.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+    text.Text = dropdownText
+
+    local selectedText = Instance.new("TextLabel", button)
+    selectedText.BorderSizePixel = 0
+    selectedText.TextSize = 15
+    selectedText.TextXAlignment = Enum.TextXAlignment.Right
+    selectedText.BackgroundTransparency = 1
+    selectedText.Size = UDim2.new(0, 170, 0, 35)
+    selectedText.Position = UDim2.new(0, 315, 0, 7)
+    selectedText.TextColor3 = Color3.fromRGB(0, 170, 255)
+    selectedText.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+    selectedText.Text = tostring(initialOption)
+
+    local arrow = Instance.new("TextLabel", button)
+    arrow.BorderSizePixel = 0
+    arrow.TextSize = 18
+    arrow.BackgroundTransparency = 1
+    arrow.Size = UDim2.new(0, 25, 0, 35)
+    arrow.Position = UDim2.new(0, 500, 0, 7)
+    arrow.TextColor3 = Color3.fromRGB(255, 255, 255)
+    arrow.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+    arrow.Text = "v"
+
+    local optionsFrame = Instance.new("Frame", button)
+    optionsFrame.BackgroundTransparency = 1
+    optionsFrame.BorderSizePixel = 0
+    optionsFrame.Position = UDim2.new(0, 0, 0, 50)
+    optionsFrame.Size = UDim2.new(0, 550, 0, #options * 35)
+    optionsFrame.Visible = false
+
+    local layout = Instance.new("UIListLayout", optionsFrame)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 4)
+
+    local selectedValue = tostring(initialOption)
+    local isOpen = false
+
+    if savedOption == nil then
+        SetConfigValue(tabName, dropdownText, selectedValue)
+    end
+
+    local function setOpen(open)
+        isOpen = open
+        optionsFrame.Visible = isOpen
+        arrow.Text = isOpen and "^" or "v"
+        button.Size = isOpen and UDim2.new(0, 550, 0, 55 + (#options * 39)) or UDim2.new(0, 550, 0, 50)
+    end
+
+    local function selectOption(option)
+        selectedValue = tostring(option)
+        selectedText.Text = selectedValue
+        SetConfigValue(tabName, dropdownText, selectedValue)
+        setOpen(false)
+
+        task.spawn(function()
+            actionFunction(selectedValue, button)
+        end)
+    end
+
+    for _, option in ipairs(options) do
+        local optionValue = tostring(option)
+        local optionButton = Instance.new("TextButton", optionsFrame)
+        optionButton.BorderSizePixel = 0
+        optionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        optionButton.TextSize = 14
+        optionButton.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+        optionButton.FontFace = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+        optionButton.Size = UDim2.new(0, 510, 0, 35)
+        optionButton.Position = UDim2.new(0, 20, 0, 0)
+        optionButton.Text = optionValue
+        optionButton.Selectable = false
+
+        Instance.new("UICorner", optionButton).CornerRadius = UDim.new(0, 6)
+
+        optionButton.MouseButton1Click:Connect(function()
+            selectOption(optionValue)
+        end)
+    end
+
+    button.MouseButton1Click:Connect(function()
+        setOpen(not isOpen)
+    end)
+
+    task.spawn(function()
+        actionFunction(selectedValue, button)
+    end)
+
+    return {
+        Button = button,
+        GetValue = function()
+            return selectedValue
+        end,
+        SetValue = function(value)
+            if optionLookup[tostring(value)] then
+                selectOption(value)
+            end
+        end
+    }
+end
+
 function CreateButton(tabName, buttonText, actionFunction)
     local tab = Tabs[tabName]
     if not tab then return end
@@ -1014,6 +1157,11 @@ CreateInput("Tab Name", "Label Text", "Default Value", "Button Text", function(t
     local value = textBox.Text
     print("Input value:", value)
 end)
+
+Dropdown (with automatic config saving):
+CreateDropdown("Tab Name", "Dropdown Text", {"Option 1", "Option 2"}, function(value, button)
+    print("Selected:", value)
+end, "Option 1")
 
 Label:
 CreateLabel("Tab Name", "Label Text")

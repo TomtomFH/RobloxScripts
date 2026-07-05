@@ -863,6 +863,7 @@ function CreateValueLabel(tabName, labelText)
 
     local label = Instance.new("TextLabel", frame)
     label.TextWrapped = true
+    label.RichText = true
     label.BorderSizePixel = 0
     label.TextSize = 15
     label.TextXAlignment = Enum.TextXAlignment.Left

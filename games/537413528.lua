@@ -441,9 +441,9 @@ local function waitForNextFarmOpportunity()
     end
 end
 
-local function visitStageForOneSecond(data)
+local function visitStageForHalfSecond(data)
     setCurrentAction("Visiting " .. data.StageName)
-    local endTime = os.clock() + 1
+    local endTime = os.clock() + 0.5
 
     while autofarmEnabled and os.clock() < endTime do
         updateChestReadyLabel()
@@ -464,7 +464,7 @@ local function visitStageForOneSecond(data)
             setCurrentAction("Waiting for Stage" .. tostring(data.StageNum))
         end
 
-        task.wait(0.2)
+        task.wait(0.05)
     end
 
     return false
@@ -489,9 +489,13 @@ local function claimGoldChestAndStages()
     updateChestReadyLabel()
     clearFloatObjects()
 
-    setCurrentAction("Claiming stage rewards")
-    fireClaimGoldRemote()
-    task.wait(0.25)
+    if areAllLoadedStagesVisited() then
+        setCurrentAction("Claiming stage rewards")
+        fireClaimGoldRemote()
+        task.wait(0.25)
+        return
+    end
+
     waitForNextFarmOpportunity()
 end
 
@@ -522,7 +526,7 @@ local function runFarmLoop()
                     break
                 end
 
-                if visitStageForOneSecond(data) then
+                if visitStageForHalfSecond(data) then
                     interruptedForChest = true
                     break
                 end

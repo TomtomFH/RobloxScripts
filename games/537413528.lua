@@ -44,14 +44,6 @@ local function getStageFolder(slotIndex)
     return stageInfo and stageInfo:FindFirstChild("Stage" .. tostring(slotIndex))
 end
 
-local function getFallbackStageName(slotIndex)
-    if slotIndex == 0 then
-        return "Stage0"
-    end
-
-    return ""
-end
-
 local function getVisitedStageName(stageIndex)
     local valueObject = otherData and otherData:FindFirstChild("Stage" .. tostring(stageIndex))
     if valueObject and valueObject:IsA("ValueBase") then
@@ -67,7 +59,7 @@ local function hasVisitedStage(stageName)
         return false
     end
 
-    for stageIndex = 0, 9 do
+    for stageIndex = 1, 9 do
         if getVisitedStageName(stageIndex) == stageName then
             return true
         end
@@ -79,24 +71,17 @@ end
 local function getStageData(slotIndex)
     local folder = getStageFolder(slotIndex)
     if not folder then
-        local fallbackStageName = getFallbackStageName(slotIndex)
-        local loaded = fallbackStageName ~= ""
-
         return {
             Slot = slotIndex,
-            StageNum = 0,
-            StageName = fallbackStageName,
-            Loaded = loaded,
-            Visited = loaded and hasVisitedStage(fallbackStageName)
+            StageNum = slotIndex,
+            StageName = "",
+            Loaded = false,
+            Visited = false
         }
     end
 
-    local stageNum = tonumber(getValueObjectValue(folder, "StageNum", 0)) or 0
-    local stageName = tostring(getValueObjectValue(folder, "StageName", getFallbackStageName(slotIndex)) or "")
-    if stageName == "" then
-        stageName = getFallbackStageName(slotIndex)
-    end
-
+    local stageNum = tonumber(getValueObjectValue(folder, "StageNum", slotIndex)) or slotIndex
+    local stageName = tostring(getValueObjectValue(folder, "StageName", "") or "")
     local loaded = stageName ~= ""
 
     return {
@@ -121,7 +106,7 @@ local function updateStageList()
     local loadedCount = 0
     local visitedCount = 0
 
-    for slotIndex = 0, 9 do
+    for slotIndex = 1, 9 do
         local data = getStageData(slotIndex)
         local label = stageRows[slotIndex]
 
@@ -140,7 +125,7 @@ local function updateStageList()
     end
 
     if summaryLabel then
-        summaryLabel.Text = string.format("Loaded stages: %d/10  |  Visited current route: %d", loadedCount, visitedCount)
+        summaryLabel.Text = string.format("Loaded stages: %d/9  |  Visited current route: %d", loadedCount, visitedCount)
     end
 end
 
@@ -178,7 +163,7 @@ local function bindOtherData()
         return
     end
 
-    for stageIndex = 0, 9 do
+    for stageIndex = 1, 9 do
         bindValue(otherData, "Stage" .. tostring(stageIndex))
     end
 
@@ -226,17 +211,6 @@ end
 local function getStageFarmPosition(slotIndex)
     local firstCavePosition = getCaveDarknessPosition(math.max(slotIndex, 1))
     local secondCavePosition = getCaveDarknessPosition(math.max(slotIndex + 1, 2))
-
-    if slotIndex == 0 then
-        firstCavePosition = getCaveDarknessPosition(1)
-        secondCavePosition = getCaveDarknessPosition(2)
-
-        if not firstCavePosition or not secondCavePosition then
-            return nil
-        end
-
-        return firstCavePosition - ((secondCavePosition - firstCavePosition) * 0.5)
-    end
 
     if not firstCavePosition or not secondCavePosition then
         return nil
@@ -371,7 +345,7 @@ end
 local function getLoadedStageData()
     local stages = {}
 
-    for slotIndex = 0, 9 do
+    for slotIndex = 1, 9 do
         local data = getStageData(slotIndex)
         if data.Loaded then
             table.insert(stages, data)
@@ -605,14 +579,14 @@ CreateGroup("Build A Boat", "Main")
 CreateTab("Build A Boat", "Main", "Stages")
 CreateTab("Build A Boat", "Main", "Autofarm")
 
-summaryLabel = select(1, CreateValueLabel("Stages", "Loaded stages: 0/10  |  Visited current route: 0"))
+summaryLabel = select(1, CreateValueLabel("Stages", "Loaded stages: 0/9  |  Visited current route: 0"))
 
-for slotIndex = 0, 9 do
+for slotIndex = 1, 9 do
     stageRows[slotIndex] = select(1, CreateValueLabel("Stages", "Stage" .. tostring(slotIndex) .. ": Waiting..."))
 end
 
 if stageInfo then
-    for slotIndex = 0, 9 do
+    for slotIndex = 1, 9 do
         local folder = getStageFolder(slotIndex)
         if folder then
             bindStageFolder(folder)

@@ -17,9 +17,8 @@ local playerData = LocalPlayer:WaitForChild("Data", 30)
 local stageRows = {}
 local stageConnections = {}
 local summaryLabel = nil
-local sessionRewardsLabel = nil
-local totalRewardsLabel = nil
 local runtimeLabel = nil
+local rewardStatsLabel = nil
 local currentActionLabel = nil
 local chestReadyLabel = nil
 local autofarmEnabled = false
@@ -203,12 +202,14 @@ local function updateRewardLabels()
     local sessionGold = math.max(0, gold - sessionStartGold)
     local sessionGoldBlocks = math.max(0, goldBlocks - sessionStartGoldBlocks)
 
-    if sessionRewardsLabel then
-        sessionRewardsLabel.Text = string.format("Session: +%d Gold Blocks | +%d Gold", sessionGoldBlocks, sessionGold)
-    end
-
-    if totalRewardsLabel then
-        totalRewardsLabel.Text = string.format("Total: %d Gold Blocks | %d Gold", goldBlocks, gold)
+    if rewardStatsLabel then
+        rewardStatsLabel.Text = string.format(
+            "Rewards: +%d/%d Gold Blocks | +%d/%d Gold",
+            sessionGoldBlocks,
+            goldBlocks,
+            sessionGold,
+            gold
+        )
     end
 end
 
@@ -248,7 +249,7 @@ local function formatRuntime(seconds)
     local minutes = math.floor((seconds % 3600) / 60)
     local remainingSeconds = seconds % 60
 
-    return string.format("Time: %02dH %02dM %02dS", hours, minutes, remainingSeconds)
+    return string.format("Session: %02d:%02d:%02d", hours, minutes, remainingSeconds)
 end
 
 local function updateRuntimeLabel()
@@ -737,9 +738,8 @@ updateStageList()
 
 sessionStartGold = getPlayerStatValue("Gold")
 sessionStartGoldBlocks = getPlayerStatValue("GoldBlock")
-sessionRewardsLabel = select(1, CreateValueLabel("Autofarm", "Session: +0 Gold Blocks | +0 Gold"))
-totalRewardsLabel = select(1, CreateValueLabel("Autofarm", "Total: 0 Gold Blocks | 0 Gold"))
-runtimeLabel = select(1, CreateValueLabel("Autofarm", "Time: 00H 00M 00S"))
+runtimeLabel = select(1, CreateValueLabel("Autofarm", "Session: 00:00:00"))
+rewardStatsLabel = select(1, CreateValueLabel("Autofarm", "Rewards: +0/0 Gold Blocks | +0/0 Gold"))
 bindPlayerData()
 updateRewardLabels()
 startRuntimeUpdater()

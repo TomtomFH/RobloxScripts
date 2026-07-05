@@ -24,6 +24,7 @@ local floatObjects = {}
 local noClipConnection = nil
 local noClipCharacter = nil
 local originalCollisionStates = {}
+local ignoredStageNames = {}
 
 local function connect(signal, callback)
     local connection = signal:Connect(callback)
@@ -381,7 +382,7 @@ end
 
 local function getFirstUnvisitedStage()
     for _, data in ipairs(getLoadedStageData()) do
-        if not data.Visited then
+        if not data.Visited and not ignoredStageNames[data.StageName] then
             return data
         end
     end
@@ -396,7 +397,7 @@ local function areAllLoadedStagesVisited()
     end
 
     for _, data in ipairs(loadedStages) do
-        if not data.Visited then
+        if not data.Visited and not ignoredStageNames[data.StageName] then
             return false
         end
     end
@@ -436,6 +437,8 @@ local function waitForStagesToVisit()
     while (visitStagesEnabled or claimGoldBlockEnabled) and not getFirstUnvisitedStage() do
         task.wait(0.25)
     end
+
+    table.clear(ignoredStageNames)
 end
 
 local function setFarmStatus(text)
@@ -446,10 +449,18 @@ end
 
 local function visitStage(data)
     setFarmStatus("Visit Stages: " .. data.StageName)
+    local startedAt = os.clock()
 
     while visitStagesEnabled do
         data = getStageData(data.Slot)
         if not data.Loaded or data.Visited then
+            break
+        end
+
+        if os.clock() - startedAt >= 5 then
+            ignoredStageNames[data.StageName] = true
+            setFarmStatus("Visit Stages: Ignored " .. data.StageName)
+            clearFloatObjects()
             break
         end
 

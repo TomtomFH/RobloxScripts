@@ -418,6 +418,28 @@ local function fireClaimGoldRemote()
     end
 end
 
+local function resetCharacter()
+    clearFloatObjects()
+
+    local character = LocalPlayer.Character
+    if not character then
+        return
+    end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid.Health = 0
+    else
+        character:BreakJoints()
+    end
+end
+
+local function claimRewardsAndReset()
+    fireClaimGoldRemote()
+    task.wait(0.05)
+    resetCharacter()
+end
+
 local function setCurrentAction(text)
     if currentActionLabel then
         currentActionLabel.Text = "Current Action: " .. tostring(text)
@@ -491,7 +513,7 @@ local function claimGoldChestAndStages()
 
     if areAllLoadedStagesVisited() then
         setCurrentAction("Claiming stage rewards")
-        fireClaimGoldRemote()
+        claimRewardsAndReset()
         task.wait(0.25)
         return
     end
@@ -501,8 +523,7 @@ end
 
 local function claimStageRewards()
     setCurrentAction("Claiming stage rewards")
-    clearFloatObjects()
-    fireClaimGoldRemote()
+    claimRewardsAndReset()
     task.wait(0.25)
     waitForNextFarmOpportunity()
 end

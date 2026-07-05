@@ -463,9 +463,9 @@ local function waitForNextFarmOpportunity()
     end
 end
 
-local function visitStageForOnePointFiveSeconds(data)
+local function visitStageUntilClaimedOrTimeout(data)
     setCurrentAction("Visiting " .. data.StageName)
-    local endTime = os.clock() + 1.5
+    local endTime = os.clock() + 5
 
     while autofarmEnabled and os.clock() < endTime do
         updateChestReadyLabel()
@@ -479,6 +479,10 @@ local function visitStageForOnePointFiveSeconds(data)
             break
         end
 
+        if data.Visited then
+            return false
+        end
+
         local position = getStageFarmPosition(data.StageNum)
         if position then
             hoverAtPosition(position)
@@ -487,6 +491,10 @@ local function visitStageForOnePointFiveSeconds(data)
         end
 
         task.wait(0.05)
+    end
+
+    if autofarmEnabled and data.Loaded and not data.Visited then
+        setCurrentAction("Skipping " .. data.StageName)
     end
 
     return false
@@ -547,7 +555,16 @@ local function runFarmLoop()
                     break
                 end
 
-                if visitStageForOnePointFiveSeconds(data) then
+                data = getStageData(data.Slot)
+                if not data.Loaded then
+                    continue
+                end
+
+                if data.Visited then
+                    continue
+                end
+
+                if visitStageUntilClaimedOrTimeout(data) then
                     interruptedForChest = true
                     break
                 end

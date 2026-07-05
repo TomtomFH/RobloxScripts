@@ -463,9 +463,9 @@ local function waitForNextFarmOpportunity()
     end
 end
 
-local function visitStageForOneSecond(data)
+local function visitStageForOnePointFiveSeconds(data)
     setCurrentAction("Visiting " .. data.StageName)
-    local endTime = os.clock() + 1
+    local endTime = os.clock() + 1.5
 
     while autofarmEnabled and os.clock() < endTime do
         updateChestReadyLabel()
@@ -547,7 +547,7 @@ local function runFarmLoop()
                     break
                 end
 
-                if visitStageForOneSecond(data) then
+                if visitStageForOnePointFiveSeconds(data) then
                     interruptedForChest = true
                     break
                 end

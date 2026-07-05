@@ -1,7 +1,6 @@
 -- Build A Boat For Treasure (https://www.roblox.com/games/537413528/)
 
 local Players = game:GetService("Players")
-local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
@@ -18,16 +17,13 @@ local stageRows = {}
 local stageConnections = {}
 local summaryLabel = nil
 local currentActionLabel = nil
-local chestTimerLabel = nil
+local chestReadyLabel = nil
 local autofarmEnabled = false
 local farmThread = nil
 local floatObjects = {}
 local noClipConnection = nil
 local noClipCharacter = nil
 local originalCollisionStates = {}
-local ignoredStageNames = {}
-local lastChestClaimAt = -math.huge
-local CHEST_SKIP_COOLDOWN = 17.15
 
 local function connect(signal, callback)
     local connection = signal:Connect(callback)
@@ -209,10 +205,6 @@ local function getCharacterRoot()
     return character and character:WaitForChild("HumanoidRootPart", 10)
 end
 
-local function getHumanoid(character)
-    return character and character:FindFirstChildOfClass("Humanoid")
-end
-
 local function getValueBasePosition(instance)
     if not instance then
         return nil
@@ -260,28 +252,10 @@ local function getGoldenChestTriggerPosition()
     return getValueBasePosition(trigger)
 end
 
-local function getGoldenChest()
+local function getGoldenChestTrigger()
     local theEnd = normalStages and normalStages:FindFirstChild("TheEnd")
-    return theEnd and theEnd:FindFirstChild("GoldenChest")
-end
-
-local function isChestClaimSequenceActive()
-    local goldenChest = getGoldenChest()
-    local tempPrizes = goldenChest and goldenChest:FindFirstChild("DisplayPrizesTemp")
-    if tempPrizes and #tempPrizes:GetChildren() > 0 then
-        return true
-    end
-
-    if math.abs(Lighting.ClockTime - 3.7) <= 0.25 and Lighting.FogEnd <= 150 and Lighting.FogStart >= 15 then
-        return true
-    end
-
-    local camera = Workspace.CurrentCamera
-    if camera and camera.FieldOfView <= 61 and Lighting.FogEnd <= 150 then
-        return true
-    end
-
-    return false
+    local goldenChest = theEnd and theEnd:FindFirstChild("GoldenChest")
+    return goldenChest and goldenChest:FindFirstChild("Trigger")
 end
 
 local function applyNoClipToCharacter(character)
@@ -409,12 +383,39 @@ end
 
 local function getFirstUnvisitedStage()
     for _, data in ipairs(getLoadedStageData()) do
-        if not data.Visited and not ignoredStageNames[data.StageName] then
+        if not data.Visited then
             return data
         end
     end
 
     return nil
+end
+
+local function getUnvisitedStageData()
+    local stages = {}
+
+    for _, data in ipairs(getLoadedStageData()) do
+        if not data.Visited then
+            table.insert(stages, data)
+        end
+    end
+
+    return stages
+end
+
+local function areAllLoadedStagesVisited()
+    local loadedStages = getLoadedStageData()
+    if #loadedStages == 0 then
+        return false
+    end
+
+    for _, data in ipairs(loadedStages) do
+        if not data.Visited then
+            return false
+        end
+    end
+
+    return true
 end
 
 local function hasAnyLoadedStageVisited()
@@ -431,33 +432,9 @@ local function isFarmLoopEnabled()
     return autofarmEnabled
 end
 
-local function getChestTimerRemaining()
-    return math.max(0, CHEST_SKIP_COOLDOWN - (os.clock() - lastChestClaimAt))
-end
-
 local function isChestReady()
-    return getChestTimerRemaining() <= 0
-end
-
-local function waitForRespawnAfterReset(startCharacter)
-    while isFarmLoopEnabled() and LocalPlayer.Character == startCharacter do
-        local humanoid = getHumanoid(startCharacter)
-        if not startCharacter.Parent or (humanoid and humanoid.Health <= 0) then
-            break
-        end
-
-        task.wait(0.15)
-    end
-
-    clearFloatObjects()
-
-    if isFarmLoopEnabled() then
-        if LocalPlayer.Character == startCharacter then
-            LocalPlayer.CharacterAdded:Wait()
-        end
-
-        getCharacterRoot()
-    end
+    local trigger = getGoldenChestTrigger()
+    return trigger and trigger:FindFirstChild("TouchInterest") ~= nil
 end
 
 local function fireClaimGoldRemote()
@@ -467,59 +444,42 @@ local function fireClaimGoldRemote()
     end
 end
 
-local function resetCharacter()
-    local character = LocalPlayer.Character
-    local humanoid = getHumanoid(character)
-
-    if humanoid and humanoid.Health > 0 then
-        humanoid.Health = 0
-    end
-end
-
 local function setCurrentAction(text)
     if currentActionLabel then
         currentActionLabel.Text = "Current Action: " .. tostring(text)
     end
 end
 
-local function updateChestTimerLabel()
-    if not chestTimerLabel then
+local function updateChestReadyLabel()
+    if not chestReadyLabel then
         return
     end
 
-    if lastChestClaimAt == -math.huge then
-        chestTimerLabel.Text = "Chest Timer: Ready"
-        return
-    end
+    chestReadyLabel.Text = "Chest Ready: " .. (isChestReady() and "Yes" or "No")
+end
 
-    local remaining = getChestTimerRemaining()
-    if remaining <= 0 then
-        chestTimerLabel.Text = "Chest Timer: Ready"
-    else
-        chestTimerLabel.Text = string.format("Chest Timer: %.1fs", remaining)
+local function waitForNextFarmOpportunity()
+    while autofarmEnabled and not getFirstUnvisitedStage() and not (isChestReady() and hasAnyLoadedStageVisited()) do
+        updateChestReadyLabel()
+        setCurrentAction("Waiting")
+        clearFloatObjects()
+        task.wait(0.1)
     end
 end
 
-local function visitStage(data)
+local function visitStageForOneSecond(data)
     setCurrentAction("Visiting " .. data.StageName)
-    local startedAt = os.clock()
+    local endTime = os.clock() + 1
 
-    while autofarmEnabled do
-        updateChestTimerLabel()
+    while autofarmEnabled and os.clock() < endTime do
+        updateChestReadyLabel()
 
         if isChestReady() and hasAnyLoadedStageVisited() then
-            break
+            return true
         end
 
         data = getStageData(data.Slot)
-        if not data.Loaded or data.Visited then
-            break
-        end
-
-        if os.clock() - startedAt >= 5 then
-            ignoredStageNames[data.StageName] = true
-            setCurrentAction("Ignored " .. data.StageName)
-            clearFloatObjects()
+        if not data.Loaded then
             break
         end
 
@@ -532,9 +492,11 @@ local function visitStage(data)
 
         task.wait(0.2)
     end
+
+    return false
 end
 
-local function claimGoldBlockForAutofarm()
+local function claimGoldChestAndStages()
     local position = getGoldenChestTriggerPosition()
     if not position then
         setCurrentAction("Chest trigger not found")
@@ -542,65 +504,67 @@ local function claimGoldBlockForAutofarm()
         return
     end
 
-    local startCharacter = getCharacter()
     setCurrentAction("Claiming gold chest")
-    local sawInactiveSequence = not isChestClaimSequenceActive()
-    local sequenceDetected = false
+    local startedAt = os.clock()
 
-    while autofarmEnabled and LocalPlayer.Character == startCharacter do
-        local humanoid = getHumanoid(startCharacter)
-        if not startCharacter.Parent or (humanoid and humanoid.Health <= 0) then
-            break
-        end
-
+    while autofarmEnabled and isChestReady() and os.clock() - startedAt < 2 do
         hoverAtPosition(position)
-
-        local sequenceActive = isChestClaimSequenceActive()
-        if not sequenceActive then
-            sawInactiveSequence = true
-        elseif sawInactiveSequence then
-            sequenceDetected = true
-            break
-        end
-
         task.wait(0.05)
     end
 
-    if not autofarmEnabled or not sequenceDetected then
-        clearFloatObjects()
-        return
-    end
-
-    lastChestClaimAt = os.clock()
-    updateChestTimerLabel()
+    updateChestReadyLabel()
     clearFloatObjects()
 
     setCurrentAction("Claiming stage rewards")
     fireClaimGoldRemote()
+    task.wait(0.25)
+    waitForNextFarmOpportunity()
+end
 
-    if autofarmEnabled and LocalPlayer.Character == startCharacter then
-        resetCharacter()
-    end
-
-    waitForRespawnAfterReset(startCharacter)
-    table.clear(ignoredStageNames)
+local function claimStageRewards()
+    setCurrentAction("Claiming stage rewards")
+    clearFloatObjects()
+    fireClaimGoldRemote()
+    task.wait(0.25)
+    waitForNextFarmOpportunity()
 end
 
 local function runFarmLoop()
     while isFarmLoopEnabled() do
-        updateChestTimerLabel()
-        local unvisitedStage = getFirstUnvisitedStage()
+        updateChestReadyLabel()
 
         if isChestReady() and hasAnyLoadedStageVisited() then
-            claimGoldBlockForAutofarm()
-        elseif unvisitedStage then
-            visitStage(unvisitedStage)
+            claimGoldChestAndStages()
+        elseif getFirstUnvisitedStage() then
+            local interruptedForChest = false
+
+            for _, data in ipairs(getUnvisitedStageData()) do
+                if not autofarmEnabled then
+                    break
+                end
+
+                if isChestReady() and hasAnyLoadedStageVisited() then
+                    interruptedForChest = true
+                    break
+                end
+
+                if visitStageForOneSecond(data) then
+                    interruptedForChest = true
+                    break
+                end
+            end
+
+            if interruptedForChest then
+                task.wait()
+            end
+        elseif areAllLoadedStagesVisited() then
+            claimStageRewards()
         else
             setCurrentAction("Waiting")
             clearFloatObjects()
             local waitUntil = os.clock() + 0.35
             while autofarmEnabled and os.clock() < waitUntil do
-                updateChestTimerLabel()
+                updateChestReadyLabel()
                 task.wait(0.05)
             end
         end
@@ -608,7 +572,7 @@ local function runFarmLoop()
 
     clearFloatObjects()
     setCurrentAction("Off")
-    updateChestTimerLabel()
+    updateChestReadyLabel()
 end
 
 local function startFarmLoop()
@@ -626,17 +590,13 @@ local function setAutofarmEnabled(enabled)
     autofarmEnabled = enabled
 
     if autofarmEnabled then
-        if lastChestClaimAt == -math.huge then
-            lastChestClaimAt = os.clock() - CHEST_SKIP_COOLDOWN
-        end
-
         setCurrentAction("Starting")
-        updateChestTimerLabel()
+        updateChestReadyLabel()
         startFarmLoop()
     else
         clearFloatObjects()
         setCurrentAction("Off")
-        updateChestTimerLabel()
+        updateChestReadyLabel()
     end
 end
 
@@ -675,8 +635,8 @@ bindOtherData()
 updateStageList()
 
 currentActionLabel = select(1, CreateValueLabel("Autofarm", "Current Action: Off"))
-chestTimerLabel = select(1, CreateValueLabel("Autofarm", "Chest Timer: Ready"))
-updateChestTimerLabel()
+chestReadyLabel = select(1, CreateValueLabel("Autofarm", "Chest Ready: No"))
+updateChestReadyLabel()
 
 CreateToggle("Autofarm", "Autofarm", function(state)
     setAutofarmEnabled(state.Value)

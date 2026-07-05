@@ -46,6 +46,10 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScript
 	- Place ID: 93044798454681
 	- Script: games/93044798454681.lua
 	- https://www.roblox.com/games/93044798454681/
+- **Build A Boat For Treasure**
+	- Place ID: 537413528
+	- Script: games/537413528.lua
+	- https://www.roblox.com/games/537413528/Build-A-Boat-For-Treasure
 
 ## Notes
 

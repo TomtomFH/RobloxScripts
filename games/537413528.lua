@@ -204,7 +204,7 @@ local function updateRewardLabels()
 
     if rewardStatsLabel then
         rewardStatsLabel.Text = string.format(
-            "Rewards: %d Gold Blocks <font color=\"#4FA36A\">(+%d)</font> | %d Gold <font color=\"#4FA36A\">(+%d)</font>",
+            "Rewards: %d Gold Blocks <font color=\"#B8D8C0\">(+%d)</font> | %d Gold <font color=\"#B8D8C0\">(+%d)</font>",
             goldBlocks,
             sessionGoldBlocks,
             gold,
@@ -704,8 +704,8 @@ end
 
 CreateMenu("Build A Boat")
 CreateGroup("Build A Boat", "Main")
-CreateTab("Build A Boat", "Main", "Stages")
 CreateTab("Build A Boat", "Main", "Autofarm")
+CreateTab("Build A Boat", "Main", "Stages")
 
 summaryLabel = select(1, CreateValueLabel("Stages", "Loaded stages: 0/9  |  Visited current route: 0"))
 
@@ -739,7 +739,7 @@ updateStageList()
 sessionStartGold = getPlayerStatValue("Gold")
 sessionStartGoldBlocks = getPlayerStatValue("GoldBlock")
 runtimeLabel = select(1, CreateValueLabel("Autofarm", "Session: 00:00:00"))
-rewardStatsLabel = select(1, CreateValueLabel("Autofarm", "Rewards: 0 Gold Blocks <font color=\"#4FA36A\">(+0)</font> | 0 Gold <font color=\"#4FA36A\">(+0)</font>"))
+rewardStatsLabel = select(1, CreateValueLabel("Autofarm", "Rewards: 0 Gold Blocks <font color=\"#B8D8C0\">(+0)</font> | 0 Gold <font color=\"#B8D8C0\">(+0)</font>"))
 bindPlayerData()
 updateRewardLabels()
 startRuntimeUpdater()

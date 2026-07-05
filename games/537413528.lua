@@ -204,11 +204,11 @@ local function updateRewardLabels()
 
     if rewardStatsLabel then
         rewardStatsLabel.Text = string.format(
-            "Rewards: +%d/%d Gold Blocks | +%d/%d Gold",
-            sessionGoldBlocks,
+            "Rewards: %d Gold Blocks (+%d) | %d Gold (+%d)",
             goldBlocks,
-            sessionGold,
-            gold
+            sessionGoldBlocks,
+            gold,
+            sessionGold
         )
     end
 end
@@ -739,7 +739,7 @@ updateStageList()
 sessionStartGold = getPlayerStatValue("Gold")
 sessionStartGoldBlocks = getPlayerStatValue("GoldBlock")
 runtimeLabel = select(1, CreateValueLabel("Autofarm", "Session: 00:00:00"))
-rewardStatsLabel = select(1, CreateValueLabel("Autofarm", "Rewards: +0/0 Gold Blocks | +0/0 Gold"))
+rewardStatsLabel = select(1, CreateValueLabel("Autofarm", "Rewards: 0 Gold Blocks (+0) | 0 Gold (+0)"))
 bindPlayerData()
 updateRewardLabels()
 startRuntimeUpdater()

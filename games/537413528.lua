@@ -19,12 +19,15 @@ local summaryLabel = nil
 local farmStatusLabel = nil
 local visitStagesEnabled = false
 local claimGoldBlockEnabled = false
+local chestSkipEnabled = false
 local farmThread = nil
 local floatObjects = {}
 local noClipConnection = nil
 local noClipCharacter = nil
 local originalCollisionStates = {}
 local ignoredStageNames = {}
+local chestSkipLastClaimAt = -math.huge
+local CHEST_SKIP_COOLDOWN = 17.15
 
 local function connect(signal, callback)
     local connection = signal:Connect(callback)
@@ -405,8 +408,26 @@ local function areAllLoadedStagesVisited()
     return true
 end
 
+local function hasAnyLoadedStageVisited()
+    for _, data in ipairs(getLoadedStageData()) do
+        if data.Visited then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function isFarmLoopEnabled()
+    return visitStagesEnabled or claimGoldBlockEnabled or chestSkipEnabled
+end
+
+local function isChestSkipReady()
+    return os.clock() - chestSkipLastClaimAt >= CHEST_SKIP_COOLDOWN
+end
+
 local function waitForRespawnAfterReset(startCharacter)
-    while claimGoldBlockEnabled and LocalPlayer.Character == startCharacter do
+    while isFarmLoopEnabled() and LocalPlayer.Character == startCharacter do
         local humanoid = getHumanoid(startCharacter)
         if not startCharacter.Parent or (humanoid and humanoid.Health <= 0) then
             break
@@ -417,7 +438,7 @@ local function waitForRespawnAfterReset(startCharacter)
 
     clearFloatObjects()
 
-    if claimGoldBlockEnabled then
+    if isFarmLoopEnabled() then
         if LocalPlayer.Character == startCharacter then
             LocalPlayer.CharacterAdded:Wait()
         end
@@ -433,8 +454,17 @@ local function fireClaimGoldRemote()
     end
 end
 
+local function resetCharacter()
+    local character = LocalPlayer.Character
+    local humanoid = getHumanoid(character)
+
+    if humanoid and humanoid.Health > 0 then
+        humanoid.Health = 0
+    end
+end
+
 local function waitForStagesToVisit()
-    while (visitStagesEnabled or claimGoldBlockEnabled) and not getFirstUnvisitedStage() do
+    while isFarmLoopEnabled() and not getFirstUnvisitedStage() do
         task.wait(0.25)
     end
 
@@ -451,7 +481,11 @@ local function visitStage(data)
     setFarmStatus("Visit Stages: " .. data.StageName)
     local startedAt = os.clock()
 
-    while visitStagesEnabled do
+    while visitStagesEnabled or chestSkipEnabled do
+        if chestSkipEnabled and isChestSkipReady() and hasAnyLoadedStageVisited() then
+            break
+        end
+
         data = getStageData(data.Slot)
         if not data.Loaded or data.Visited then
             break
@@ -505,11 +539,53 @@ local function claimGoldBlock()
     end
 end
 
+local function claimGoldBlockChestSkip()
+    local position = getGoldenChestTriggerPosition()
+    if not position then
+        setFarmStatus("Chest Skip: Trigger not found")
+        task.wait(0.5)
+        return
+    end
+
+    local startCharacter = getCharacter()
+    setFarmStatus("Chest Skip: Claiming chest")
+
+    while chestSkipEnabled and LocalPlayer.Character == startCharacter do
+        local humanoid = getHumanoid(startCharacter)
+        if not startCharacter.Parent or (humanoid and humanoid.Health <= 0) then
+            break
+        end
+
+        hoverAtPosition(position)
+        task.wait(0.1)
+    end
+
+    if not chestSkipEnabled then
+        clearFloatObjects()
+        return
+    end
+
+    chestSkipLastClaimAt = os.clock()
+    clearFloatObjects()
+
+    setFarmStatus("Chest Skip: Claiming stages")
+    fireClaimGoldRemote()
+
+    if chestSkipEnabled and LocalPlayer.Character == startCharacter then
+        resetCharacter()
+    end
+
+    waitForRespawnAfterReset(startCharacter)
+    table.clear(ignoredStageNames)
+end
+
 local function runFarmLoop()
-    while visitStagesEnabled or claimGoldBlockEnabled do
+    while isFarmLoopEnabled() do
         local unvisitedStage = getFirstUnvisitedStage()
 
-        if visitStagesEnabled and unvisitedStage then
+        if chestSkipEnabled and isChestSkipReady() and hasAnyLoadedStageVisited() then
+            claimGoldBlockChestSkip()
+        elseif (visitStagesEnabled or chestSkipEnabled) and unvisitedStage then
             visitStage(unvisitedStage)
         elseif claimGoldBlockEnabled and areAllLoadedStagesVisited() then
             claimGoldBlock()
@@ -538,7 +614,7 @@ end
 local function setVisitStagesEnabled(enabled)
     visitStagesEnabled = enabled
 
-    if visitStagesEnabled or claimGoldBlockEnabled then
+    if isFarmLoopEnabled() then
         startFarmLoop()
     else
         clearFloatObjects()
@@ -549,7 +625,22 @@ end
 local function setClaimGoldBlockEnabled(enabled)
     claimGoldBlockEnabled = enabled
 
-    if visitStagesEnabled or claimGoldBlockEnabled then
+    if isFarmLoopEnabled() then
+        startFarmLoop()
+    else
+        clearFloatObjects()
+        setFarmStatus("Farm: Off")
+    end
+end
+
+local function setChestSkipEnabled(enabled)
+    chestSkipEnabled = enabled
+
+    if chestSkipEnabled and chestSkipLastClaimAt == -math.huge then
+        chestSkipLastClaimAt = os.clock() - CHEST_SKIP_COOLDOWN
+    end
+
+    if isFarmLoopEnabled() then
         startFarmLoop()
     else
         clearFloatObjects()
@@ -600,3 +691,7 @@ end, visitStagesEnabled)
 CreateToggle("Toggles", "Claim Gold Block", function(state)
     setClaimGoldBlockEnabled(state.Value)
 end, claimGoldBlockEnabled)
+
+CreateToggle("Toggles", "Chest Skip (Testing)", function(state)
+    setChestSkipEnabled(state.Value)
+end, chestSkipEnabled)

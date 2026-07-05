@@ -12,10 +12,13 @@ local boatStages = Workspace:WaitForChild("BoatStages", 30)
 local stageInfo = boatStages and boatStages:WaitForChild("StageInfo", 30)
 local normalStages = boatStages and boatStages:WaitForChild("NormalStages", 30)
 local otherData = LocalPlayer:WaitForChild("OtherData", 30)
+local playerData = LocalPlayer:WaitForChild("Data", 30)
 
 local stageRows = {}
 local stageConnections = {}
 local summaryLabel = nil
+local sessionRewardsLabel = nil
+local totalRewardsLabel = nil
 local currentActionLabel = nil
 local chestReadyLabel = nil
 local autofarmEnabled = false
@@ -24,6 +27,8 @@ local floatObjects = {}
 local noClipConnection = nil
 local noClipCharacter = nil
 local originalCollisionStates = {}
+local sessionStartGold = 0
+local sessionStartGoldBlocks = 0
 
 local function connect(signal, callback)
     local connection = signal:Connect(callback)
@@ -177,6 +182,59 @@ local function bindOtherData()
     connect(otherData.ChildRemoved, function(child)
         if child.Name:match("^Stage%d+$") then
             updateStageList()
+        end
+    end)
+end
+
+local function getPlayerStatValue(statName)
+    local valueObject = playerData and playerData:FindFirstChild(statName)
+    if valueObject and valueObject:IsA("ValueBase") then
+        return tonumber(valueObject.Value) or 0
+    end
+
+    return 0
+end
+
+local function updateRewardLabels()
+    local gold = getPlayerStatValue("Gold")
+    local goldBlocks = getPlayerStatValue("GoldBlock")
+    local sessionGold = math.max(0, gold - sessionStartGold)
+    local sessionGoldBlocks = math.max(0, goldBlocks - sessionStartGoldBlocks)
+
+    if sessionRewardsLabel then
+        sessionRewardsLabel.Text = string.format("Session: +%d Gold Blocks | +%d Gold", sessionGoldBlocks, sessionGold)
+    end
+
+    if totalRewardsLabel then
+        totalRewardsLabel.Text = string.format("Total: %d Gold Blocks | %d Gold", goldBlocks, gold)
+    end
+end
+
+local function bindPlayerDataValue(childName)
+    local valueObject = playerData and playerData:FindFirstChild(childName)
+    if valueObject and valueObject:IsA("ValueBase") then
+        connect(valueObject:GetPropertyChangedSignal("Value"), updateRewardLabels)
+    end
+end
+
+local function bindPlayerData()
+    if not playerData then
+        return
+    end
+
+    bindPlayerDataValue("Gold")
+    bindPlayerDataValue("GoldBlock")
+
+    connect(playerData.ChildAdded, function(child)
+        if child.Name == "Gold" or child.Name == "GoldBlock" then
+            bindPlayerDataValue(child.Name)
+            updateRewardLabels()
+        end
+    end)
+
+    connect(playerData.ChildRemoved, function(child)
+        if child.Name == "Gold" or child.Name == "GoldBlock" then
+            updateRewardLabels()
         end
     end)
 end
@@ -649,6 +707,13 @@ end
 
 bindOtherData()
 updateStageList()
+
+sessionStartGold = getPlayerStatValue("Gold")
+sessionStartGoldBlocks = getPlayerStatValue("GoldBlock")
+sessionRewardsLabel = select(1, CreateValueLabel("Autofarm", "Session: +0 Gold Blocks | +0 Gold"))
+totalRewardsLabel = select(1, CreateValueLabel("Autofarm", "Total: 0 Gold Blocks | 0 Gold"))
+bindPlayerData()
+updateRewardLabels()
 
 currentActionLabel = select(1, CreateValueLabel("Autofarm", "Current Action: Off"))
 chestReadyLabel = select(1, CreateValueLabel("Autofarm", "Chest Ready: No"))

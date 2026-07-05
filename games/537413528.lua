@@ -196,11 +196,17 @@ local function getPlayerStatValue(statName)
     return 0
 end
 
-local function updateRewardLabels()
+local function getSessionRewardGains()
     local gold = getPlayerStatValue("Gold")
     local goldBlocks = getPlayerStatValue("GoldBlock")
     local sessionGold = math.max(0, gold - sessionStartGold)
     local sessionGoldBlocks = math.max(0, goldBlocks - sessionStartGoldBlocks)
+
+    return goldBlocks, gold, sessionGoldBlocks, sessionGold
+end
+
+local function updateRewardLabels()
+    local goldBlocks, gold, sessionGoldBlocks, sessionGold = getSessionRewardGains()
 
     if rewardStatsLabel then
         rewardStatsLabel.Text = string.format(
@@ -252,9 +258,24 @@ local function formatRuntime(seconds)
     return string.format("Session: %02d:%02d:%02d", hours, minutes, remainingSeconds)
 end
 
+local function getHourlyRewardEstimate(seconds)
+    local _, _, sessionGoldBlocks, sessionGold = getSessionRewardGains()
+    local elapsed = math.max(1, seconds)
+
+    return math.floor((sessionGoldBlocks / elapsed) * 3600 + 0.5), math.floor((sessionGold / elapsed) * 3600 + 0.5)
+end
+
 local function updateRuntimeLabel()
     if runtimeLabel then
-        runtimeLabel.Text = formatRuntime(os.clock() - scriptStartedAt)
+        local elapsed = os.clock() - scriptStartedAt
+        local goldBlocksPerHour, goldPerHour = getHourlyRewardEstimate(elapsed)
+
+        runtimeLabel.Text = string.format(
+            "%s | %d Gold Blocks/h | %d Gold/h",
+            formatRuntime(elapsed),
+            goldBlocksPerHour,
+            goldPerHour
+        )
     end
 end
 
@@ -738,7 +759,7 @@ updateStageList()
 
 sessionStartGold = getPlayerStatValue("Gold")
 sessionStartGoldBlocks = getPlayerStatValue("GoldBlock")
-runtimeLabel = select(1, CreateValueLabel("Autofarm", "Session: 00:00:00"))
+runtimeLabel = select(1, CreateValueLabel("Autofarm", "Session: 00:00:00 | 0 Gold Blocks/h | 0 Gold/h"))
 rewardStatsLabel = select(1, CreateValueLabel("Autofarm", "Rewards: 0 Gold Blocks <font color=\"#23A55A\">(+0)</font> | 0 Gold <font color=\"#23A55A\">(+0)</font>"))
 bindPlayerData()
 updateRewardLabels()

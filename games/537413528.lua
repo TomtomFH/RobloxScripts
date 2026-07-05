@@ -19,6 +19,7 @@ local stageConnections = {}
 local summaryLabel = nil
 local sessionRewardsLabel = nil
 local totalRewardsLabel = nil
+local runtimeLabel = nil
 local currentActionLabel = nil
 local chestReadyLabel = nil
 local autofarmEnabled = false
@@ -29,6 +30,7 @@ local noClipCharacter = nil
 local originalCollisionStates = {}
 local sessionStartGold = 0
 local sessionStartGoldBlocks = 0
+local scriptStartedAt = os.clock()
 
 local function connect(signal, callback)
     local connection = signal:Connect(callback)
@@ -235,6 +237,31 @@ local function bindPlayerData()
     connect(playerData.ChildRemoved, function(child)
         if child.Name == "Gold" or child.Name == "GoldBlock" then
             updateRewardLabels()
+        end
+    end)
+end
+
+local function formatRuntime(seconds)
+    seconds = math.max(0, math.floor(seconds))
+
+    local hours = math.floor(seconds / 3600)
+    local minutes = math.floor((seconds % 3600) / 60)
+    local remainingSeconds = seconds % 60
+
+    return string.format("Time: %02dH %02dM %02dS", hours, minutes, remainingSeconds)
+end
+
+local function updateRuntimeLabel()
+    if runtimeLabel then
+        runtimeLabel.Text = formatRuntime(os.clock() - scriptStartedAt)
+    end
+end
+
+local function startRuntimeUpdater()
+    task.spawn(function()
+        while runtimeLabel do
+            updateRuntimeLabel()
+            task.wait(1)
         end
     end)
 end
@@ -712,8 +739,10 @@ sessionStartGold = getPlayerStatValue("Gold")
 sessionStartGoldBlocks = getPlayerStatValue("GoldBlock")
 sessionRewardsLabel = select(1, CreateValueLabel("Autofarm", "Session: +0 Gold Blocks | +0 Gold"))
 totalRewardsLabel = select(1, CreateValueLabel("Autofarm", "Total: 0 Gold Blocks | 0 Gold"))
+runtimeLabel = select(1, CreateValueLabel("Autofarm", "Time: 00H 00M 00S"))
 bindPlayerData()
 updateRewardLabels()
+startRuntimeUpdater()
 
 currentActionLabel = select(1, CreateValueLabel("Autofarm", "Current Action: Off"))
 chestReadyLabel = select(1, CreateValueLabel("Autofarm", "Chest Ready: No"))

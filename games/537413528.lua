@@ -1,6 +1,7 @@
 -- Build A Boat For Treasure (https://www.roblox.com/games/537413528/)
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
@@ -10,16 +11,19 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScript
 local boatStages = Workspace:WaitForChild("BoatStages", 30)
 local stageInfo = boatStages and boatStages:WaitForChild("StageInfo", 30)
 local normalStages = boatStages and boatStages:WaitForChild("NormalStages", 30)
-local otherStages = boatStages and boatStages:WaitForChild("OtherStages", 30)
 local otherData = LocalPlayer:WaitForChild("OtherData", 30)
 
 local stageRows = {}
 local stageConnections = {}
 local summaryLabel = nil
-local autofarmStatusLabel = nil
-local autofarmEnabled = false
-local autofarmThread = nil
-local farmReferencePosition = nil
+local farmStatusLabel = nil
+local visitStagesEnabled = false
+local claimGoldBlockEnabled = false
+local farmThread = nil
+local floatObjects = {}
+local noClipConnection = nil
+local noClipCharacter = nil
+local originalCollisionStates = {}
 
 local function connect(signal, callback)
     local connection = signal:Connect(callback)
@@ -192,12 +196,20 @@ local function bindOtherData()
     end)
 end
 
-local function getCharacterRoot()
-    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    return character and character:FindFirstChild("HumanoidRootPart")
+local function getCharacter()
+    return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 end
 
-local function getInstanceCenter(instance)
+local function getCharacterRoot()
+    local character = getCharacter()
+    return character and character:WaitForChild("HumanoidRootPart", 10)
+end
+
+local function getHumanoid(character)
+    return character and character:FindFirstChildOfClass("Humanoid")
+end
+
+local function getValueBasePosition(instance)
     if not instance then
         return nil
     end
@@ -206,158 +218,333 @@ local function getInstanceCenter(instance)
         return instance.Position
     end
 
-    if instance:IsA("Model") then
-        local ok, cframe = pcall(function()
-            return instance:GetBoundingBox()
-        end)
+    return nil
+end
 
-        if ok and cframe then
-            return cframe.Position
+local function getCaveDarknessPosition(caveIndex)
+    local caveStage = normalStages and normalStages:FindFirstChild("CaveStage" .. tostring(caveIndex))
+    local darknessPart = caveStage and caveStage:FindFirstChild("DarknessPart")
+    return getValueBasePosition(darknessPart)
+end
+
+local function getStageFarmPosition(slotIndex)
+    local firstCavePosition = getCaveDarknessPosition(math.max(slotIndex, 1))
+    local secondCavePosition = getCaveDarknessPosition(math.max(slotIndex + 1, 2))
+
+    if slotIndex == 0 then
+        firstCavePosition = getCaveDarknessPosition(1)
+        secondCavePosition = getCaveDarknessPosition(2)
+
+        if not firstCavePosition or not secondCavePosition then
+            return nil
         end
+
+        return firstCavePosition - ((secondCavePosition - firstCavePosition) * 0.5)
     end
 
-    local minPosition = Vector3.new(math.huge, math.huge, math.huge)
-    local maxPosition = Vector3.new(-math.huge, -math.huge, -math.huge)
-    local foundPart = false
+    if not firstCavePosition or not secondCavePosition then
+        return nil
+    end
 
-    for _, descendant in ipairs(instance:GetDescendants()) do
+    return (firstCavePosition + secondCavePosition) * 0.5
+end
+
+local function getGoldenChestTriggerPosition()
+    local theEnd = normalStages and normalStages:FindFirstChild("TheEnd")
+    local goldenChest = theEnd and theEnd:FindFirstChild("GoldenChest")
+    local trigger = goldenChest and goldenChest:FindFirstChild("Trigger")
+    return getValueBasePosition(trigger)
+end
+
+local function applyNoClipToCharacter(character)
+    if not character then
+        return
+    end
+
+    for _, descendant in ipairs(character:GetDescendants()) do
         if descendant:IsA("BasePart") then
-            local position = descendant.Position
-            local halfSize = descendant.Size * 0.5
+            if originalCollisionStates[descendant] == nil then
+                originalCollisionStates[descendant] = descendant.CanCollide
+            end
 
-            minPosition = Vector3.new(
-                math.min(minPosition.X, position.X - halfSize.X),
-                math.min(minPosition.Y, position.Y - halfSize.Y),
-                math.min(minPosition.Z, position.Z - halfSize.Z)
-            )
+            descendant.CanCollide = false
+        end
+    end
+end
 
-            maxPosition = Vector3.new(
-                math.max(maxPosition.X, position.X + halfSize.X),
-                math.max(maxPosition.Y, position.Y + halfSize.Y),
-                math.max(maxPosition.Z, position.Z + halfSize.Z)
-            )
+local function stopNoClip()
+    if noClipConnection then
+        noClipConnection:Disconnect()
+        noClipConnection = nil
+    end
 
-            foundPart = true
+    for part, originalCanCollide in pairs(originalCollisionStates) do
+        if part and part.Parent then
+            part.CanCollide = originalCanCollide
         end
     end
 
-    if foundPart then
-        return (minPosition + maxPosition) * 0.5
+    table.clear(originalCollisionStates)
+    noClipCharacter = nil
+end
+
+local function startNoClip(character)
+    if not character then
+        return
+    end
+
+    if noClipCharacter ~= character then
+        stopNoClip()
+        noClipCharacter = character
+    end
+
+    applyNoClipToCharacter(character)
+
+    if noClipConnection then
+        return
+    end
+
+    noClipConnection = RunService.Stepped:Connect(function()
+        if not noClipCharacter or not noClipCharacter.Parent then
+            stopNoClip()
+            return
+        end
+
+        applyNoClipToCharacter(noClipCharacter)
+    end)
+end
+
+local function clearFloatObjects()
+    for _, object in ipairs(floatObjects) do
+        if object and object.Parent then
+            object:Destroy()
+        end
+    end
+
+    table.clear(floatObjects)
+    stopNoClip()
+end
+
+local function applyFloating(root)
+    if not root then
+        return
+    end
+
+    if #floatObjects > 0 and floatObjects[1] and floatObjects[1].Parent == root then
+        startNoClip(root.Parent)
+        return
+    end
+
+    clearFloatObjects()
+    startNoClip(root.Parent)
+
+    local bodyVelocity = Instance.new("BodyVelocity")
+    bodyVelocity.Name = "TomtomFHFloatVelocity"
+    bodyVelocity.MaxForce = Vector3.new(100000, 100000, 100000)
+    bodyVelocity.P = 100000
+    bodyVelocity.Velocity = Vector3.zero
+    bodyVelocity.Parent = root
+
+    local bodyGyro = Instance.new("BodyGyro")
+    bodyGyro.Name = "TomtomFHFloatGyro"
+    bodyGyro.MaxTorque = Vector3.new(100000, 100000, 100000)
+    bodyGyro.P = 100000
+    bodyGyro.CFrame = root.CFrame
+    bodyGyro.Parent = root
+
+    table.insert(floatObjects, bodyVelocity)
+    table.insert(floatObjects, bodyGyro)
+end
+
+local function hoverAtPosition(position)
+    local root = getCharacterRoot()
+    if root and position then
+        applyFloating(root)
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+        root.CFrame = CFrame.new(position)
+    end
+end
+
+local function getLoadedStageData()
+    local stages = {}
+
+    for slotIndex = 0, 9 do
+        local data = getStageData(slotIndex)
+        if data.Loaded then
+            table.insert(stages, data)
+        end
+    end
+
+    return stages
+end
+
+local function getFirstUnvisitedStage()
+    for _, data in ipairs(getLoadedStageData()) do
+        if not data.Visited then
+            return data
+        end
     end
 
     return nil
 end
 
-local function getFarmReferencePosition()
-    if farmReferencePosition then
-        return farmReferencePosition
+local function areAllLoadedStagesVisited()
+    local loadedStages = getLoadedStageData()
+    if #loadedStages == 0 then
+        return false
     end
 
-    local caveStage = normalStages and normalStages:WaitForChild("CaveStage1", 30)
-    local darknessPart = caveStage and caveStage:WaitForChild("DarknessPart", 30)
-    farmReferencePosition = getInstanceCenter(darknessPart)
-
-    return farmReferencePosition
-end
-
-local function getStageTarget(slotIndex, stageName)
-    if slotIndex == 0 then
-        return normalStages and normalStages:FindFirstChild("ForestStage")
-    end
-
-    if not stageName or stageName == "" then
-        return nil
-    end
-
-    return otherStages and otherStages:FindFirstChild(stageName)
-end
-
-local function getStageFarmPosition(slotIndex, stageName)
-    local referencePosition = getFarmReferencePosition()
-    local targetStage = getStageTarget(slotIndex, stageName)
-    local stageCenter = getInstanceCenter(targetStage)
-
-    if not referencePosition or not stageCenter then
-        return nil
-    end
-
-    return Vector3.new(referencePosition.X, referencePosition.Y, stageCenter.Z)
-end
-
-local function setAutofarmStatus(text)
-    if autofarmStatusLabel then
-        autofarmStatusLabel.Text = tostring(text)
-    end
-end
-
-local function teleportToPosition(position)
-    local root = getCharacterRoot()
-    if root and position then
-        root.CFrame = CFrame.new(position)
-    end
-end
-
-local function runAutofarm()
-    setAutofarmStatus("Autofarm: Running")
-
-    while autofarmEnabled do
-        local didWork = false
-
-        for slotIndex = 0, 9 do
-            if not autofarmEnabled then
-                break
-            end
-
-            local data = getStageData(slotIndex)
-            if data.Loaded and not data.Visited then
-                didWork = true
-                setAutofarmStatus("Autofarm: " .. data.StageName)
-
-                while autofarmEnabled do
-                    data = getStageData(slotIndex)
-                    if not data.Loaded or data.Visited then
-                        break
-                    end
-
-                    local position = getStageFarmPosition(slotIndex, data.StageName)
-                    if position then
-                        teleportToPosition(position)
-                    else
-                        setAutofarmStatus("Autofarm: Waiting for " .. data.StageName)
-                    end
-
-                    task.wait(0.35)
-                end
-            end
-        end
-
-        if autofarmEnabled and not didWork then
-            setAutofarmStatus("Autofarm: Waiting for unvisited stage")
-            task.wait(0.5)
+    for _, data in ipairs(loadedStages) do
+        if not data.Visited then
+            return false
         end
     end
 
-    setAutofarmStatus("Autofarm: Off")
+    return true
 end
 
-local function setAutofarmEnabled(enabled)
-    autofarmEnabled = enabled
-
-    if autofarmEnabled then
-        if autofarmThread then
-            return
+local function waitForRespawnAfterReset(startCharacter)
+    while claimGoldBlockEnabled and LocalPlayer.Character == startCharacter do
+        local humanoid = getHumanoid(startCharacter)
+        if not startCharacter.Parent or (humanoid and humanoid.Health <= 0) then
+            break
         end
 
-        autofarmThread = task.spawn(function()
-            runAutofarm()
-            autofarmThread = nil
-        end)
+        task.wait(0.15)
+    end
+
+    clearFloatObjects()
+
+    if claimGoldBlockEnabled then
+        if LocalPlayer.Character == startCharacter then
+            LocalPlayer.CharacterAdded:Wait()
+        end
+
+        getCharacterRoot()
+    end
+end
+
+local function fireClaimGoldRemote()
+    local remote = Workspace:FindFirstChild("ClaimRiverResultsGold")
+    if remote and remote:IsA("RemoteEvent") then
+        remote:FireServer()
+    end
+end
+
+local function waitForStagesToVisit()
+    while (visitStagesEnabled or claimGoldBlockEnabled) and not getFirstUnvisitedStage() do
+        task.wait(0.25)
+    end
+end
+
+local function setFarmStatus(text)
+    if farmStatusLabel then
+        farmStatusLabel.Text = tostring(text)
+    end
+end
+
+local function visitStage(data)
+    setFarmStatus("Visit Stages: " .. data.StageName)
+
+    while visitStagesEnabled do
+        data = getStageData(data.Slot)
+        if not data.Loaded or data.Visited then
+            break
+        end
+
+        local position = getStageFarmPosition(data.StageNum)
+        if position then
+            hoverAtPosition(position)
+        else
+            setFarmStatus("Visit Stages: Waiting for Stage" .. tostring(data.StageNum))
+        end
+
+        task.wait(0.2)
+    end
+end
+
+local function claimGoldBlock()
+    local position = getGoldenChestTriggerPosition()
+    if not position then
+        setFarmStatus("Claim Gold Block: Trigger not found")
+        task.wait(0.5)
+        return
+    end
+
+    local startCharacter = getCharacter()
+    setFarmStatus("Claim Gold Block: Waiting for reset")
+
+    while claimGoldBlockEnabled and LocalPlayer.Character == startCharacter do
+        local humanoid = getHumanoid(startCharacter)
+        if not startCharacter.Parent or (humanoid and humanoid.Health <= 0) then
+            break
+        end
+
+        hoverAtPosition(position)
+        task.wait(0.2)
+    end
+
+    waitForRespawnAfterReset(startCharacter)
+
+    if claimGoldBlockEnabled then
+        setFarmStatus("Claim Gold Block: Claiming")
+        fireClaimGoldRemote()
+        waitForStagesToVisit()
+    end
+end
+
+local function runFarmLoop()
+    while visitStagesEnabled or claimGoldBlockEnabled do
+        local unvisitedStage = getFirstUnvisitedStage()
+
+        if visitStagesEnabled and unvisitedStage then
+            visitStage(unvisitedStage)
+        elseif claimGoldBlockEnabled and areAllLoadedStagesVisited() then
+            claimGoldBlock()
+        else
+            setFarmStatus("Visit Stages: Waiting")
+            clearFloatObjects()
+            task.wait(0.35)
+        end
+    end
+
+    clearFloatObjects()
+    setFarmStatus("Farm: Off")
+end
+
+local function startFarmLoop()
+    if farmThread then
+        return
+    end
+
+    farmThread = task.spawn(function()
+        runFarmLoop()
+        farmThread = nil
+    end)
+end
+
+local function setVisitStagesEnabled(enabled)
+    visitStagesEnabled = enabled
+
+    if visitStagesEnabled or claimGoldBlockEnabled then
+        startFarmLoop()
     else
-        setAutofarmStatus("Autofarm: Off")
+        clearFloatObjects()
+        setFarmStatus("Farm: Off")
     end
 end
 
-getFarmReferencePosition()
+local function setClaimGoldBlockEnabled(enabled)
+    claimGoldBlockEnabled = enabled
+
+    if visitStagesEnabled or claimGoldBlockEnabled then
+        startFarmLoop()
+    else
+        clearFloatObjects()
+        setFarmStatus("Farm: Off")
+    end
+end
 
 CreateMenu("Build A Boat")
 CreateGroup("Build A Boat", "Main")
@@ -393,8 +580,12 @@ end
 bindOtherData()
 updateStageList()
 
-autofarmStatusLabel = select(1, CreateValueLabel("Toggles", "Autofarm: Off"))
+farmStatusLabel = select(1, CreateValueLabel("Toggles", "Farm: Off"))
 
-CreateToggle("Toggles", "Autofarm", function(state)
-    setAutofarmEnabled(state.Value)
-end, autofarmEnabled)
+CreateToggle("Toggles", "Visit Stages", function(state)
+    setVisitStagesEnabled(state.Value)
+end, visitStagesEnabled)
+
+CreateToggle("Toggles", "Claim Gold Block", function(state)
+    setClaimGoldBlockEnabled(state.Value)
+end, claimGoldBlockEnabled)

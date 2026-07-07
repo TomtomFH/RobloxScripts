@@ -161,7 +161,7 @@ local function throwSnowballAt(enemy)
     local startCFrame = handle.CFrame
     local targetCFrame = CFrame.new(position)
     local success = pcall(function()
-        remote:InvokeServer(startCFrame, targetCFrame, math.huge)
+        remote:InvokeServer(startCFrame, targetCFrame, 10000)
     end)
 
     return success

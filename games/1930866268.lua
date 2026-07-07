@@ -83,6 +83,11 @@ local function getEnemyPosition(enemy)
     end
 
     if enemy:IsA("Model") then
+        local humanoidRootPart = enemy:FindFirstChild("HumanoidRootPart")
+        if humanoidRootPart and humanoidRootPart:IsA("BasePart") then
+            return humanoidRootPart.Position
+        end
+
         local success, cframe = pcall(function()
             return enemy:GetPivot()
         end)
@@ -151,7 +156,7 @@ local function throwSnowballAt(enemy)
     local startCFrame = handle.CFrame
     local targetCFrame = CFrame.new(position)
     local success = pcall(function()
-        remote:InvokeServer(startCFrame, targetCFrame, 200)
+        remote:InvokeServer(startCFrame, targetCFrame, 1000)
     end)
 
     return success

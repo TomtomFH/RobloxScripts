@@ -2,6 +2,7 @@
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
 local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
@@ -21,6 +22,7 @@ local runtimeLabel = nil
 local rewardStatsLabel = nil
 local currentActionLabel = nil
 local chestReadyLabel = nil
+local placeStatusLabel = nil
 local autofarmEnabled = false
 local farmThread = nil
 local floatObjects = {}
@@ -30,6 +32,13 @@ local originalCollisionStates = {}
 local sessionStartGold = 0
 local sessionStartGoldBlocks = 0
 local scriptStartedAt = os.clock()
+
+local universePlaces = {
+    {Name = "Build A Boat For Treasure", PlaceId = 537413528},
+    {Name = "The Test Place", PlaceId = 1930665568},
+    {Name = "Inner Cloud", PlaceId = 1930863474},
+    {Name = "Winter Place", PlaceId = 1930866268}
+}
 
 local function connect(signal, callback)
     local connection = signal:Connect(callback)
@@ -723,9 +732,37 @@ local function setAutofarmEnabled(enabled)
     end
 end
 
+local function setPlaceStatus(text)
+    if placeStatusLabel then
+        placeStatusLabel.Text = "Status: " .. tostring(text)
+    end
+end
+
+local function teleportToPlace(place)
+    if not place then
+        return
+    end
+
+    if game.PlaceId == place.PlaceId then
+        setPlaceStatus("Already in " .. place.Name)
+        return
+    end
+
+    setPlaceStatus("Teleporting to " .. place.Name)
+
+    local success, err = pcall(function()
+        TeleportService:Teleport(place.PlaceId, LocalPlayer)
+    end)
+
+    if not success then
+        setPlaceStatus("Teleport failed: " .. tostring(err))
+    end
+end
+
 CreateMenu("Build A Boat")
 CreateGroup("Build A Boat", "Main")
 CreateTab("Build A Boat", "Main", "Autofarm")
+CreateTab("Build A Boat", "Main", "Places")
 CreateTab("Build A Boat", "Main", "Stages")
 
 summaryLabel = select(1, CreateValueLabel("Stages", "Loaded stages: 0/9  |  Visited current route: 0"))
@@ -772,3 +809,17 @@ updateChestReadyLabel()
 CreateToggle("Autofarm", "Autofarm", function(state)
     setAutofarmEnabled(state.Value)
 end, autofarmEnabled)
+
+placeStatusLabel = select(1, CreateValueLabel("Places", "Status: Ready"))
+
+for _, place in ipairs(universePlaces) do
+    local targetPlace = place
+    local buttonText = targetPlace.Name
+    if game.PlaceId == targetPlace.PlaceId then
+        buttonText = buttonText .. " (Current)"
+    end
+
+    CreateButton("Places", buttonText, function()
+        teleportToPlace(targetPlace)
+    end)
+end

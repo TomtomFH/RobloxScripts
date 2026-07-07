@@ -56,20 +56,25 @@ local function setCurrentAction(text)
 end
 
 local function getCharacter()
-    return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local character = LocalPlayer.Character
+    if character and character.Parent then
+        return character
+    end
+
+    return LocalPlayer.CharacterAdded:Wait()
 end
 
 local function getSnowball()
     local character = getCharacter()
-    local backpack = LocalPlayer:FindFirstChild("Backpack")
-    local snowball = character and character:FindFirstChild("Snowball")
+    local backpack = LocalPlayer:FindFirstChild("Backpack") or LocalPlayer:WaitForChild("Backpack", 2)
+    local snowball = character and (character:FindFirstChild("Snowball") or character:WaitForChild("Snowball", 0.15))
 
     if not snowball and backpack then
-        snowball = backpack:FindFirstChild("Snowball")
+        snowball = backpack:FindFirstChild("Snowball") or backpack:WaitForChild("Snowball", 0.5)
         local humanoid = character and character:FindFirstChildOfClass("Humanoid")
         if snowball and humanoid then
             humanoid:EquipTool(snowball)
-            task.wait(0.1)
+            snowball = character:FindFirstChild("Snowball") or character:WaitForChild("Snowball", 0.5) or snowball
         end
     end
 
@@ -141,13 +146,13 @@ local function throwSnowballAt(enemy)
         return false
     end
 
-    local remote = snowball:FindFirstChild("ThrowSnowball")
+    local remote = snowball:FindFirstChild("ThrowSnowball") or snowball:WaitForChild("ThrowSnowball", 0.2)
     if not remote or not remote:IsA("RemoteFunction") then
         setCurrentAction("ThrowSnowball remote missing")
         return false
     end
 
-    local handle = snowball:FindFirstChild("Handle")
+    local handle = snowball:FindFirstChild("Handle") or snowball:WaitForChild("Handle", 0.2)
     if not handle or not handle:IsA("BasePart") then
         setCurrentAction("Snowball handle missing")
         return false
@@ -156,7 +161,7 @@ local function throwSnowballAt(enemy)
     local startCFrame = handle.CFrame
     local targetCFrame = CFrame.new(position)
     local success = pcall(function()
-        remote:InvokeServer(startCFrame, targetCFrame, 1000)
+        remote:InvokeServer(startCFrame, targetCFrame, math.huge)
     end)
 
     return success

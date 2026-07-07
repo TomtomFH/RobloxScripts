@@ -141,9 +141,16 @@ local function throwSnowballAt(enemy)
         return false
     end
 
-    local targetCFrame = CFrame.new(position)
+    local handle = snowball:FindFirstChild("Handle")
+    if not handle or not handle:IsA("BasePart") then
+        setCurrentAction("Snowball handle missing")
+        return false
+    end
+
+    local startCFrame = handle.CFrame
+    local targetCFrame = CFrame.lookAt(handle.Position, position)
     local success = pcall(function()
-        remote:InvokeServer(targetCFrame, targetCFrame, 200)
+        remote:InvokeServer(startCFrame, targetCFrame, 200)
     end)
 
     return success

@@ -8,7 +8,6 @@ local LocalPlayer = Players.LocalPlayer
 loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/Lib.lua", true))()
 
 local placeStatusLabel = nil
-local currentActionLabel = nil
 
 local universePlaces = {
     {Name = "Build A Boat For Treasure", PlaceId = 537413528},
@@ -44,22 +43,9 @@ local function teleportToPlace(place)
     end
 end
 
-local function setAutofarmEnabled(enabled)
-    if currentActionLabel then
-        currentActionLabel.Text = enabled and "Current Action: Ready for next setup" or "Current Action: Off"
-    end
-end
-
 CreateMenu("Build A Boat")
 CreateGroup("Build A Boat", "Main")
-CreateTab("Build A Boat", "Main", "Autofarm")
 CreateTab("Build A Boat", "Main", "Places")
-
-currentActionLabel = select(1, CreateValueLabel("Autofarm", "Current Action: Off"))
-
-CreateToggle("Autofarm", "Autofarm", function(state)
-    setAutofarmEnabled(state.Value)
-end, false)
 
 placeStatusLabel = select(1, CreateValueLabel("Places", "Status: Ready"))
 

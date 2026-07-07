@@ -170,7 +170,7 @@ local function startEnemyThread(enemy)
     enemyThreads[enemy] = task.spawn(function()
         while autofarmEnabled and enemy.Parent do
             throwSnowballAt(enemy)
-            task.wait(0.1)
+            task.wait()
         end
 
         enemyThreads[enemy] = nil
@@ -199,7 +199,7 @@ local function runAutofarm()
             end
         end
 
-        task.wait(0.1)
+        task.wait()
     end
 
     table.clear(enemyThreads)

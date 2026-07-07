@@ -2,6 +2,7 @@
 
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
+local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -9,6 +10,9 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScript
 
 local placeStatusLabel = nil
 local currentActionLabel = nil
+local enemyCountLabel = nil
+local autofarmEnabled = false
+local autofarmThread = nil
 
 local universePlaces = {
     {Name = "Build A Boat For Treasure", PlaceId = 537413528},
@@ -44,9 +48,151 @@ local function teleportToPlace(place)
     end
 end
 
-local function setAutofarmEnabled(enabled)
+local function setCurrentAction(text)
     if currentActionLabel then
-        currentActionLabel.Text = enabled and "Current Action: Ready for next setup" or "Current Action: Off"
+        currentActionLabel.Text = "Current Action: " .. tostring(text)
+    end
+end
+
+local function getCharacter()
+    return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+end
+
+local function getSnowball()
+    local character = getCharacter()
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    local snowball = character and character:FindFirstChild("Snowball")
+
+    if not snowball and backpack then
+        snowball = backpack:FindFirstChild("Snowball")
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        if snowball and humanoid then
+            humanoid:EquipTool(snowball)
+            task.wait(0.1)
+        end
+    end
+
+    character = LocalPlayer.Character
+    return character and character:FindFirstChild("Snowball") or snowball
+end
+
+local function getEnemyPosition(enemy)
+    if not enemy or not enemy.Parent then
+        return nil
+    end
+
+    if enemy:IsA("Model") then
+        local success, cframe = pcall(function()
+            return enemy:GetPivot()
+        end)
+
+        if success then
+            return cframe.Position
+        end
+
+        local part = enemy.PrimaryPart or enemy:FindFirstChildWhichIsA("BasePart", true)
+        return part and part.Position or nil
+    end
+
+    if enemy:IsA("BasePart") then
+        return enemy.Position
+    end
+
+    return nil
+end
+
+local function getEnemies()
+    local enemiesFolder = Workspace:FindFirstChild("Enemies")
+    if not enemiesFolder then
+        return {}
+    end
+
+    local enemies = {}
+    for _, enemy in ipairs(enemiesFolder:GetChildren()) do
+        if enemy:IsA("Model") and getEnemyPosition(enemy) then
+            table.insert(enemies, enemy)
+        end
+    end
+
+    return enemies
+end
+
+local function updateEnemyCount()
+    if enemyCountLabel then
+        enemyCountLabel.Text = "Enemies: " .. tostring(#getEnemies())
+    end
+end
+
+local function throwSnowballAt(enemy)
+    local position = getEnemyPosition(enemy)
+    if not position then
+        return false
+    end
+
+    local snowball = getSnowball()
+    if not snowball then
+        setCurrentAction("Waiting for Snowball")
+        return false
+    end
+
+    local remote = snowball:FindFirstChild("ThrowSnowball")
+    if not remote or not remote:IsA("RemoteFunction") then
+        setCurrentAction("ThrowSnowball remote missing")
+        return false
+    end
+
+    local targetCFrame = CFrame.new(position)
+    local success = pcall(function()
+        remote:InvokeServer(targetCFrame, targetCFrame, 200)
+    end)
+
+    return success
+end
+
+local function runAutofarm()
+    while autofarmEnabled do
+        updateEnemyCount()
+
+        local enemies = getEnemies()
+        if #enemies == 0 then
+            setCurrentAction("Waiting for enemies")
+            task.wait(0.15)
+            continue
+        end
+
+        setCurrentAction("Throwing snowballs")
+        for _, enemy in ipairs(enemies) do
+            if not autofarmEnabled then
+                break
+            end
+
+            if enemy.Parent then
+                throwSnowballAt(enemy)
+                task.wait(0.03)
+            end
+        end
+
+        task.wait()
+    end
+
+    setCurrentAction("Off")
+    updateEnemyCount()
+end
+
+local function setAutofarmEnabled(enabled)
+    autofarmEnabled = enabled
+
+    if autofarmEnabled then
+        setCurrentAction("Starting")
+
+        if not autofarmThread then
+            autofarmThread = task.spawn(function()
+                runAutofarm()
+                autofarmThread = nil
+            end)
+        end
+    else
+        setCurrentAction("Off")
     end
 end
 
@@ -56,6 +202,7 @@ CreateTab("Build A Boat", "Main", "Autofarm")
 CreateTab("Build A Boat", "Main", "Places")
 
 currentActionLabel = select(1, CreateValueLabel("Autofarm", "Current Action: Off"))
+enemyCountLabel = select(1, CreateValueLabel("Autofarm", "Enemies: 0"))
 
 CreateToggle("Autofarm", "Autofarm", function(state)
     setAutofarmEnabled(state.Value)

@@ -13,6 +13,7 @@ local currentActionLabel = nil
 local enemyCountLabel = nil
 local autofarmEnabled = false
 local autofarmThread = nil
+local enemyThreads = {}
 
 local universePlaces = {
     {Name = "Build A Boat For Treasure", PlaceId = 537413528},
@@ -156,6 +157,21 @@ local function throwSnowballAt(enemy)
     return success
 end
 
+local function startEnemyThread(enemy)
+    if enemyThreads[enemy] then
+        return
+    end
+
+    enemyThreads[enemy] = task.spawn(function()
+        while autofarmEnabled and enemy.Parent do
+            throwSnowballAt(enemy)
+            task.wait(0.1)
+        end
+
+        enemyThreads[enemy] = nil
+    end)
+end
+
 local function runAutofarm()
     while autofarmEnabled do
         updateEnemyCount()
@@ -174,14 +190,14 @@ local function runAutofarm()
             end
 
             if enemy.Parent then
-                throwSnowballAt(enemy)
-                task.wait(0.03)
+                startEnemyThread(enemy)
             end
         end
 
-        task.wait()
+        task.wait(0.1)
     end
 
+    table.clear(enemyThreads)
     setCurrentAction("Off")
     updateEnemyCount()
 end

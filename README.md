@@ -50,6 +50,18 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScript
 	- Place ID: 537413528
 	- Script: games/537413528.lua
 	- https://www.roblox.com/games/537413528/Build-A-Boat-For-Treasure
+- **Build A Boat For Treasure (The Test Place)**
+	- Place ID: 1930665568
+	- Script: games/1930665568.lua
+	- https://www.roblox.com/games/1930665568/
+- **Build A Boat For Treasure (Inner Cloud)**
+	- Place ID: 1930863474
+	- Script: games/1930863474.lua
+	- https://www.roblox.com/games/1930863474/
+- **Build A Boat For Treasure (Winter Place)**
+	- Place ID: 1930866268
+	- Script: games/1930866268.lua
+	- https://www.roblox.com/games/1930866268/
 
 ## Notes
 

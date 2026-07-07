@@ -20,47 +20,47 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScript
 
 - **Catch And Tame**
 	- Place ID: 96645548064314
-	- Script: games/96645548064314.lua
+	- Script: [games/96645548064314.lua](https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/games/96645548064314.lua)
 	- https://www.roblox.com/games/96645548064314/
 - **Dress To Impress**
 	- Place ID: 15101393044
-	- Script: games/15101393044.lua
+	- Script: [games/15101393044.lua](https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/games/15101393044.lua)
 	- https://www.roblox.com/games/15101393044/
 - **Ultimate Tree Incremental**
 	- Place ID: 105344022671234
-	- Script: games/105344022671234.lua
+	- Script: [games/105344022671234.lua](https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/games/105344022671234.lua)
 	- https://www.roblox.com/games/105344022671234/
 - **Egg Incremental**
 	- Place ID: 137034315542002
-	- Script: games/137034315542002.lua
+	- Script: [games/137034315542002.lua](https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/games/137034315542002.lua)
 	- https://www.roblox.com/games/137034315542002/
 - **Pressure (Lobby)**
 	- Place ID: 12411473842
-	- Script: games/12411473842.lua
+	- Script: [games/12411473842.lua](https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/games/12411473842.lua)
 	- https://www.roblox.com/games/12411473842/
 - **Pressure (Hadal Blacksite)**
 	- Place ID: 12552538292
-	- Script: games/12552538292.lua
+	- Script: [games/12552538292.lua](https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/games/12552538292.lua)
 	- https://www.roblox.com/games/12552538292/
 - **Deadly Delivery**
 	- Place ID: 93044798454681
-	- Script: games/93044798454681.lua
+	- Script: [games/93044798454681.lua](https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/games/93044798454681.lua)
 	- https://www.roblox.com/games/93044798454681/
 - **Build A Boat For Treasure**
 	- Place ID: 537413528
-	- Script: games/537413528.lua
+	- Script: [games/537413528.lua](https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/games/537413528.lua)
 	- https://www.roblox.com/games/537413528/Build-A-Boat-For-Treasure
 - **Build A Boat For Treasure (The Test Place)**
 	- Place ID: 1930665568
-	- Script: games/1930665568.lua
+	- Script: [games/1930665568.lua](https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/games/1930665568.lua)
 	- https://www.roblox.com/games/1930665568/
 - **Build A Boat For Treasure (Inner Cloud)**
 	- Place ID: 1930863474
-	- Script: games/1930863474.lua
+	- Script: [games/1930863474.lua](https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/games/1930863474.lua)
 	- https://www.roblox.com/games/1930863474/
 - **Build A Boat For Treasure (Winter Place)**
 	- Place ID: 1930866268
-	- Script: games/1930866268.lua
+	- Script: [games/1930866268.lua](https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/games/1930866268.lua)
 	- https://www.roblox.com/games/1930866268/
 
 ## Notes

@@ -1713,6 +1713,7 @@ local FIREWALL_TELEPORT_SIDE = -1
 local FIREWALL_WALK_START_DELAY = 0.15
 local FIREWALL_WALK_DURATION = 2.5
 local FIREWALL_WALK_SPEED = 22
+local FIREWALL_WALK_THROUGH_DISTANCE = 16
 local FIREWALL_DELETE_ROOMS_BEHIND = 10
 
 local function firewallSetStatus(text)
@@ -2029,6 +2030,7 @@ local function firewallWalkIntoDoor(character, root, humanoid, doorPart)
         end
 
         walkDirection = walkDirection.Unit
+        local walkTarget = doorPart.Position + walkDirection * FIREWALL_WALK_THROUGH_DISTANCE
         humanoid.WalkSpeed = FIREWALL_WALK_SPEED
         humanoid.AutoRotate = false
 
@@ -2038,9 +2040,18 @@ local function firewallWalkIntoDoor(character, root, humanoid, doorPart)
                 break
             end
 
-            root.CFrame = CFrame.lookAt(root.Position, root.Position + walkDirection)
-            humanoid:Move(walkDirection, false)
-            runService.Heartbeat:Wait()
+            local remaining = walkTarget - root.Position
+            if remaining.Magnitude <= 1 then
+                break
+            end
+
+            local currentDirection = remaining.Unit
+            root.CFrame = CFrame.lookAt(root.Position, root.Position + currentDirection)
+            root.AssemblyLinearVelocity = currentDirection * FIREWALL_WALK_SPEED
+            humanoid:Move(currentDirection, false)
+
+            local deltaTime = runService.Heartbeat:Wait()
+            root.CFrame = root.CFrame + currentDirection * FIREWALL_WALK_SPEED * deltaTime
         end
 
         if humanoid.Parent then

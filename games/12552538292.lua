@@ -399,7 +399,8 @@ if isEndlessFirewallMode() then
         for room, openValue in pairs(firewallState.roomOpenValues) do
             if firewallState.chaseRooms and room:IsDescendantOf(firewallState.chaseRooms) and openValue and openValue.Parent then
                 local roomNumber = firewallGetRoomNumber(room)
-                if roomNumber and openValue.Value ~= true and (not bestRoomNumber or roomNumber > bestRoomNumber) then
+                local teleportPart = firewallGetTeleportPartForRoom(room)
+                if roomNumber and teleportPart and openValue.Value ~= true and (not bestRoomNumber or roomNumber > bestRoomNumber) then
                     bestRoom = room
                     bestRoomNumber = roomNumber
                 end
@@ -1278,8 +1279,15 @@ if isEndlessFirewallMode() then
                     continue
                 end
 
+                local teleportPart = firewallGetTeleportPartForRoom(room)
+                if not teleportPart then
+                    firewallSetStatus("Waiting for room " .. tostring(roomNumber) .. " door")
+                    firewallRefreshChaseRooms()
+                    task.wait(FIREWALL_RETRY_DELAY)
+                    continue
+                end
+
                 if FIREWALL_CHASE_DRY_RUN then
-                    local teleportPart = firewallGetTeleportPartForRoom(room)
                     local positionText = teleportPart and string.format(
                         " @ %.1f, %.1f, %.1f",
                         teleportPart.Position.X,
@@ -1289,7 +1297,7 @@ if isEndlessFirewallMode() then
                     firewallSetStatus("Would enter room " .. tostring(roomNumber) .. positionText)
                 else
                     firewallSetStatus("Entering room " .. tostring(roomNumber))
-                    firewallTeleportAndWalk(room)
+                    firewallTeleportToPartAndWalk(teleportPart)
                 end
 
                 task.wait(FIREWALL_RETRY_DELAY)
@@ -1304,6 +1312,8 @@ if isEndlessFirewallMode() then
 
         local room, roomNumber = firewallGetLatestEntranceNotOpenRoom()
         if not room or not roomNumber then
+            firewallSetStatus("Scanning chase doors")
+            firewallRefreshChaseRooms()
             return
         end
 

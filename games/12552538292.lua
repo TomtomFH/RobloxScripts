@@ -129,7 +129,32 @@ local function chatNotificationParseMessage(bodyText)
     return notificationText ~= "" and notificationText or message
 end
 
-local function chatNotificationProcessBodyTextLabel(bodyTextLabel)
+local function chatNotificationFindMessageRow(bodyTextLabel)
+    local current = bodyTextLabel
+    while current and current.Parent do
+        if chatNotificationHookedScrollViews[current.Parent] then
+            return current
+        end
+
+        current = current.Parent
+    end
+
+    local textMessage = bodyTextLabel:FindFirstAncestor("TextMessage")
+    if textMessage and textMessage.Parent then
+        return textMessage.Parent
+    end
+
+    return bodyTextLabel
+end
+
+local function chatNotificationRemoveMessage(bodyTextLabel, row)
+    local target = row or chatNotificationFindMessageRow(bodyTextLabel)
+    if target and target.Parent then
+        target:Destroy()
+    end
+end
+
+local function chatNotificationProcessBodyTextLabel(bodyTextLabel, row)
     if not bodyTextLabel or not bodyTextLabel:IsA("TextLabel") then
         return
     end
@@ -143,7 +168,8 @@ local function chatNotificationProcessBodyTextLabel(bodyTextLabel)
     local function processText()
         local notificationText = chatNotificationParseMessage(bodyTextLabel.Text)
         if notificationText then
-            CreateChatNotification(notificationText, Color3.fromRGB(255, 255, 255), 4)
+            CreateChatNotification(notificationText, Color3.fromRGB(255, 0, 0), 2.5)
+            chatNotificationRemoveMessage(bodyTextLabel, row)
         end
     end
 
@@ -176,7 +202,7 @@ local function chatNotificationProcessRow(row)
     task.spawn(function()
         local bodyTextLabel = chatNotificationWaitForBodyText(row)
         if bodyTextLabel then
-            chatNotificationProcessBodyTextLabel(bodyTextLabel)
+            chatNotificationProcessBodyTextLabel(bodyTextLabel, row)
         end
     end)
 end

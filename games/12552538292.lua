@@ -2484,11 +2484,12 @@ local function chatNotificationParseMessage(bodyText)
     end
 
     message = chatNotificationTrim(message)
-    if message == "" then
+    if message:sub(1, 1) ~= "-" then
         return nil
     end
 
-    return message
+    local notificationText = chatNotificationTrim(message:sub(2))
+    return notificationText ~= "" and notificationText or message
 end
 
 local function chatNotificationWaitForBodyText(row)

@@ -11,6 +11,234 @@ local gameplayFolder = workspace:WaitForChild("GameplayFolder", 60)
 local roomsFolder = gameplayFolder:WaitForChild("Rooms", 60)
 
 local player = players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local CHAT_NOTIFICATION_USERNAME = "PressureAnyPercent"
+local chatNotificationHookedScrollViews = {}
+local chatNotificationProcessedRows = {}
+local chatNotificationHookedLabels = {}
+local chatNotificationCoreGuiHooked = false
+local chatNotificationLastScrollStatus = nil
+
+local function chatNotificationStripRichText(text)
+    text = text or ""
+    text = text:gsub("<br%s*/>", "\n")
+    text = text:gsub("<[^>]->", "")
+    return text
+end
+
+local function chatNotificationTrim(text)
+    return (text or ""):match("^%s*(.-)%s*$")
+end
+
+local function chatNotificationExtractSender(senderText)
+    local sender = chatNotificationTrim(senderText)
+
+    while sender:match("^%[[^%]]+%]%s*") do
+        sender = chatNotificationTrim(sender:gsub("^%[[^%]]+%]%s*", "", 1))
+    end
+
+    return sender:match("([^%s]+)$") or sender
+end
+
+local function chatNotificationRemoveLeadingTags(text)
+    local withoutTags = text or ""
+    while withoutTags:match("^%s*%[[^%]]+%]%s*") do
+        withoutTags = withoutTags:gsub("^%s*%[[^%]]+%]%s*", "", 1)
+    end
+
+    return chatNotificationTrim(withoutTags)
+end
+
+local function CreateChatNotification(text, color, duration)
+    duration = duration or 4
+    color = color or Color3.fromRGB(255, 255, 255)
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "ChatNotificationGui"
+    gui.ResetOnSpawn = false
+    gui.Parent = playerGui
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 0, 120)
+    label.Position = UDim2.new(0, 0, 0.3, 0)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = color
+    label.Font = Enum.Font.GothamBold
+    label.TextScaled = true
+    label.Text = text
+    label.TextStrokeTransparency = 0.5
+    label.TextStrokeColor3 = Color3.new(0, 0, 0)
+    label.TextTransparency = 1
+    label.Parent = gui
+
+    local fadeIn = tweenService:Create(label, TweenInfo.new(0.25), {
+        TextTransparency = 0,
+        TextStrokeTransparency = 0.5
+    })
+    fadeIn:Play()
+
+    fadeIn.Completed:Connect(function()
+        task.delay(duration, function()
+            local fadeOut = tweenService:Create(label, TweenInfo.new(0.5), {
+                TextTransparency = 1,
+                TextStrokeTransparency = 1
+            })
+            fadeOut:Play()
+            fadeOut.Completed:Connect(function()
+                gui:Destroy()
+            end)
+        end)
+    end)
+end
+
+local function chatNotificationGetScrollView()
+    local ok, result = pcall(function()
+        return CoreGui
+            :WaitForChild("ExperienceChat", 5)
+            :WaitForChild("appLayout", 5)
+            :WaitForChild("chatWindow", 5)
+            :WaitForChild("contentFrame", 5)
+            :WaitForChild("scrollingView", 5)
+            :WaitForChild("bottomLockedScrollView", 5)
+            :WaitForChild("scrollView", 5)
+    end)
+
+    return ok and result or nil
+end
+
+local function chatNotificationParseMessage(bodyText)
+    local cleanBody = chatNotificationStripRichText(bodyText)
+    local fromName, message = cleanBody:match("^%s*%[From%s+([^%]]+)%]%s+.-:%s*(.*)$")
+    if not fromName then
+        local withoutTags = chatNotificationRemoveLeadingTags(cleanBody)
+        fromName, message = withoutTags:match("^%s*(%S+)%s*:%s*(.*)$")
+    end
+
+    local sender = chatNotificationExtractSender(fromName)
+    print("[Pressure Notify] Raw:", cleanBody)
+    print("[Pressure Notify] Parsed sender:", sender or "nil", "Message:", message or "nil")
+
+    if sender ~= CHAT_NOTIFICATION_USERNAME then
+        print("[Pressure Notify] Ignored sender:", sender or "nil")
+        return nil
+    end
+
+    message = chatNotificationTrim(message)
+    if message:sub(1, 1) ~= "-" then
+        print("[Pressure Notify] Ignored missing prefix:", message)
+        return nil
+    end
+
+    local notificationText = chatNotificationTrim(message:sub(2))
+    print("[Pressure Notify] Showing:", notificationText ~= "" and notificationText or message)
+    return notificationText ~= "" and notificationText or message
+end
+
+local function chatNotificationProcessBodyTextLabel(bodyTextLabel)
+    if not bodyTextLabel or not bodyTextLabel:IsA("TextLabel") then
+        return
+    end
+
+    if chatNotificationHookedLabels[bodyTextLabel] then
+        return
+    end
+
+    chatNotificationHookedLabels[bodyTextLabel] = true
+
+    local function processText()
+        local notificationText = chatNotificationParseMessage(bodyTextLabel.Text)
+        if notificationText then
+            CreateChatNotification(notificationText, Color3.fromRGB(255, 255, 255), 4)
+        end
+    end
+
+    processText()
+    bodyTextLabel:GetPropertyChangedSignal("Text"):Connect(processText)
+end
+
+local function chatNotificationWaitForBodyText(row)
+    for _ = 1, 20 do
+        local textMessage = row:FindFirstChild("TextMessage", true)
+        if textMessage then
+            local bodyTextLabel = textMessage:FindFirstChild("BodyText", true)
+            if bodyTextLabel then
+                return bodyTextLabel
+            end
+        end
+
+        task.wait(0.05)
+    end
+
+    return nil
+end
+
+local function chatNotificationProcessRow(row)
+    if chatNotificationProcessedRows[row] then
+        return
+    end
+
+    chatNotificationProcessedRows[row] = true
+    task.spawn(function()
+        local bodyTextLabel = chatNotificationWaitForBodyText(row)
+        if bodyTextLabel then
+            chatNotificationProcessBodyTextLabel(bodyTextLabel)
+        end
+    end)
+end
+
+local function chatNotificationHookMessageList(scrollView)
+    if not scrollView or chatNotificationHookedScrollViews[scrollView] then
+        return
+    end
+
+    print("[Pressure Notify] Hooked chat scroll view:", scrollView:GetFullName())
+    chatNotificationHookedScrollViews[scrollView] = true
+    for _, row in ipairs(scrollView:GetChildren()) do
+        chatNotificationProcessRow(row)
+    end
+
+    scrollView.ChildAdded:Connect(chatNotificationProcessRow)
+end
+
+local function chatNotificationHookCoreGuiFallback()
+    if chatNotificationCoreGuiHooked then
+        return
+    end
+
+    chatNotificationCoreGuiHooked = true
+    print("[Pressure Notify] Hooked CoreGui BodyText fallback")
+
+    for _, descendant in ipairs(CoreGui:GetDescendants()) do
+        if descendant.Name == "BodyText" and descendant:IsA("TextLabel") then
+            chatNotificationProcessBodyTextLabel(descendant)
+        end
+    end
+
+    CoreGui.DescendantAdded:Connect(function(descendant)
+        if descendant.Name == "BodyText" and descendant:IsA("TextLabel") then
+            chatNotificationProcessBodyTextLabel(descendant)
+        end
+    end)
+end
+
+task.spawn(function()
+    chatNotificationHookCoreGuiFallback()
+
+    while task.wait(1) do
+        local scrollView = chatNotificationGetScrollView()
+        if scrollView then
+            if chatNotificationLastScrollStatus ~= "found" then
+                print("[Pressure Notify] Chat scroll view found")
+                chatNotificationLastScrollStatus = "found"
+            end
+            chatNotificationHookMessageList(scrollView)
+        elseif chatNotificationLastScrollStatus ~= "missing" then
+            print("[Pressure Notify] Chat scroll view missing, fallback still active")
+            chatNotificationLastScrollStatus = "missing"
+        end
+    end
+end)
 
 local function isEndlessFirewallMode()
     local allowedRooms = {
@@ -1537,7 +1765,6 @@ if isEndlessFirewallMode() then
 end
 
 local monstersFolder = gameplayFolder:WaitForChild("Monsters", 60)
-local playerGui = player:WaitForChild("PlayerGui")
 local char = player.Character or player.CharacterAdded:Wait()
 
 -- BEGIN Inlined Node Visualizer
@@ -2457,137 +2684,6 @@ local function CreateNotification(text, color, duration, bypassPerms)
         end)
     end)
 end
-
-local CHAT_NOTIFICATION_USERNAME = "PressureAnyPercent"
-local chatNotificationHookedScrollViews = {}
-local chatNotificationProcessedRows = {}
-
-local function chatNotificationStripRichText(text)
-    text = text or ""
-    text = text:gsub("<br%s*/>", "\n")
-    text = text:gsub("<[^>]->", "")
-    return text
-end
-
-local function chatNotificationTrim(text)
-    return (text or ""):match("^%s*(.-)%s*$")
-end
-
-local function chatNotificationExtractSender(senderText)
-    local sender = chatNotificationTrim(senderText)
-
-    while sender:match("^%[[^%]]+%]%s*") do
-        sender = chatNotificationTrim(sender:gsub("^%[[^%]]+%]%s*", "", 1))
-    end
-
-    return sender:match("([^%s]+)$") or sender
-end
-
-local function chatNotificationRemoveLeadingTags(text)
-    local withoutTags = text or ""
-    while withoutTags:match("^%s*%[[^%]]+%]%s*") do
-        withoutTags = withoutTags:gsub("^%s*%[[^%]]+%]%s*", "", 1)
-    end
-
-    return chatNotificationTrim(withoutTags)
-end
-
-local function chatNotificationGetScrollView()
-    local ok, result = pcall(function()
-        return CoreGui
-            :WaitForChild("ExperienceChat", 5)
-            :WaitForChild("appLayout", 5)
-            :WaitForChild("chatWindow", 5)
-            :WaitForChild("contentFrame", 5)
-            :WaitForChild("scrollingView", 5)
-            :WaitForChild("bottomLockedScrollView", 5)
-            :WaitForChild("scrollView", 5)
-    end)
-
-    return ok and result or nil
-end
-
-local function chatNotificationParseMessage(bodyText)
-    local cleanBody = chatNotificationStripRichText(bodyText)
-    local fromName, message = cleanBody:match("^%s*%[From%s+([^%]]+)%]%s+.-:%s*(.*)$")
-    if not fromName then
-        local withoutTags = chatNotificationRemoveLeadingTags(cleanBody)
-        fromName, message = withoutTags:match("^%s*(%S+)%s*:%s*(.*)$")
-    end
-
-    local sender = chatNotificationExtractSender(fromName)
-    print("[Pressure Notify] Raw:", cleanBody)
-    print("[Pressure Notify] Parsed sender:", sender or "nil", "Message:", message or "nil")
-
-    if sender ~= CHAT_NOTIFICATION_USERNAME then
-        print("[Pressure Notify] Ignored sender:", sender or "nil")
-        return nil
-    end
-
-    message = chatNotificationTrim(message)
-    if message:sub(1, 1) ~= "-" then
-        print("[Pressure Notify] Ignored missing prefix:", message)
-        return nil
-    end
-
-    local notificationText = chatNotificationTrim(message:sub(2))
-    print("[Pressure Notify] Showing:", notificationText ~= "" and notificationText or message)
-    return notificationText ~= "" and notificationText or message
-end
-
-local function chatNotificationWaitForBodyText(row)
-    for _ = 1, 20 do
-        local textMessage = row:FindFirstChild("TextMessage", true)
-        if textMessage then
-            local bodyTextLabel = textMessage:FindFirstChild("BodyText", true)
-            if bodyTextLabel then
-                return bodyTextLabel
-            end
-        end
-
-        task.wait(0.05)
-    end
-
-    return nil
-end
-
-local function chatNotificationProcessRow(row)
-    if chatNotificationProcessedRows[row] then
-        return
-    end
-
-    chatNotificationProcessedRows[row] = true
-    task.spawn(function()
-        local bodyTextLabel = chatNotificationWaitForBodyText(row)
-        if not bodyTextLabel then
-            return
-        end
-
-        local notificationText = chatNotificationParseMessage(bodyTextLabel.Text)
-        if notificationText then
-            CreateNotification(notificationText, Color3.fromRGB(255, 255, 255), 4, true)
-        end
-    end)
-end
-
-local function chatNotificationHookMessageList(scrollView)
-    if not scrollView or chatNotificationHookedScrollViews[scrollView] then
-        return
-    end
-
-    chatNotificationHookedScrollViews[scrollView] = true
-    for _, row in ipairs(scrollView:GetChildren()) do
-        chatNotificationProcessRow(row)
-    end
-
-    scrollView.ChildAdded:Connect(chatNotificationProcessRow)
-end
-
-task.spawn(function()
-    while task.wait(1) do
-        chatNotificationHookMessageList(chatNotificationGetScrollView())
-    end
-end)
 
 local function createESP(target, color, customName)
     if not target then

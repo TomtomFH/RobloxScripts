@@ -591,11 +591,11 @@ if isEndlessFirewallMode() then
     local function firewallSyncCameraModule(cameraCFrame)
         local cameraModule = firewallGetCameraModule()
         local camera = workspace.CurrentCamera
-        if not camera then
+        if not camera or not cameraCFrame then
             return
         end
 
-        camera.CFrame = targetCFrame
+        camera.CFrame = cameraCFrame
         if cameraModule then
             pcall(function()
                 cameraModule.Switch("PlayerControl")

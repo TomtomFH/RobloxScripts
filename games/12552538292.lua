@@ -67,7 +67,8 @@ if isEndlessFirewallMode() then
         currentTargetRoom = nil,
         currentTargetRoomNumber = nil,
         firewallRoomNumber = nil,
-        chaseReady = false
+        chaseReady = false,
+        lastKeycardAttempt = 0
     }
 
     local FIREWALL_PLATFORM_NAME = "EntranceExitPlatform"
@@ -495,6 +496,15 @@ if isEndlessFirewallMode() then
         return spawnKeycard and spawnKeycard:FindFirstChild("PasswordPaper") or nil
     end
 
+    local function firewallGetStartKeycard()
+        local startRoom = firewallGetStartRoom()
+        local interactables = startRoom and startRoom:FindFirstChild("Interactables")
+        local drawer = interactables and interactables:FindFirstChild("1SmallDrawer")
+        local spawnLocations = drawer and drawer:FindFirstChild("SpawnLocations")
+        local spawnKeycard = spawnLocations and spawnLocations:FindFirstChild("SpawnKeycard")
+        return spawnKeycard and spawnKeycard:FindFirstChild("NormalKeyCard") or nil
+    end
+
     local function firewallReadPasswordPaperCode(passwordPaper)
         local codeObject = passwordPaper and passwordPaper:FindFirstChild("Code")
         local surfaceGui = codeObject and codeObject:FindFirstChild("SurfaceGui")
@@ -504,13 +514,73 @@ if isEndlessFirewallMode() then
         return type(text) == "string" and text ~= "" and text or nil
     end
 
+    local function firewallGetInventory()
+        local playerFolder = player:FindFirstChild("PlayerFolder")
+        return playerFolder and playerFolder:FindFirstChild("Inventory") or nil
+    end
+
+    local function firewallHasNormalKeycard()
+        local inventory = firewallGetInventory()
+        local keycard = inventory and inventory:FindFirstChild("NormalKeyCard")
+        return keycard and keycard:IsA("NumberValue") or false
+    end
+
     local function firewallGetDoorOpenValue(door)
         local openValue = door and door:FindFirstChild("OpenValue")
         return openValue and openValue:IsA("ValueBase") and openValue or nil
     end
 
+    local function firewallGetDoorPrompt(door)
+        local lock = door and door:FindFirstChild("Lock")
+        local main = lock and lock:FindFirstChild("Main")
+        return main and main:FindFirstChild("ProximityPrompt") or nil
+    end
+
+    local function firewallGetKeycardPrompt(keycard)
+        local proxyPart = keycard and keycard:FindFirstChild("ProxyPart")
+        return proxyPart and proxyPart:FindFirstChild("ProximityPrompt") or nil
+    end
+
     local function firewallGetDoorRemote(door)
         return door and door:FindFirstChild("RemoteFunction", true) or nil
+    end
+
+    local function firewallTeleportToPart(part)
+        if not part then
+            return
+        end
+
+        local character, root = firewallGetCharacter()
+        if not character or not root then
+            return
+        end
+
+        local position = part.Position + Vector3.yAxis * FIREWALL_TELEPORT_HEIGHT_OFFSET
+        character:PivotTo(CFrame.lookAt(position, part.Position))
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+    end
+
+    local function firewallGetPromptPart(prompt)
+        local parent = prompt and prompt.Parent
+        if parent and parent:IsA("BasePart") then
+            return parent
+        end
+
+        return parent and parent:FindFirstChildWhichIsA("BasePart", true) or nil
+    end
+
+    local function firewallTriggerPrompt(prompt)
+        if not prompt then
+            return
+        end
+
+        pcall(function()
+            prompt.HoldDuration = 0
+            prompt:InputHoldBegin()
+            task.wait()
+            prompt:InputHoldEnd()
+        end)
     end
 
     local function firewallEnterDoorCode(door, code)
@@ -564,8 +634,24 @@ if isEndlessFirewallMode() then
                         firewallSetStatus(code and "Opening start door" or "Reading start code")
                         firewallTeleportToPartAndWalk(doorPart)
                         firewallEnterDoorCode(startDoor, code)
+                    elseif firewallHasNormalKeycard() then
+                        local prompt = firewallGetDoorPrompt(startDoor)
+                        firewallSetStatus("Using start keycard")
+                        firewallTeleportToPart(firewallGetPromptPart(prompt) or firewallGetDoorPartFromOpenValue(startDoorOpenValue))
+                        firewallTriggerPrompt(prompt)
                     else
-                        firewallSetStatus("Waiting for start paper")
+                        local keycard = firewallGetStartKeycard()
+                        if keycard then
+                            firewallSetStatus("Getting start keycard")
+                            if os.clock() - firewallState.lastKeycardAttempt >= 1 then
+                                firewallState.lastKeycardAttempt = os.clock()
+                                local prompt = firewallGetKeycardPrompt(keycard)
+                                firewallTeleportToPart(firewallGetPromptPart(prompt) or keycard:FindFirstChildWhichIsA("BasePart", true))
+                                firewallTriggerPrompt(prompt)
+                            end
+                        else
+                            firewallSetStatus("Waiting for start item")
+                        end
                     end
 
                     task.wait(FIREWALL_RETRY_DELAY)

@@ -73,6 +73,7 @@ if isEndlessFirewallMode() then
         lastKeycardAttempt = 0,
         lastElevatorKeyAttempt = 0,
         elevatorKeyStarted = false,
+        chaseTeleportUsed = false,
         mouseAimId = 0
     }
 
@@ -550,6 +551,23 @@ if isEndlessFirewallMode() then
         return teleport and teleport:IsA("BasePart") and teleport or nil
     end
 
+    local function firewallGetWouldEnterText()
+        local room, roomNumber = firewallGetLatestEntranceNotOpenRoom()
+        if not room or not roomNumber then
+            return "Would enter: no closed chase door found"
+        end
+
+        local teleportPart = firewallGetTeleportPartForRoom(room)
+        local positionText = teleportPart and string.format(
+            " @ %.1f, %.1f, %.1f",
+            teleportPart.Position.X,
+            teleportPart.Position.Y,
+            teleportPart.Position.Z
+        ) or ""
+
+        return "Would enter room " .. tostring(roomNumber) .. positionText
+    end
+
     local function firewallGetFirewallStartDoor()
         local firewallStart = firewallGetFirewallStartRoom()
         local entrances = firewallStart and firewallStart:FindFirstChild("Entrances")
@@ -999,14 +1017,27 @@ if isEndlessFirewallMode() then
                         firewallState.platformsReady = false
                         local teleportTrigger = firewallGetTutorialTeleportTrigger()
 
-                        if teleportTrigger then
+                        if teleportTrigger and not firewallState.chaseTeleportUsed then
+                            firewallState.chaseTeleportUsed = true
                             firewallSetStatus("Entering firewall chase")
                             firewallTeleportToPart(teleportTrigger)
+                        elseif teleportTrigger then
+                            firewallSetStatus("Waiting for firewall")
                         else
                             firewallSetStatus("Waiting for chase teleport")
                         end
 
                         task.wait(FIREWALL_RETRY_DELAY)
+                        continue
+                    end
+
+                    if FIREWALL_CHASE_DRY_RUN then
+                        firewallState.chaseReady = false
+                        firewallState.platformsReady = false
+                        firewallState.doorLoopId += 1
+                        firewallSetStatus(firewallGetWouldEnterText())
+                        firewallRefreshRoomLabels()
+                        task.wait(0.25)
                         continue
                     end
 
@@ -1159,6 +1190,7 @@ if isEndlessFirewallMode() then
         firewallState.chaseReady = false
         firewallState.platformsReady = false
         firewallState.elevatorKeyStarted = false
+        firewallState.chaseTeleportUsed = false
 
         for _, connection in ipairs(firewallState.mainConnections) do
             connection:Disconnect()
@@ -1202,6 +1234,7 @@ if isEndlessFirewallMode() then
         firewallState.chaseReady = false
         firewallState.platformsReady = false
         firewallState.elevatorKeyStarted = false
+        firewallState.chaseTeleportUsed = false
         firewallState.lastEnteredRoomNumber = nil
         firewallSetStatus("Starting")
 

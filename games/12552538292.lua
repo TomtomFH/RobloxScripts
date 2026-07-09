@@ -72,7 +72,7 @@ if isEndlessFirewallMode() then
         lastKeycardAttempt = 0,
         lastElevatorKeyAttempt = 0,
         elevatorKeyStarted = false,
-        cameraForceId = 0
+        mouseAimId = 0
     }
 
     local FIREWALL_PLATFORM_NAME = "EntranceExitPlatform"
@@ -91,10 +91,12 @@ if isEndlessFirewallMode() then
     local FIREWALL_PROMPT_DISTANCE = 5
     local FIREWALL_ELEVATOR_KEY_DISTANCE = 3
     local FIREWALL_PROMPT_HEIGHT_OFFSET = 2.5
-    local FIREWALL_CAMERA_HEIGHT_OFFSET = 1.5
-    local FIREWALL_CAMERA_FORCE_DURATION = 0.9
-    local FIREWALL_CAMERA_BIND_NAME = "TomtomFirewallPromptCamera"
-    local FIREWALL_CAMERA_BIND_PRIORITY = 250
+    local FIREWALL_PROMPT_EYE_HEIGHT = 1.5
+    local FIREWALL_MOUSE_AIM_DURATION = 0.8
+    local FIREWALL_MOUSE_AIM_SCALE = 0.35
+    local FIREWALL_MOUSE_AIM_DEADZONE = 8
+    local FIREWALL_MOUSE_AIM_BIND_NAME = "TomtomFirewallPromptMouseAim"
+    local FIREWALL_MOUSE_AIM_PRIORITY = 300
 
     local function firewallSetStatus(text)
         if firewallStatusLabel then
@@ -577,37 +579,82 @@ if isEndlessFirewallMode() then
         return door and door:FindFirstChild("RemoteFunction", true) or nil
     end
 
-    local function firewallForceCamera(cameraCFrame, duration)
+    local function firewallStopMouseAim()
+        pcall(function()
+            runService:UnbindFromRenderStep(FIREWALL_MOUSE_AIM_BIND_NAME)
+        end)
+    end
+
+    local function firewallSendMouseMove(dx, dy)
+        if type(mousemoverel) ~= "function" then
+            return false
+        end
+
+        mousemoverel(dx, dy)
+        return true
+    end
+
+    local function firewallMouseAimStep(targetPosition)
         local camera = workspace.CurrentCamera
-        if not camera or not cameraCFrame then
+        if not camera or not targetPosition then
+            return false
+        end
+
+        local viewportPoint, visible = camera:WorldToViewportPoint(targetPosition)
+        local dx, dy
+
+        if visible and viewportPoint.Z > 0 then
+            local center = camera.ViewportSize / 2
+            local delta = Vector2.new(viewportPoint.X - center.X, viewportPoint.Y - center.Y)
+            if math.abs(delta.X) <= FIREWALL_MOUSE_AIM_DEADZONE and math.abs(delta.Y) <= FIREWALL_MOUSE_AIM_DEADZONE then
+                return true
+            end
+
+            dx = delta.X * FIREWALL_MOUSE_AIM_SCALE
+            dy = delta.Y * FIREWALL_MOUSE_AIM_SCALE
+        else
+            local direction = targetPosition - camera.CFrame.Position
+            if direction.Magnitude <= 0 then
+                return false
+            end
+
+            local localDirection = camera.CFrame:VectorToObjectSpace(direction.Unit)
+            local yaw = math.atan2(localDirection.X, -localDirection.Z)
+            local flat = math.sqrt(localDirection.X * localDirection.X + localDirection.Z * localDirection.Z)
+            local pitch = math.atan2(localDirection.Y, flat)
+
+            dx = math.deg(yaw) * 8
+            dy = -math.deg(pitch) * 8
+        end
+
+        return firewallSendMouseMove(math.clamp(dx, -250, 250), math.clamp(dy, -250, 250))
+    end
+
+    local function firewallMouseAimAtPosition(targetPosition, duration)
+        if type(mousemoverel) ~= "function" or not targetPosition then
             return
         end
 
-        firewallState.cameraForceId += 1
-        local forceId = firewallState.cameraForceId
-
-        local function applyCamera()
-            local currentCamera = workspace.CurrentCamera
-            if currentCamera then
-                currentCamera.CameraType = Enum.CameraType.Scriptable
-                currentCamera.CFrame = cameraCFrame
-            end
-        end
+        firewallState.mouseAimId += 1
+        local aimId = firewallState.mouseAimId
 
         pcall(function()
-            runService:UnbindFromRenderStep(FIREWALL_CAMERA_BIND_NAME)
+            game:GetService("UserInputService").MouseBehavior = Enum.MouseBehavior.LockCenter
         end)
 
-        applyCamera()
-        runService:BindToRenderStep(FIREWALL_CAMERA_BIND_NAME, FIREWALL_CAMERA_BIND_PRIORITY, applyCamera)
-
-        task.delay(duration or FIREWALL_CAMERA_FORCE_DURATION, function()
-            if firewallState.cameraForceId == forceId then
-                pcall(function()
-                    runService:UnbindFromRenderStep(FIREWALL_CAMERA_BIND_NAME)
-                end)
-            end
+        firewallStopMouseAim()
+        runService:BindToRenderStep(FIREWALL_MOUSE_AIM_BIND_NAME, FIREWALL_MOUSE_AIM_PRIORITY, function()
+            firewallMouseAimStep(targetPosition)
         end)
+
+        local startTime = os.clock()
+        while firewallState.mouseAimId == aimId and os.clock() - startTime < (duration or FIREWALL_MOUSE_AIM_DURATION) do
+            runService.RenderStepped:Wait()
+        end
+
+        if firewallState.mouseAimId == aimId then
+            firewallStopMouseAim()
+        end
     end
 
     local function firewallTeleportToPart(part)
@@ -626,6 +673,94 @@ if isEndlessFirewallMode() then
         root.AssemblyAngularVelocity = Vector3.zero
     end
 
+    local function firewallGetTargetContainer(part)
+        if not part then
+            return nil
+        end
+
+        local container = part:FindFirstAncestorOfClass("Model") or part.Parent
+        if container == workspace then
+            return part
+        end
+
+        return container or part
+    end
+
+    local function firewallRayHitsTarget(hit, targetPart)
+        if not hit or not hit.Instance then
+            return true
+        end
+
+        if hit.Instance == targetPart then
+            return true
+        end
+
+        local targetContainer = firewallGetTargetContainer(targetPart)
+        return targetContainer and hit.Instance:IsDescendantOf(targetContainer) or false
+    end
+
+    local function firewallHasLineOfSight(fromPosition, targetPosition, targetPart, character)
+        local direction = targetPosition - fromPosition
+        if direction.Magnitude <= 0 then
+            return false
+        end
+
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+        raycastParams.FilterDescendantsInstances = character and { character } or {}
+        raycastParams.IgnoreWater = true
+
+        local hit = workspace:Raycast(fromPosition, direction, raycastParams)
+        return firewallRayHitsTarget(hit, targetPart)
+    end
+
+    local function firewallAddDirectionCandidate(candidates, direction)
+        if direction.Magnitude <= 0.05 then
+            return
+        end
+
+        table.insert(candidates, Vector3.new(direction.X, 0, direction.Z).Unit)
+    end
+
+    local function firewallGetVisiblePromptPosition(part, character, root, sideMultiplier, distance, heightOffset)
+        local targetPosition = part.Position
+        local promptDistance = distance or FIREWALL_PROMPT_DISTANCE
+        local promptHeight = heightOffset or FIREWALL_PROMPT_HEIGHT_OFFSET
+        local side = sideMultiplier or -1
+        local lookVector = Vector3.new(part.CFrame.LookVector.X, 0, part.CFrame.LookVector.Z)
+        local rightVector = Vector3.new(part.CFrame.RightVector.X, 0, part.CFrame.RightVector.Z)
+        local rootOffset = root and Vector3.new(root.Position.X - targetPosition.X, 0, root.Position.Z - targetPosition.Z) or Vector3.zero
+        local candidates = {}
+
+        firewallAddDirectionCandidate(candidates, lookVector * side)
+        firewallAddDirectionCandidate(candidates, rootOffset)
+        firewallAddDirectionCandidate(candidates, lookVector * -side)
+        firewallAddDirectionCandidate(candidates, rightVector)
+        firewallAddDirectionCandidate(candidates, rightVector * -1)
+        firewallAddDirectionCandidate(candidates, (lookVector * side) + rightVector)
+        firewallAddDirectionCandidate(candidates, (lookVector * side) - rightVector)
+        firewallAddDirectionCandidate(candidates, (lookVector * -side) + rightVector)
+        firewallAddDirectionCandidate(candidates, (lookVector * -side) - rightVector)
+        firewallAddDirectionCandidate(candidates, Vector3.xAxis)
+        firewallAddDirectionCandidate(candidates, -Vector3.xAxis)
+        firewallAddDirectionCandidate(candidates, Vector3.zAxis)
+        firewallAddDirectionCandidate(candidates, -Vector3.zAxis)
+
+        local bestPosition = nil
+        for _, direction in ipairs(candidates) do
+            local position = targetPosition + direction * promptDistance + Vector3.yAxis * promptHeight
+            local eyePosition = position + Vector3.yAxis * FIREWALL_PROMPT_EYE_HEIGHT
+
+            if firewallHasLineOfSight(eyePosition, targetPosition, part, character) then
+                return position
+            end
+
+            bestPosition = bestPosition or position
+        end
+
+        return bestPosition or (targetPosition + Vector3.zAxis * promptDistance + Vector3.yAxis * promptHeight)
+    end
+
     local function firewallTeleportInFrontOfPart(part, sideMultiplier, distance, heightOffset)
         if not part then
             return
@@ -637,21 +772,9 @@ if isEndlessFirewallMode() then
         end
 
         local targetPosition = part.Position
-        local side = sideMultiplier or -1
-        local lookVector = part.CFrame.LookVector
-        local offsetDirection = Vector3.new(lookVector.X, 0, lookVector.Z) * side
-        if offsetDirection.Magnitude <= 0 then
-            local rootOffset = Vector3.new(root.Position.X - targetPosition.X, 0, root.Position.Z - targetPosition.Z)
-            local camera = workspace.CurrentCamera
-            local cameraOffset = camera and Vector3.new(camera.CFrame.Position.X - targetPosition.X, 0, camera.CFrame.Position.Z - targetPosition.Z) or nil
-            offsetDirection = rootOffset.Magnitude > 0.05 and rootOffset or (cameraOffset and cameraOffset.Magnitude > 0.05 and cameraOffset or Vector3.zAxis)
-        end
-
-        local position = targetPosition + offsetDirection.Unit * (distance or FIREWALL_PROMPT_DISTANCE) + Vector3.yAxis * (heightOffset or FIREWALL_PROMPT_HEIGHT_OFFSET)
+        local position = firewallGetVisiblePromptPosition(part, character, root, sideMultiplier, distance, heightOffset)
         local lookTarget = Vector3.new(targetPosition.X, position.Y, targetPosition.Z)
         local targetCFrame = CFrame.lookAt(position, lookTarget)
-        local cameraPosition = position + Vector3.yAxis * FIREWALL_CAMERA_HEIGHT_OFFSET
-        local cameraCFrame = CFrame.lookAt(cameraPosition, targetPosition)
 
         if humanoid then
             humanoid.AutoRotate = false
@@ -659,7 +782,7 @@ if isEndlessFirewallMode() then
 
         character:PivotTo(targetCFrame)
         root.CFrame = targetCFrame
-        firewallForceCamera(cameraCFrame)
+        firewallMouseAimAtPosition(targetPosition, FIREWALL_MOUSE_AIM_DURATION)
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
 

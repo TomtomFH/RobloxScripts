@@ -519,9 +519,15 @@ if isEndlessFirewallMode() then
             + Vector3.yAxis * FIREWALL_TELEPORT_HEIGHT_OFFSET
             + approachDirection * FIREWALL_TELEPORT_DISTANCE_FROM_DOOR
 
-        character:PivotTo(CFrame.lookAt(teleportPosition, teleportPart.Position))
+        local lookTarget = Vector3.new(teleportPart.Position.X, teleportPosition.Y, teleportPart.Position.Z)
+        local targetCFrame = CFrame.lookAt(teleportPosition, lookTarget)
+        character:PivotTo(targetCFrame)
+        root.CFrame = targetCFrame
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
+        if firewallMouseAimAtPosition then
+            task.spawn(firewallMouseAimAtPosition, teleportPart.Position, FIREWALL_MOUSE_AIM_DURATION)
+        end
         firewallWalkThroughDoor(character, root, humanoid, teleportPart, FIREWALL_TELEPORT_DISTANCE_FROM_DOOR)
     end
 
@@ -2457,6 +2463,16 @@ local function chatNotificationTrim(text)
     return (text or ""):match("^%s*(.-)%s*$")
 end
 
+local function chatNotificationExtractSender(senderText)
+    local sender = chatNotificationTrim(senderText)
+
+    while sender:match("^%[[^%]]+%]%s*") do
+        sender = chatNotificationTrim(sender:gsub("^%[[^%]]+%]%s*", "", 1))
+    end
+
+    return sender:match("([^%s]+)$") or sender
+end
+
 local function chatNotificationGetScrollView()
     local ok, result = pcall(function()
         return CoreGui
@@ -2479,7 +2495,7 @@ local function chatNotificationParseMessage(bodyText)
         fromName, message = cleanBody:match("^%s*([^:]+):%s*(.*)$")
     end
 
-    if chatNotificationTrim(fromName) ~= CHAT_NOTIFICATION_USERNAME then
+    if chatNotificationExtractSender(fromName) ~= CHAT_NOTIFICATION_USERNAME then
         return nil
     end
 

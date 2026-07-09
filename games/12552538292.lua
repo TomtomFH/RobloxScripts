@@ -87,7 +87,6 @@ if isEndlessFirewallMode() then
     local FIREWALL_TELEPORT_SIDE = -1
     local FIREWALL_WALK_SPEED = 24
     local FIREWALL_WALK_DURATION = 1.25
-    local FIREWALL_WALK_THROUGH_DISTANCE = 18
     local FIREWALL_RETRY_DELAY = 1.5
     local FIREWALL_MAX_ROOMS_AHEAD = 10
     local FIREWALL_PROMPT_DISTANCE = 5
@@ -438,18 +437,19 @@ if isEndlessFirewallMode() then
 
     local firewallMouseAimAtPosition
 
-    local function firewallWalkThroughDoor(character, root, humanoid, doorPart)
+    local function firewallWalkThroughDoor(character, root, humanoid, doorPart, throughDistance)
         if not character or not root or not humanoid or not doorPart then
             return
         end
 
-        local walkDirection = doorPart.Position - root.Position
-        if walkDirection.Magnitude <= 0 then
+        local startOffset = Vector3.new(doorPart.Position.X - root.Position.X, 0, doorPart.Position.Z - root.Position.Z)
+        if startOffset.Magnitude <= 0 then
             return
         end
 
-        walkDirection = walkDirection.Unit
-        local walkTarget = doorPart.Position + walkDirection * FIREWALL_WALK_THROUGH_DISTANCE
+        local walkDirection = startOffset.Unit
+        local walkDistance = throughDistance or startOffset.Magnitude
+        local walkTarget = doorPart.Position + walkDirection * walkDistance
         local oldWalkSpeed = humanoid.WalkSpeed
         local oldAutoRotate = humanoid.AutoRotate
 
@@ -493,7 +493,17 @@ if isEndlessFirewallMode() then
         end
     end
 
-    local function firewallTeleportToPartAndWalk(teleportPart)
+    local function firewallGetDoorApproachDirection(teleportPart, useRightVector)
+        local vector = useRightVector and teleportPart.CFrame.RightVector or teleportPart.CFrame.LookVector
+        local direction = Vector3.new(vector.X, 0, vector.Z)
+        if direction.Magnitude <= 0 then
+            direction = Vector3.zAxis
+        end
+
+        return direction.Unit * FIREWALL_TELEPORT_SIDE
+    end
+
+    local function firewallTeleportToPartAndWalk(teleportPart, useRightVector)
         if not teleportPart then
             return
         end
@@ -504,14 +514,15 @@ if isEndlessFirewallMode() then
         end
 
         local doorBase = teleportPart.Position - teleportPart.CFrame.UpVector * (teleportPart.Size.Y / 2)
+        local approachDirection = firewallGetDoorApproachDirection(teleportPart, useRightVector)
         local teleportPosition = doorBase
             + Vector3.yAxis * FIREWALL_TELEPORT_HEIGHT_OFFSET
-            + teleportPart.CFrame.LookVector * FIREWALL_TELEPORT_DISTANCE_FROM_DOOR * FIREWALL_TELEPORT_SIDE
+            + approachDirection * FIREWALL_TELEPORT_DISTANCE_FROM_DOOR
 
         character:PivotTo(CFrame.lookAt(teleportPosition, teleportPart.Position))
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
-        firewallWalkThroughDoor(character, root, humanoid, teleportPart)
+        firewallWalkThroughDoor(character, root, humanoid, teleportPart, FIREWALL_TELEPORT_DISTANCE_FROM_DOOR)
     end
 
     local function firewallTeleportAndWalk(room)
@@ -781,7 +792,7 @@ if isEndlessFirewallMode() then
             return
         end
 
-        firewallTeleportToPartAndWalk(doorPart)
+        firewallTeleportToPartAndWalk(doorPart, true)
         task.wait(0.15)
 
         local character, root, humanoid = firewallGetCharacter()
@@ -1078,7 +1089,7 @@ if isEndlessFirewallMode() then
                         end
 
                         firewallSetStatus("Entering start firewall door")
-                        firewallTeleportToPartAndWalk(startInteractableDoorPart)
+                        firewallTeleportToPartAndWalk(startInteractableDoorPart, true)
                         task.wait(FIREWALL_RETRY_DELAY)
                         continue
                     end
@@ -1153,7 +1164,7 @@ if isEndlessFirewallMode() then
                             end
 
                             firewallSetStatus("Entering elevator big door")
-                            firewallTeleportToPartAndWalk(bigDoorPart)
+                            firewallTeleportToPartAndWalk(bigDoorPart, true)
                             task.wait(FIREWALL_RETRY_DELAY)
                             continue
                         end

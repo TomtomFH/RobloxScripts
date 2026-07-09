@@ -88,6 +88,7 @@ if isEndlessFirewallMode() then
     local FIREWALL_RETRY_DELAY = 0.25
     local FIREWALL_MAX_ROOMS_AHEAD = 10
     local FIREWALL_PROMPT_DISTANCE = 5
+    local FIREWALL_PROMPT_HEIGHT_OFFSET = 2.5
 
     local function firewallSetStatus(text)
         if firewallStatusLabel then
@@ -591,23 +592,42 @@ if isEndlessFirewallMode() then
             return
         end
 
-        local character, root = firewallGetCharacter()
+        local character, root, humanoid = firewallGetCharacter()
         if not character or not root then
             return
         end
 
         local targetPosition = part.Position
         local side = sideMultiplier or -1
-        local offsetDirection = part.CFrame.LookVector * side
+        local lookVector = part.CFrame.LookVector
+        local offsetDirection = Vector3.new(lookVector.X, 0, lookVector.Z) * side
         if offsetDirection.Magnitude <= 0 then
-            offsetDirection = Vector3.zAxis * side
+            local rootOffset = Vector3.new(root.Position.X - targetPosition.X, 0, root.Position.Z - targetPosition.Z)
+            local camera = workspace.CurrentCamera
+            local cameraOffset = camera and Vector3.new(camera.CFrame.Position.X - targetPosition.X, 0, camera.CFrame.Position.Z - targetPosition.Z) or nil
+            offsetDirection = rootOffset.Magnitude > 0.05 and rootOffset or (cameraOffset and cameraOffset.Magnitude > 0.05 and cameraOffset or Vector3.zAxis)
         end
 
-        local position = targetPosition + offsetDirection.Unit * FIREWALL_PROMPT_DISTANCE + Vector3.yAxis * FIREWALL_TELEPORT_HEIGHT_OFFSET
+        local position = targetPosition + offsetDirection.Unit * FIREWALL_PROMPT_DISTANCE + Vector3.yAxis * FIREWALL_PROMPT_HEIGHT_OFFSET
         local lookTarget = Vector3.new(targetPosition.X, position.Y, targetPosition.Z)
-        character:PivotTo(CFrame.lookAt(position, lookTarget))
+        local targetCFrame = CFrame.lookAt(position, lookTarget)
+
+        if humanoid then
+            humanoid.AutoRotate = false
+        end
+
+        character:PivotTo(targetCFrame)
+        root.CFrame = targetCFrame
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
+
+        if humanoid then
+            task.delay(0.35, function()
+                if humanoid.Parent then
+                    humanoid.AutoRotate = true
+                end
+            end)
+        end
     end
 
     local function firewallGetPromptPart(prompt)
@@ -729,7 +749,7 @@ if isEndlessFirewallMode() then
 
                         if os.clock() - firewallState.lastElevatorKeyAttempt >= 1 then
                             firewallState.lastElevatorKeyAttempt = os.clock()
-                            firewallTeleportInFrontOfPart(firewallGetPromptPart(elevatorKeyPrompt), 1)
+                            firewallTeleportInFrontOfPart(firewallGetPromptPart(elevatorKeyPrompt), -1)
                             firewallTriggerPrompt(elevatorKeyPrompt)
                         end
 

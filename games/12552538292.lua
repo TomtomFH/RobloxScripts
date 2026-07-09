@@ -86,6 +86,7 @@ if isEndlessFirewallMode() then
     local FIREWALL_TELEPORT_HEIGHT_OFFSET = 4
     local FIREWALL_TELEPORT_SIDE = -1
     local FIREWALL_WALK_SPEED = 24
+    local FIREWALL_WALK_DURATION = 1.25
     local FIREWALL_WALK_THROUGH_DISTANCE = 18
     local FIREWALL_RETRY_DELAY = 1.5
     local FIREWALL_MAX_ROOMS_AHEAD = 10
@@ -455,23 +456,40 @@ if isEndlessFirewallMode() then
         humanoid.WalkSpeed = FIREWALL_WALK_SPEED
         humanoid.AutoRotate = false
 
-        local remaining = walkTarget - root.Position
-        if remaining.Magnitude > 1 then
+        local startTime = os.clock()
+        if firewallMouseAimAtPosition then
+            task.spawn(firewallMouseAimAtPosition, doorPart.Position, FIREWALL_DOOR_LOOK_DURATION)
+        end
+
+        while firewallState.enabled and os.clock() - startTime < FIREWALL_WALK_DURATION do
+            if not character.Parent or not root.Parent or not humanoid.Parent then
+                break
+            end
+
+            local remaining = walkTarget - root.Position
+            if remaining.Magnitude <= 1 then
+                break
+            end
+
             local currentDirection = remaining.Unit
             root.CFrame = CFrame.lookAt(root.Position, root.Position + currentDirection)
             root.AssemblyLinearVelocity = currentDirection * FIREWALL_WALK_SPEED
+            root.AssemblyAngularVelocity = Vector3.zero
             humanoid:Move(currentDirection, false)
-            if firewallMouseAimAtPosition then
-                task.spawn(firewallMouseAimAtPosition, doorPart.Position, FIREWALL_DOOR_LOOK_DURATION)
-            end
 
             local deltaTime = runService.Heartbeat:Wait()
             root.CFrame = root.CFrame + currentDirection * FIREWALL_WALK_SPEED * deltaTime
         end
 
         if humanoid.Parent then
+            humanoid:Move(Vector3.zero, false)
             humanoid.WalkSpeed = oldWalkSpeed
             humanoid.AutoRotate = oldAutoRotate
+        end
+
+        if root.Parent then
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
         end
     end
 

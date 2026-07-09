@@ -4109,11 +4109,14 @@ end
 local latestRoomLabel
 local latestDoorLabel
 local codeLabel
+local autoDoorLabel
 
 local doorTracker = {
     running = false,
     passwordEnabled = false,
     autoEnterCodeEnabled = false,
+    autoDoorEnabled = false,
+    autoDoorLoopId = 0,
     roomConnections = {},
     mainConnections = {},
     roomState = {},
@@ -4124,6 +4127,12 @@ local doorTracker = {
     autoEnterConnection = nil,
     hookedDoor = nil
 }
+
+local DOOR_AUTO_RETRY_DELAY = 1.5
+local DOOR_TELEPORT_DISTANCE = 8
+local DOOR_TELEPORT_HEIGHT_OFFSET = 4
+local DOOR_WALK_SPEED = 24
+local DOOR_WALK_DURATION = 1.25
 
 local function doorDisconnectList(list)
     for i = #list, 1, -1 do
@@ -4362,6 +4371,147 @@ local function doorGetRemote(door)
     return door and door:FindFirstChild("RemoteFunction", true) or nil
 end
 
+local function doorGetPart(instance)
+    if not instance then
+        return nil
+    end
+
+    if instance:IsA("BasePart") then
+        return instance
+    end
+
+    if instance:IsA("Model") then
+        return instance.PrimaryPart or instance:FindFirstChildWhichIsA("BasePart", true)
+    end
+
+    return instance:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function doorGetCharacter()
+    local character = player.Character or player.CharacterAdded:Wait()
+    local root = character:FindFirstChild("HumanoidRootPart") or character:WaitForChild("HumanoidRootPart", 5)
+    local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 5)
+    return character, root, humanoid
+end
+
+local function doorSetAutoStatus(text)
+    if autoDoorLabel then
+        autoDoorLabel.Text = "Auto Door: " .. tostring(text)
+    end
+end
+
+local function doorWalkThrough(character, root, humanoid, doorPart)
+    if not character or not root or not humanoid or not doorPart then
+        return
+    end
+
+    local startOffset = Vector3.new(doorPart.Position.X - root.Position.X, 0, doorPart.Position.Z - root.Position.Z)
+    if startOffset.Magnitude <= 0 then
+        return
+    end
+
+    local walkDirection = startOffset.Unit
+    local flatDoorPosition = Vector3.new(doorPart.Position.X, root.Position.Y, doorPart.Position.Z)
+    local walkTarget = flatDoorPosition + walkDirection * DOOR_TELEPORT_DISTANCE
+    local oldWalkSpeed = humanoid.WalkSpeed
+    local oldAutoRotate = humanoid.AutoRotate
+
+    humanoid.WalkSpeed = DOOR_WALK_SPEED
+    humanoid.AutoRotate = false
+
+    local startTime = os.clock()
+    while doorTracker.autoDoorEnabled and os.clock() - startTime < DOOR_WALK_DURATION do
+        if not character.Parent or not root.Parent or not humanoid.Parent or not doorPart.Parent then
+            break
+        end
+
+        local remaining = walkTarget - root.Position
+        if remaining.Magnitude <= 1 then
+            break
+        end
+
+        local flatRemaining = Vector3.new(remaining.X, 0, remaining.Z)
+        if flatRemaining.Magnitude <= 0 then
+            break
+        end
+
+        local currentDirection = flatRemaining.Unit
+        root.CFrame = CFrame.lookAt(root.Position, root.Position + currentDirection)
+        root.AssemblyLinearVelocity = currentDirection * DOOR_WALK_SPEED
+        root.AssemblyAngularVelocity = Vector3.zero
+        humanoid:Move(currentDirection, false)
+
+        local deltaTime = runService.Heartbeat:Wait()
+        root.CFrame = root.CFrame + currentDirection * DOOR_WALK_SPEED * deltaTime
+    end
+
+    if humanoid.Parent then
+        humanoid:Move(Vector3.zero, false)
+        humanoid.WalkSpeed = oldWalkSpeed
+        humanoid.AutoRotate = oldAutoRotate
+    end
+
+    if root.Parent then
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+    end
+end
+
+local function doorTeleportAndWalk(door)
+    local doorPart = doorGetPart(door)
+    if not doorPart then
+        return false
+    end
+
+    local character, root, humanoid = doorGetCharacter()
+    if not character or not root or not humanoid then
+        return false
+    end
+
+    local lookDirection = Vector3.new(doorPart.CFrame.LookVector.X, 0, doorPart.CFrame.LookVector.Z)
+    if lookDirection.Magnitude <= 0 then
+        lookDirection = Vector3.zAxis
+    end
+
+    local doorBase = doorPart.Position - doorPart.CFrame.UpVector * (doorPart.Size.Y / 2)
+    local teleportPosition = doorBase
+        + Vector3.yAxis * DOOR_TELEPORT_HEIGHT_OFFSET
+        - lookDirection.Unit * DOOR_TELEPORT_DISTANCE
+    local lookTarget = Vector3.new(doorPart.Position.X, teleportPosition.Y, doorPart.Position.Z)
+    local targetCFrame = CFrame.lookAt(teleportPosition, lookTarget)
+
+    character:PivotTo(targetCFrame)
+    root.CFrame = targetCFrame
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
+
+    doorWalkThrough(character, root, humanoid, doorPart)
+    return true
+end
+
+local function doorEnterCode(door)
+    local code = doorGetCodeText()
+    if code == "No Code" then
+        return false
+    end
+
+    local remote = doorGetRemote(door)
+    if not remote then
+        return false
+    end
+
+    pcall(function()
+        local current = ""
+        for i = 1, #code do
+            current = current .. string.sub(code, i, i)
+            remote:InvokeServer(current)
+            task.wait(0.05)
+        end
+    end)
+
+    return true
+end
+
 local function doorSetupAutoEnterForCurrentDoor()
     doorDisconnectAutoEnter()
 
@@ -4550,7 +4700,13 @@ local function doorWatchRoom(room)
     end
 end
 
+local doorStopAutoDoor
+
 local function doorStopTracker()
+    if doorTracker.autoDoorEnabled then
+        doorStopAutoDoor()
+    end
+
     doorTracker.running = false
     doorTracker.refreshQueued = false
 
@@ -4607,6 +4763,52 @@ local function doorStartTracker()
     doorUpdateTrackedLastDoor()
 end
 
+doorStopAutoDoor = function()
+    doorTracker.autoDoorEnabled = false
+    doorTracker.autoDoorLoopId += 1
+    doorSetAutoStatus("Off")
+end
+
+local function doorStartAutoDoor()
+    if doorTracker.autoDoorEnabled then
+        return
+    end
+
+    doorTracker.autoDoorEnabled = true
+    doorTracker.autoDoorLoopId += 1
+    local loopId = doorTracker.autoDoorLoopId
+
+    doorTracker.passwordEnabled = true
+    doorStartTracker()
+    doorSetAutoStatus("Starting")
+
+    task.spawn(function()
+        while doorTracker.autoDoorEnabled and doorTracker.autoDoorLoopId == loopId do
+            doorUpdateTrackedLastDoor()
+
+            local door = doorTracker.currentLastDoor
+            if not door then
+                doorSetAutoStatus("Waiting for door")
+                task.wait(DOOR_AUTO_RETRY_DELAY)
+                continue
+            end
+
+            local codeEntered = false
+            if door:GetAttribute("Locked") then
+                doorSetAutoStatus("Entering code")
+                codeEntered = doorEnterCode(door)
+            end
+
+            doorSetAutoStatus(codeEntered and "Opening code door" or "Entering latest door")
+            if not doorTeleportAndWalk(door) then
+                doorSetAutoStatus("Waiting for door part")
+            end
+
+            task.wait(DOOR_AUTO_RETRY_DELAY)
+        end
+    end)
+end
+
 local function onPlayerAdded(player)
     local health = player:WaitForChild("PlayerFolder"):WaitForChild("Health")
     health:GetPropertyChangedSignal("Value"):Connect(function()
@@ -4650,6 +4852,7 @@ CreateLabel("Doors", "Latest door tracking")
 latestRoomLabel = CreateValueLabel("Doors", "Latest Room: None")
 latestDoorLabel = CreateValueLabel("Doors", "Latest Door: None")
 codeLabel = CreateValueLabel("Doors", "Code: No Code")
+autoDoorLabel = CreateValueLabel("Doors", "Auto Door: Off")
 CreateToggle("Doors", "Track Latest Door", function(state)
     if state.Value then
         doorStartTracker()
@@ -4668,6 +4871,13 @@ end, false)
 CreateToggle("Doors", "Auto Enter Code", function(state)
     doorTracker.autoEnterCodeEnabled = state.Value
     doorSetupAutoEnterForCurrentDoor()
+end, false)
+CreateToggle("Doors", "Auto Latest Door", function(state)
+    if state.Value then
+        doorStartAutoDoor()
+    else
+        doorStopAutoDoor()
+    end
 end, false)
 
 CreateToggle("World", "Fullbright", function(state)

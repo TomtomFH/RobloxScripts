@@ -727,6 +727,8 @@ if isEndlessFirewallMode() then
         return entrances and firewallGetFirstPart(entrances) or nil
     end
 
+    local firewallRetargetDoorLoop
+
     local function firewallGetLatestEntranceNotOpenRoom()
         local bestRoom = nil
         local bestRoomNumber = nil
@@ -760,6 +762,11 @@ if isEndlessFirewallMode() then
 
             connections.openValueChanged = openValue:GetPropertyChangedSignal("Value"):Connect(function()
                 firewallUpdateRoomLabel()
+                task.defer(function()
+                    if firewallRetargetDoorLoop then
+                        firewallRetargetDoorLoop()
+                    end
+                end)
             end)
         end
     end
@@ -1563,6 +1570,9 @@ if isEndlessFirewallMode() then
                     end
 
                     firewallRefreshRoomLabels()
+                    if firewallState.chaseReady and firewallRetargetDoorLoop then
+                        firewallRetargetDoorLoop()
+                    end
                     task.wait(0.25)
                     continue
                 end
@@ -1585,6 +1595,9 @@ if isEndlessFirewallMode() then
                 end
 
                 firewallRefreshRoomLabels()
+                if firewallState.chaseReady and firewallRetargetDoorLoop then
+                    firewallRetargetDoorLoop()
+                end
                 task.wait(0.25)
             end
         end)
@@ -1637,10 +1650,20 @@ if isEndlessFirewallMode() then
 
                 task.wait(FIREWALL_RETRY_DELAY)
             end
+
+            if firewallState.enabled and firewallState.doorLoopId == loopId and firewallState.chaseReady then
+                firewallState.currentTargetRoom = nil
+                firewallState.currentTargetRoomNumber = nil
+                task.defer(function()
+                    if firewallRetargetDoorLoop then
+                        firewallRetargetDoorLoop()
+                    end
+                end)
+            end
         end)
     end
 
-    function firewallRetargetDoorLoop()
+    firewallRetargetDoorLoop = function()
         if not firewallState.chaseReady then
             return
         end

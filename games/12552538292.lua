@@ -2461,21 +2461,23 @@ local function chatNotificationGetScrollView()
     return ok and result or nil
 end
 
-local function chatNotificationParseWhisper(bodyText)
+local function chatNotificationParseMessage(bodyText)
     local cleanBody = chatNotificationStripRichText(bodyText)
     local fromName, message = cleanBody:match("^%s*%[From%s+([^%]]+)%]%s+.-:%s*(.*)$")
+    if not fromName then
+        fromName, message = cleanBody:match("^%s*([^:]+):%s*(.*)$")
+    end
 
-    if fromName ~= CHAT_NOTIFICATION_USERNAME then
+    if chatNotificationTrim(fromName) ~= CHAT_NOTIFICATION_USERNAME then
         return nil
     end
 
     message = chatNotificationTrim(message)
-    if message:sub(1, 1) ~= "-" then
+    if message == "" then
         return nil
     end
 
-    local notificationText = chatNotificationTrim(message:sub(2))
-    return notificationText ~= "" and notificationText or message
+    return message
 end
 
 local function chatNotificationWaitForBodyText(row)
@@ -2506,7 +2508,7 @@ local function chatNotificationProcessRow(row)
             return
         end
 
-        local notificationText = chatNotificationParseWhisper(bodyTextLabel.Text)
+        local notificationText = chatNotificationParseMessage(bodyTextLabel.Text)
         if notificationText then
             CreateNotification(notificationText, Color3.fromRGB(255, 255, 255), 4, true)
         end

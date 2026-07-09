@@ -979,6 +979,8 @@ if isEndlessFirewallMode() then
     end
 
     local firewallRetargetDoorLoop
+    local firewallRefreshChaseRooms
+    local firewallWaitForClosedChaseDoor
 
     local function firewallStartPhaseLoop()
         firewallState.phaseLoopId += 1
@@ -1160,6 +1162,8 @@ if isEndlessFirewallMode() then
                         continue
                     end
 
+                    firewallRefreshChaseRooms()
+
                     if FIREWALL_CHASE_DRY_RUN then
                         firewallState.chaseReady = false
                         firewallState.platformsReady = false
@@ -1171,6 +1175,15 @@ if isEndlessFirewallMode() then
                     end
 
                     if not firewallState.chaseReady then
+                        if not firewallWaitForClosedChaseDoor(FIREWALL_TELEPORT_WAIT_TIMEOUT) then
+                            firewallState.chaseReady = false
+                            firewallState.platformsReady = false
+                            firewallSetStatus("Waiting for chase doors")
+                            firewallRefreshRoomLabels()
+                            task.wait(0.25)
+                            continue
+                        end
+
                         firewallState.chaseReady = true
                         firewallState.platformsReady = true
                         firewallSetStatus("Running")
@@ -1184,6 +1197,15 @@ if isEndlessFirewallMode() then
                 end
 
                 if not firewallState.chaseReady then
+                    if not firewallWaitForClosedChaseDoor(FIREWALL_TELEPORT_WAIT_TIMEOUT) then
+                        firewallState.chaseReady = false
+                        firewallState.platformsReady = false
+                        firewallSetStatus("Waiting for chase doors")
+                        firewallRefreshRoomLabels()
+                        task.wait(0.25)
+                        continue
+                    end
+
                     firewallState.chaseReady = true
                     firewallState.platformsReady = true
                     firewallSetStatus("Running")
@@ -1257,6 +1279,8 @@ if isEndlessFirewallMode() then
         firewallStartDoorLoop(room, roomNumber)
     end
 
+    local firewallWatchRoom
+
     local function firewallWaitForRoomReady(room, timeout)
         local startTime = os.clock()
         while firewallState.enabled and room and room.Parent == firewallState.chaseRooms and os.clock() - startTime < timeout do
@@ -1270,7 +1294,53 @@ if isEndlessFirewallMode() then
         return false
     end
 
-    local function firewallWatchRoom(room)
+    firewallRefreshChaseRooms = function()
+        local chaseRooms = firewallGetChaseRooms()
+        if not chaseRooms then
+            return false
+        end
+
+        if firewallState.chaseRooms ~= chaseRooms then
+            for room in pairs(firewallState.roomConnections) do
+                firewallDisconnectRoom(room)
+            end
+
+            firewallState.chaseRooms = chaseRooms
+            firewallState.currentTargetRoom = nil
+            firewallState.currentTargetRoomNumber = nil
+        end
+
+        for _, room in ipairs(chaseRooms:GetChildren()) do
+            firewallWatchRoom(room)
+            firewallTrackEntranceOpenValue(room)
+        end
+
+        firewallRefreshRoomLabels()
+        return true
+    end
+
+    local function firewallHasClosedChaseDoor()
+        local room, roomNumber = firewallGetLatestEntranceNotOpenRoom()
+        return room ~= nil and roomNumber ~= nil
+    end
+
+    firewallWaitForClosedChaseDoor = function(timeout)
+        local startTime = os.clock()
+        repeat
+            firewallRefreshChaseRooms()
+
+            if firewallHasClosedChaseDoor() then
+                return true
+            end
+
+            firewallSetStatus("Scanning chase doors")
+            task.wait(0.15)
+        until not firewallState.enabled or os.clock() - startTime >= timeout
+
+        return firewallHasClosedChaseDoor()
+    end
+
+    firewallWatchRoom = function(room)
         if firewallState.roomConnections[room] then
             return
         end

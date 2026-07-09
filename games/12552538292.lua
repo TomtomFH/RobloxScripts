@@ -97,6 +97,7 @@ if isEndlessFirewallMode() then
     local FIREWALL_MOUSE_AIM_DEADZONE = 8
     local FIREWALL_MOUSE_AIM_BIND_NAME = "TomtomFirewallPromptMouseAim"
     local FIREWALL_MOUSE_AIM_PRIORITY = 300
+    local FIREWALL_DOOR_LOOK_DURATION = 0.25
 
     local function firewallSetStatus(text)
         if firewallStatusLabel then
@@ -430,6 +431,8 @@ if isEndlessFirewallMode() then
         return character, root, humanoid
     end
 
+    local firewallMouseAimAtPosition
+
     local function firewallWalkThroughDoor(character, root, humanoid, doorPart)
         if not character or not root or not humanoid or not doorPart then
             return
@@ -454,6 +457,9 @@ if isEndlessFirewallMode() then
             root.CFrame = CFrame.lookAt(root.Position, root.Position + currentDirection)
             root.AssemblyLinearVelocity = currentDirection * FIREWALL_WALK_SPEED
             humanoid:Move(currentDirection, false)
+            if firewallMouseAimAtPosition then
+                task.spawn(firewallMouseAimAtPosition, doorPart.Position, FIREWALL_DOOR_LOOK_DURATION)
+            end
 
             local deltaTime = runService.Heartbeat:Wait()
             root.CFrame = root.CFrame + currentDirection * FIREWALL_WALK_SPEED * deltaTime
@@ -506,6 +512,23 @@ if isEndlessFirewallMode() then
 
     local function firewallGetFirewallStartRoom()
         return roomsFolder:FindFirstChild("FirewallStart")
+    end
+
+    local function firewallGetFirewallElevatorRoom()
+        return roomsFolder:FindFirstChild("FirewallElevator")
+    end
+
+    local function firewallGetFirewallEndRoom()
+        return roomsFolder:FindFirstChild("FirewallEnd")
+    end
+
+    local function firewallGetTutorialTeleportTrigger()
+        local elevatorRoom = firewallGetFirewallElevatorRoom()
+        local chaseRooms = elevatorRoom and elevatorRoom:FindFirstChild("ChaseRooms")
+        local tutorialStart = chaseRooms and chaseRooms:FindFirstChild("1FirewallTutorialStart")
+        local triggers = tutorialStart and tutorialStart:FindFirstChild("Triggers")
+        local teleport = triggers and triggers:FindFirstChild("Teleport")
+        return teleport and teleport:IsA("BasePart") and teleport or nil
     end
 
     local function firewallGetFirewallStartDoor()
@@ -630,7 +653,7 @@ if isEndlessFirewallMode() then
         return firewallSendMouseMove(math.clamp(dx, -250, 250), math.clamp(dy, -250, 250))
     end
 
-    local function firewallMouseAimAtPosition(targetPosition, duration)
+    firewallMouseAimAtPosition = function(targetPosition, duration)
         if type(mousemoverel) ~= "function" or not targetPosition then
             return
         end
@@ -667,8 +690,13 @@ if isEndlessFirewallMode() then
             return
         end
 
-        local position = part.Position + Vector3.yAxis * FIREWALL_TELEPORT_HEIGHT_OFFSET
-        character:PivotTo(CFrame.lookAt(position, part.Position))
+        local position = part.Position
+        local lookDirection = Vector3.new(part.CFrame.LookVector.X, 0, part.CFrame.LookVector.Z)
+        if lookDirection.Magnitude <= 0 then
+            lookDirection = Vector3.zAxis
+        end
+
+        character:PivotTo(CFrame.lookAt(position, position + lookDirection.Unit))
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
     end
@@ -931,6 +959,49 @@ if isEndlessFirewallMode() then
                         task.wait(0.25)
                         continue
                     end
+                end
+
+                local firewallElevatorRoom = firewallGetFirewallElevatorRoom()
+                local firewallEndRoom = firewallGetFirewallEndRoom()
+
+                if not startRoom and (not firewallElevatorRoom or not firewallEndRoom) then
+                    firewallState.chaseReady = false
+                    firewallState.platformsReady = false
+                    firewallSetStatus("Waiting for chase rooms")
+                    task.wait(0.25)
+                    continue
+                end
+
+                if not startRoom and firewallElevatorRoom and firewallEndRoom then
+                    local firewallModel = workspace:FindFirstChild("Firewall")
+
+                    if not firewallModel then
+                        firewallState.chaseReady = false
+                        firewallState.platformsReady = false
+                        local teleportTrigger = firewallGetTutorialTeleportTrigger()
+
+                        if teleportTrigger then
+                            firewallSetStatus("Entering firewall chase")
+                            firewallTeleportToPart(teleportTrigger)
+                        else
+                            firewallSetStatus("Waiting for chase teleport")
+                        end
+
+                        task.wait(FIREWALL_RETRY_DELAY)
+                        continue
+                    end
+
+                    if not firewallState.chaseReady then
+                        firewallState.chaseReady = true
+                        firewallState.platformsReady = true
+                        firewallSetStatus("Running")
+                        firewallQueueAllPlatforms()
+                        firewallRetargetDoorLoop()
+                    end
+
+                    firewallRefreshRoomLabels()
+                    task.wait(0.25)
+                    continue
                 end
 
                 if not firewallState.chaseReady then

@@ -4468,7 +4468,7 @@ local function doorTeleportAndWalk(door)
         return false
     end
 
-    local lookDirection = Vector3.new(doorPart.CFrame.LookVector.X, 0, doorPart.CFrame.LookVector.Z)
+    local lookDirection = Vector3.new(doorPart.CFrame.RightVector.X, 0, doorPart.CFrame.RightVector.Z)
     if lookDirection.Magnitude <= 0 then
         lookDirection = Vector3.zAxis
     end

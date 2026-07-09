@@ -586,7 +586,7 @@ if isEndlessFirewallMode() then
         root.AssemblyAngularVelocity = Vector3.zero
     end
 
-    local function firewallTeleportInFrontOfPart(part)
+    local function firewallTeleportInFrontOfPart(part, sideMultiplier)
         if not part then
             return
         end
@@ -597,13 +597,15 @@ if isEndlessFirewallMode() then
         end
 
         local targetPosition = part.Position
-        local frontDirection = part.CFrame.LookVector
-        if frontDirection.Magnitude <= 0 then
-            frontDirection = (root.Position - targetPosition).Magnitude > 0 and (root.Position - targetPosition).Unit or Vector3.zAxis
+        local side = sideMultiplier or -1
+        local offsetDirection = part.CFrame.LookVector * side
+        if offsetDirection.Magnitude <= 0 then
+            offsetDirection = Vector3.zAxis * side
         end
 
-        local position = targetPosition + frontDirection.Unit * FIREWALL_PROMPT_DISTANCE + Vector3.yAxis * FIREWALL_TELEPORT_HEIGHT_OFFSET
-        character:PivotTo(CFrame.lookAt(position, targetPosition))
+        local position = targetPosition + offsetDirection.Unit * FIREWALL_PROMPT_DISTANCE + Vector3.yAxis * FIREWALL_TELEPORT_HEIGHT_OFFSET
+        local lookTarget = Vector3.new(targetPosition.X, position.Y, targetPosition.Z)
+        character:PivotTo(CFrame.lookAt(position, lookTarget))
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
     end
@@ -727,7 +729,7 @@ if isEndlessFirewallMode() then
 
                         if os.clock() - firewallState.lastElevatorKeyAttempt >= 1 then
                             firewallState.lastElevatorKeyAttempt = os.clock()
-                            firewallTeleportInFrontOfPart(firewallGetPromptPart(elevatorKeyPrompt))
+                            firewallTeleportInFrontOfPart(firewallGetPromptPart(elevatorKeyPrompt), 1)
                             firewallTriggerPrompt(elevatorKeyPrompt)
                         end
 

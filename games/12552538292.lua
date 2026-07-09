@@ -19,6 +19,13 @@ local function isEndlessFirewallMode()
         FirewallEnd = false
     }
 
+    local allowedRooms = {
+        Start = true,
+        FirewallStart = true,
+        FirewallEnd = true,
+        FirewallElevator = true
+    }
+
     local deadline = os.clock() + 5
     repeat
         local hasUnexpectedRoom = false
@@ -28,8 +35,10 @@ local function isEndlessFirewallMode()
         end
 
         for _, room in ipairs(roomsFolder:GetChildren()) do
-            if requiredRooms[room.Name] ~= nil then
-                requiredRooms[room.Name] = true
+            if allowedRooms[room.Name] then
+                if requiredRooms[room.Name] ~= nil then
+                    requiredRooms[room.Name] = true
+                end
             else
                 hasUnexpectedRoom = true
                 break

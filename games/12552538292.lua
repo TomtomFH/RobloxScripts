@@ -792,7 +792,8 @@ if isEndlessFirewallMode() then
 
         local walkDirection = startOffset.Unit
         local walkDistance = throughDistance or startOffset.Magnitude
-        local walkTarget = doorPart.Position + walkDirection * walkDistance
+        local flatDoorPosition = Vector3.new(doorPart.Position.X, root.Position.Y, doorPart.Position.Z)
+        local walkTarget = flatDoorPosition + walkDirection * walkDistance
         local oldWalkSpeed = humanoid.WalkSpeed
         local oldAutoRotate = humanoid.AutoRotate
 
@@ -801,7 +802,7 @@ if isEndlessFirewallMode() then
 
         local startTime = os.clock()
         if firewallMouseAimAtPosition then
-            task.spawn(firewallMouseAimAtPosition, doorPart.Position, FIREWALL_DOOR_LOOK_DURATION)
+            task.spawn(firewallMouseAimAtPosition, flatDoorPosition, FIREWALL_DOOR_LOOK_DURATION)
         end
 
         while firewallState.enabled and os.clock() - startTime < FIREWALL_WALK_DURATION do
@@ -814,7 +815,12 @@ if isEndlessFirewallMode() then
                 break
             end
 
-            local currentDirection = remaining.Unit
+            local flatRemaining = Vector3.new(remaining.X, 0, remaining.Z)
+            if flatRemaining.Magnitude <= 0 then
+                break
+            end
+
+            local currentDirection = flatRemaining.Unit
             root.CFrame = CFrame.lookAt(root.Position, root.Position + currentDirection)
             root.AssemblyLinearVelocity = currentDirection * FIREWALL_WALK_SPEED
             root.AssemblyAngularVelocity = Vector3.zero
@@ -869,7 +875,7 @@ if isEndlessFirewallMode() then
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
         if firewallMouseAimAtPosition then
-            task.spawn(firewallMouseAimAtPosition, teleportPart.Position, FIREWALL_MOUSE_AIM_DURATION)
+            task.spawn(firewallMouseAimAtPosition, lookTarget, FIREWALL_MOUSE_AIM_DURATION)
         end
         firewallWalkThroughDoor(character, root, humanoid, teleportPart, FIREWALL_TELEPORT_DISTANCE_FROM_DOOR)
     end
@@ -1058,7 +1064,8 @@ if isEndlessFirewallMode() then
             return false
         end
 
-        local viewportPoint, visible = camera:WorldToViewportPoint(targetPosition)
+        local flatTargetPosition = Vector3.new(targetPosition.X, camera.CFrame.Position.Y, targetPosition.Z)
+        local viewportPoint, visible = camera:WorldToViewportPoint(flatTargetPosition)
         local dx, dy
 
         if visible and viewportPoint.Z > 0 then
@@ -1071,7 +1078,7 @@ if isEndlessFirewallMode() then
             dx = delta.X * FIREWALL_MOUSE_AIM_SCALE
             dy = delta.Y * FIREWALL_MOUSE_AIM_SCALE
         else
-            local direction = targetPosition - camera.CFrame.Position
+            local direction = flatTargetPosition - camera.CFrame.Position
             if direction.Magnitude <= 0 then
                 return false
             end

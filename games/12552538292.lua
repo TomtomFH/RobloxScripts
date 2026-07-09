@@ -9,9 +9,613 @@ local tweenService = game:GetService("TweenService")
 local runService = game:GetService("RunService")
 local gameplayFolder = workspace:WaitForChild("GameplayFolder", 60)
 local roomsFolder = gameplayFolder:WaitForChild("Rooms", 60)
-local monstersFolder = gameplayFolder:WaitForChild("Monsters", 60)
 
 local player = players.LocalPlayer
+
+local function isEndlessFirewallMode()
+    local requiredRooms = {
+        Start = false,
+        FirewallStart = false,
+        FirewallEnd = false
+    }
+
+    local deadline = os.clock() + 5
+    repeat
+        local hasUnexpectedRoom = false
+
+        for roomName in pairs(requiredRooms) do
+            requiredRooms[roomName] = false
+        end
+
+        for _, room in ipairs(roomsFolder:GetChildren()) do
+            if requiredRooms[room.Name] ~= nil then
+                requiredRooms[room.Name] = true
+            else
+                hasUnexpectedRoom = true
+                break
+            end
+        end
+
+        if not hasUnexpectedRoom and requiredRooms.Start and requiredRooms.FirewallStart and requiredRooms.FirewallEnd then
+            return true
+        end
+
+        if hasUnexpectedRoom then
+            return false
+        end
+
+        task.wait(0.1)
+    until os.clock() >= deadline
+
+    return false
+end
+
+if isEndlessFirewallMode() then
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/Lib.lua", true))()
+
+    local firewallRoomLabel = nil
+    local firewallStatusLabel = nil
+
+    local firewallState = {
+        enabled = false,
+        chaseRooms = nil,
+        pendingRooms = {},
+        roomConnections = {},
+        roomOpenValues = {},
+        mainConnections = {},
+        doorLoopId = 0,
+        currentTargetRoom = nil,
+        currentTargetRoomNumber = nil
+    }
+
+    local FIREWALL_PLATFORM_NAME = "EntranceExitPlatform"
+    local FIREWALL_PLATFORM_THICKNESS = 1
+    local FIREWALL_PLATFORM_TRANSPARENCY = 0.5
+    local FIREWALL_HEIGHT_FRACTION_DOWN = 0.7
+    local FIREWALL_REBUILD_DELAY = 0.15
+    local FIREWALL_TELEPORT_WAIT_TIMEOUT = 5
+    local FIREWALL_TELEPORT_DISTANCE_FROM_DOOR = 8
+    local FIREWALL_TELEPORT_HEIGHT_OFFSET = 4
+    local FIREWALL_TELEPORT_SIDE = -1
+    local FIREWALL_WALK_SPEED = 24
+    local FIREWALL_WALK_THROUGH_DISTANCE = 18
+    local FIREWALL_RETRY_DELAY = 0.25
+    local FIREWALL_DELETE_ROOMS_BEHIND = 10
+
+    local function firewallSetStatus(text)
+        if firewallStatusLabel then
+            firewallStatusLabel.Text = "Status: " .. tostring(text)
+        end
+    end
+
+    local function firewallGetChaseRooms()
+        local elevator = roomsFolder:FindFirstChild("FirewallElevator") or roomsFolder:WaitForChild("FirewallElevator", 10)
+        if not elevator then
+            return roomsFolder
+        end
+
+        return elevator:FindFirstChild("ChaseRooms") or elevator:WaitForChild("ChaseRooms", 10)
+    end
+
+    local function firewallGetRoomNumber(room)
+        return tonumber(room and room:GetAttribute("RoomNumber"))
+    end
+
+    local function firewallGetLatestRoomNumber()
+        local latestRoomNumber = nil
+
+        if firewallState.chaseRooms then
+            for _, room in ipairs(firewallState.chaseRooms:GetChildren()) do
+                local roomNumber = firewallGetRoomNumber(room)
+                if roomNumber and (not latestRoomNumber or roomNumber > latestRoomNumber) then
+                    latestRoomNumber = roomNumber
+                end
+            end
+        end
+
+        return latestRoomNumber
+    end
+
+    local function firewallUpdateRoomLabel()
+        local latestRoomNumber = firewallGetLatestRoomNumber()
+        if firewallRoomLabel then
+            firewallRoomLabel.Text = latestRoomNumber and ("Current Room: " .. tostring(latestRoomNumber)) or "Current Room: None"
+        end
+    end
+
+    local function firewallDeleteRoomClutter(room)
+        for _, child in ipairs(room:GetChildren()) do
+            if child.Name == "Parts" then
+                child:Destroy()
+            elseif child:IsA("Model") then
+                child:Destroy()
+            end
+        end
+    end
+
+    local function firewallFindEntranceOpenValue(room)
+        local entrances = room and room:FindFirstChild("Entrances")
+        if not entrances then
+            return nil
+        end
+
+        local openValue = entrances:FindFirstChild("OpenValue", true)
+        if openValue and openValue:IsA("ValueBase") then
+            return openValue
+        end
+
+        return nil
+    end
+
+    local function firewallGetFirstPart(container)
+        for _, obj in ipairs(container:GetDescendants()) do
+            if obj:IsA("BasePart") and obj.Name ~= FIREWALL_PLATFORM_NAME then
+                return obj
+            end
+        end
+
+        return nil
+    end
+
+    local function firewallGetHeightPoint(part)
+        local topCenter = part.Position + part.CFrame.UpVector * (part.Size.Y / 2)
+        return topCenter - part.CFrame.UpVector * (part.Size.Y * FIREWALL_HEIGHT_FRACTION_DOWN)
+    end
+
+    local function firewallGetRoomWidthAlongPath(room, startPos, endPos)
+        local pathDir = endPos - startPos
+        if pathDir.Magnitude <= 0 then
+            return 10
+        end
+
+        pathDir = pathDir.Unit
+        local rightDir = pathDir:Cross(Vector3.yAxis)
+        rightDir = rightDir.Magnitude < 0.01 and Vector3.xAxis or rightDir.Unit
+
+        local minDot = math.huge
+        local maxDot = -math.huge
+
+        for _, obj in ipairs(room:GetDescendants()) do
+            if obj:IsA("BasePart") and obj.Name ~= FIREWALL_PLATFORM_NAME then
+                local cf = obj.CFrame
+                local halfSize = obj.Size / 2
+
+                for x = -1, 1, 2 do
+                    for y = -1, 1, 2 do
+                        for z = -1, 1, 2 do
+                            local corner = cf.Position
+                                + cf.RightVector * halfSize.X * x
+                                + cf.UpVector * halfSize.Y * y
+                                + cf.LookVector * halfSize.Z * z
+                            local dot = corner:Dot(rightDir)
+                            minDot = math.min(minDot, dot)
+                            maxDot = math.max(maxDot, dot)
+                        end
+                    end
+                end
+            end
+        end
+
+        return minDot == math.huge and 10 or (maxDot - minDot)
+    end
+
+    local function firewallCreatePlatformForRoom(room)
+        if not firewallState.enabled or not firewallState.chaseRooms or not room:IsDescendantOf(firewallState.chaseRooms) then
+            return
+        end
+
+        firewallDeleteRoomClutter(room)
+
+        local entrances = room:FindFirstChild("Entrances")
+        local exits = room:FindFirstChild("Exits") or room:FindFirstChild("Exists")
+        if not entrances or not exits then
+            return
+        end
+
+        local entrancePart = firewallGetFirstPart(entrances)
+        local exitPart = firewallGetFirstPart(exits)
+        if not entrancePart or not exitPart then
+            return
+        end
+
+        local oldPlatform = room:FindFirstChild(FIREWALL_PLATFORM_NAME)
+        if oldPlatform then
+            oldPlatform:Destroy()
+        end
+
+        local startPos = firewallGetHeightPoint(entrancePart)
+        local endPos = firewallGetHeightPoint(exitPart)
+        local length = (endPos - startPos).Magnitude
+        if length <= 0 then
+            return
+        end
+
+        local topCenter = (startPos + endPos) / 2
+        local width = firewallGetRoomWidthAlongPath(room, startPos, endPos)
+        local platformTopCF = CFrame.lookAt(topCenter, endPos, Vector3.yAxis)
+        local platformCenter = topCenter - platformTopCF.UpVector * (FIREWALL_PLATFORM_THICKNESS / 2)
+
+        local platform = Instance.new("Part")
+        platform.Name = FIREWALL_PLATFORM_NAME
+        platform.Anchored = true
+        platform.CanCollide = true
+        platform.CanTouch = true
+        platform.CanQuery = true
+        platform.Transparency = FIREWALL_PLATFORM_TRANSPARENCY
+        platform.Size = Vector3.new(width, FIREWALL_PLATFORM_THICKNESS, length)
+        platform.CFrame = CFrame.lookAt(platformCenter, platformCenter + platformTopCF.LookVector, platformTopCF.UpVector)
+        platform.Material = Enum.Material.SmoothPlastic
+        platform.Color = Color3.fromRGB(80, 80, 80)
+        platform.Parent = room
+    end
+
+    local function firewallQueueCreatePlatform(room)
+        if firewallState.pendingRooms[room] then
+            return
+        end
+
+        firewallState.pendingRooms[room] = true
+        task.delay(FIREWALL_REBUILD_DELAY, function()
+            firewallState.pendingRooms[room] = nil
+            if firewallState.enabled and room and room.Parent == firewallState.chaseRooms then
+                firewallCreatePlatformForRoom(room)
+            end
+        end)
+    end
+
+    local function firewallDisconnectRoom(room)
+        local connections = firewallState.roomConnections[room]
+        if connections then
+            for _, connection in pairs(connections) do
+                if connection then
+                    connection:Disconnect()
+                end
+            end
+        end
+
+        firewallState.roomConnections[room] = nil
+        firewallState.pendingRooms[room] = nil
+        firewallState.roomOpenValues[room] = nil
+    end
+
+    local function firewallCleanupOldRooms()
+        local latestRoomNumber = firewallGetLatestRoomNumber()
+        if not latestRoomNumber or not firewallState.chaseRooms then
+            firewallUpdateRoomLabel()
+            return
+        end
+
+        local deleteAtOrBelow = latestRoomNumber - FIREWALL_DELETE_ROOMS_BEHIND
+        for _, room in ipairs(firewallState.chaseRooms:GetChildren()) do
+            local roomNumber = firewallGetRoomNumber(room)
+            if roomNumber and roomNumber <= deleteAtOrBelow then
+                firewallDisconnectRoom(room)
+                room:Destroy()
+            end
+        end
+
+        firewallUpdateRoomLabel()
+    end
+
+    local function firewallGetDoorPartFromOpenValue(openValue)
+        if not openValue then
+            return nil
+        end
+
+        local door = openValue.Parent
+        if not door then
+            return nil
+        end
+
+        if door:IsA("BasePart") then
+            return door
+        end
+
+        if door:IsA("Model") then
+            return door.PrimaryPart or door:FindFirstChildWhichIsA("BasePart", true)
+        end
+
+        return door:FindFirstChildWhichIsA("BasePart", true)
+    end
+
+    local function firewallGetTeleportPartForRoom(room)
+        local doorPart = firewallGetDoorPartFromOpenValue(firewallFindEntranceOpenValue(room))
+        if doorPart then
+            return doorPart
+        end
+
+        local entrances = room and room:FindFirstChild("Entrances")
+        return entrances and firewallGetFirstPart(entrances) or nil
+    end
+
+    local function firewallGetLatestEntranceNotOpenRoom()
+        local bestRoom = nil
+        local bestRoomNumber = nil
+
+        for room, openValue in pairs(firewallState.roomOpenValues) do
+            if firewallState.chaseRooms and room:IsDescendantOf(firewallState.chaseRooms) and openValue and openValue.Parent then
+                local roomNumber = firewallGetRoomNumber(room)
+                if roomNumber and openValue.Value ~= true and (not bestRoomNumber or roomNumber > bestRoomNumber) then
+                    bestRoom = room
+                    bestRoomNumber = roomNumber
+                end
+            end
+        end
+
+        return bestRoom, bestRoomNumber
+    end
+
+    local function firewallTrackEntranceOpenValue(room)
+        local openValue = firewallFindEntranceOpenValue(room)
+        if not openValue or firewallState.roomOpenValues[room] == openValue then
+            return
+        end
+
+        firewallState.roomOpenValues[room] = openValue
+        local connections = firewallState.roomConnections[room]
+        if connections then
+            if connections.openValueChanged then
+                connections.openValueChanged:Disconnect()
+            end
+
+            connections.openValueChanged = openValue:GetPropertyChangedSignal("Value"):Connect(function()
+                firewallUpdateRoomLabel()
+            end)
+        end
+    end
+
+    local function firewallGetCharacter()
+        local character = player.Character or player.CharacterAdded:Wait()
+        local root = character:FindFirstChild("HumanoidRootPart") or character:WaitForChild("HumanoidRootPart", 5)
+        local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 5)
+        return character, root, humanoid
+    end
+
+    local function firewallWalkThroughDoor(character, root, humanoid, doorPart)
+        if not character or not root or not humanoid or not doorPart then
+            return
+        end
+
+        local walkDirection = doorPart.Position - root.Position
+        if walkDirection.Magnitude <= 0 then
+            return
+        end
+
+        walkDirection = walkDirection.Unit
+        local walkTarget = doorPart.Position + walkDirection * FIREWALL_WALK_THROUGH_DISTANCE
+        local oldWalkSpeed = humanoid.WalkSpeed
+        local oldAutoRotate = humanoid.AutoRotate
+
+        humanoid.WalkSpeed = FIREWALL_WALK_SPEED
+        humanoid.AutoRotate = false
+
+        local remaining = walkTarget - root.Position
+        if remaining.Magnitude > 1 then
+            local currentDirection = remaining.Unit
+            root.CFrame = CFrame.lookAt(root.Position, root.Position + currentDirection)
+            root.AssemblyLinearVelocity = currentDirection * FIREWALL_WALK_SPEED
+            humanoid:Move(currentDirection, false)
+
+            local deltaTime = runService.Heartbeat:Wait()
+            root.CFrame = root.CFrame + currentDirection * FIREWALL_WALK_SPEED * deltaTime
+        end
+
+        if humanoid.Parent then
+            humanoid.WalkSpeed = oldWalkSpeed
+            humanoid.AutoRotate = oldAutoRotate
+        end
+    end
+
+    local function firewallTeleportAndWalk(room)
+        local teleportPart = firewallGetTeleportPartForRoom(room)
+        if not teleportPart then
+            return
+        end
+
+        local character, root, humanoid = firewallGetCharacter()
+        if not character or not root or not humanoid then
+            return
+        end
+
+        local doorBase = teleportPart.Position - teleportPart.CFrame.UpVector * (teleportPart.Size.Y / 2)
+        local teleportPosition = doorBase
+            + Vector3.yAxis * FIREWALL_TELEPORT_HEIGHT_OFFSET
+            + teleportPart.CFrame.LookVector * FIREWALL_TELEPORT_DISTANCE_FROM_DOOR * FIREWALL_TELEPORT_SIDE
+
+        character:PivotTo(CFrame.lookAt(teleportPosition, teleportPart.Position))
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+        firewallWalkThroughDoor(character, root, humanoid, teleportPart)
+    end
+
+    local function firewallStartDoorLoop(room, roomNumber)
+        firewallState.doorLoopId += 1
+        local loopId = firewallState.doorLoopId
+        firewallState.currentTargetRoom = room
+        firewallState.currentTargetRoomNumber = roomNumber
+
+        task.spawn(function()
+            while firewallState.enabled and firewallState.doorLoopId == loopId and room and room.Parent == firewallState.chaseRooms do
+                local latestRoom, latestRoomNumber = firewallGetLatestEntranceNotOpenRoom()
+                if latestRoom ~= room or latestRoomNumber ~= roomNumber then
+                    break
+                end
+
+                firewallSetStatus("Entering room " .. tostring(roomNumber))
+                firewallTeleportAndWalk(room)
+                task.wait(FIREWALL_RETRY_DELAY)
+            end
+        end)
+    end
+
+    local function firewallRetargetDoorLoop()
+        local room, roomNumber = firewallGetLatestEntranceNotOpenRoom()
+        if not room or not roomNumber then
+            return
+        end
+
+        if room == firewallState.currentTargetRoom and roomNumber == firewallState.currentTargetRoomNumber then
+            return
+        end
+
+        firewallStartDoorLoop(room, roomNumber)
+    end
+
+    local function firewallWaitForRoomReady(room, timeout)
+        local startTime = os.clock()
+        while firewallState.enabled and room and room.Parent == firewallState.chaseRooms and os.clock() - startTime < timeout do
+            if firewallGetRoomNumber(room) and firewallFindEntranceOpenValue(room) then
+                return true
+            end
+
+            task.wait(0.1)
+        end
+
+        return false
+    end
+
+    local function firewallWatchRoom(room)
+        if firewallState.roomConnections[room] then
+            return
+        end
+
+        firewallDeleteRoomClutter(room)
+        local connections = {}
+        firewallState.roomConnections[room] = connections
+
+        connections.attributeChanged = room:GetAttributeChangedSignal("RoomNumber"):Connect(function()
+            firewallUpdateRoomLabel()
+            firewallCleanupOldRooms()
+            firewallRetargetDoorLoop()
+        end)
+
+        connections.childAdded = room.ChildAdded:Connect(function(child)
+            if child.Name == "Parts" or child:IsA("Model") then
+                child:Destroy()
+                return
+            end
+
+            if child.Name == "Entrances" or child.Name == "Exits" or child.Name == "Exists" then
+                firewallQueueCreatePlatform(room)
+                firewallTrackEntranceOpenValue(room)
+                firewallRetargetDoorLoop()
+            end
+        end)
+
+        connections.descendantAdded = room.DescendantAdded:Connect(function(obj)
+            if obj.Name == FIREWALL_PLATFORM_NAME then
+                return
+            end
+
+            if obj.Name == "OpenValue" then
+                firewallTrackEntranceOpenValue(room)
+                firewallRetargetDoorLoop()
+            end
+
+            if obj:IsA("BasePart") or obj.Name == "Entrances" or obj.Name == "Exits" or obj.Name == "Exists" then
+                firewallQueueCreatePlatform(room)
+            end
+        end)
+
+        firewallQueueCreatePlatform(room)
+        firewallTrackEntranceOpenValue(room)
+        firewallUpdateRoomLabel()
+    end
+
+    local function firewallDisable()
+        firewallState.enabled = false
+        firewallState.doorLoopId += 1
+
+        for _, connection in ipairs(firewallState.mainConnections) do
+            connection:Disconnect()
+        end
+        table.clear(firewallState.mainConnections)
+
+        for room in pairs(firewallState.roomConnections) do
+            firewallDisconnectRoom(room)
+        end
+
+        if firewallState.chaseRooms then
+            for _, room in ipairs(firewallState.chaseRooms:GetChildren()) do
+                local platform = room:FindFirstChild(FIREWALL_PLATFORM_NAME)
+                if platform then
+                    platform:Destroy()
+                end
+            end
+        end
+
+        firewallState.currentTargetRoom = nil
+        firewallState.currentTargetRoomNumber = nil
+        firewallSetStatus("Off")
+        firewallUpdateRoomLabel()
+    end
+
+    local function firewallEnable()
+        if firewallState.enabled then
+            return
+        end
+
+        local chaseRooms = firewallGetChaseRooms()
+        if not chaseRooms then
+            firewallSetStatus("ChaseRooms not found")
+            return
+        end
+
+        firewallState.enabled = true
+        firewallState.chaseRooms = chaseRooms
+        firewallSetStatus("Running")
+
+        for _, room in ipairs(chaseRooms:GetChildren()) do
+            firewallWatchRoom(room)
+        end
+
+        firewallCleanupOldRooms()
+        firewallRetargetDoorLoop()
+
+        firewallState.mainConnections[#firewallState.mainConnections + 1] = chaseRooms.ChildAdded:Connect(function(room)
+            if not firewallState.enabled then
+                return
+            end
+
+            firewallWatchRoom(room)
+            task.spawn(function()
+                firewallWaitForRoomReady(room, FIREWALL_TELEPORT_WAIT_TIMEOUT)
+                if firewallState.enabled and room and room.Parent == chaseRooms then
+                    firewallTrackEntranceOpenValue(room)
+                    firewallQueueCreatePlatform(room)
+                    task.wait(FIREWALL_REBUILD_DELAY)
+                    firewallCleanupOldRooms()
+                    firewallRetargetDoorLoop()
+                end
+            end)
+        end)
+
+        firewallState.mainConnections[#firewallState.mainConnections + 1] = chaseRooms.ChildRemoved:Connect(function(room)
+            firewallDisconnectRoom(room)
+            firewallCleanupOldRooms()
+            firewallRetargetDoorLoop()
+        end)
+    end
+
+    CreateMenu("Pressure")
+    CreateGroup("Pressure", "Main")
+    CreateTab("Pressure", "Main", "Firewall")
+
+    CreateLabel("Firewall", "Endless Firewall helper")
+    firewallRoomLabel = CreateValueLabel("Firewall", "Current Room: None")
+    firewallStatusLabel = CreateValueLabel("Firewall", "Status: Off")
+    CreateToggle("Firewall", "Endless Firewall Helper", function(state)
+        if state.Value then
+            firewallEnable()
+        else
+            firewallDisable()
+        end
+    end, true)
+
+    return
+end
+
+local monstersFolder = gameplayFolder:WaitForChild("Monsters", 60)
 local playerGui = player:WaitForChild("PlayerGui")
 local char = player.Character or player.CharacterAdded:Wait()
 
@@ -2757,7 +3361,6 @@ CreateGroup("Pressure", "Main")
 CreateTab("Pressure", "Main", "Visuals")
 CreateTab("Pressure", "Main", "World")
 CreateTab("Pressure", "Main", "Doors")
-CreateTab("Pressure", "Main", "Firewall")
 
 CreateLabel("Visuals", "Monster, item and door visuals")
 CreateToggle("Visuals", "Monster Visuals", function(state)
@@ -2773,17 +3376,6 @@ CreateToggle("Visuals", "Force Hide Popups", function(state)
 end, false)
 
 CreateLabel("World", "Environment and utility features")
-
-CreateLabel("Firewall", "Firewall chase room helper")
-firewallRoomLabel = CreateValueLabel("Firewall", "Current Room: None")
-firewallStatusLabel = CreateValueLabel("Firewall", "Status: Off")
-CreateToggle("Firewall", "Firewall Helper", function(state)
-    if state.Value then
-        firewallEnable()
-    else
-        firewallDisable()
-    end
-end, false)
 
 CreateLabel("Doors", "Latest door tracking")
 latestRoomLabel = CreateValueLabel("Doors", "Latest Room: None")

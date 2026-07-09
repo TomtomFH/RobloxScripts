@@ -66,7 +66,6 @@ if isEndlessFirewallMode() then
         phaseLoopId = 0,
         currentTargetRoom = nil,
         currentTargetRoomNumber = nil,
-        lastEnteredRoomNumber = nil,
         firewallRoomNumber = nil,
         chaseReady = false,
         platformsReady = false,
@@ -100,8 +99,8 @@ if isEndlessFirewallMode() then
     local FIREWALL_MOUSE_AIM_BIND_NAME = "TomtomFirewallPromptMouseAim"
     local FIREWALL_MOUSE_AIM_PRIORITY = 300
     local FIREWALL_DOOR_LOOK_DURATION = 0.25
-    local FIREWALL_CHASE_DRY_RUN = true
-    local FIREWALL_TELEPORT_GLIDE_TIME = 1.15
+    local FIREWALL_CHASE_DRY_RUN = false
+    local FIREWALL_TELEPORT_GLIDE_TIME = 5
     local FIREWALL_TELEPORT_DROP_HEIGHT = 3
 
     local function firewallSetStatus(text)
@@ -396,35 +395,18 @@ if isEndlessFirewallMode() then
     local function firewallGetLatestEntranceNotOpenRoom()
         local bestRoom = nil
         local bestRoomNumber = nil
-        local playerRoomNumber = nil
-        local character = player.Character
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-        if root then
-            playerRoomNumber = firewallGetClosestRoomNumberToPosition(root.Position)
-        end
-
-        local minimumRoomNumber = math.max(playerRoomNumber or 0, firewallState.lastEnteredRoomNumber or 0)
-        local fallbackRoom = nil
-        local fallbackRoomNumber = nil
 
         for room, openValue in pairs(firewallState.roomOpenValues) do
             if firewallState.chaseRooms and room:IsDescendantOf(firewallState.chaseRooms) and openValue and openValue.Parent then
                 local roomNumber = firewallGetRoomNumber(room)
-                if roomNumber and openValue.Value ~= true then
-                    if roomNumber >= minimumRoomNumber and (not bestRoomNumber or roomNumber < bestRoomNumber) then
-                        bestRoom = room
-                        bestRoomNumber = roomNumber
-                    end
-
-                    if not fallbackRoomNumber or roomNumber < fallbackRoomNumber then
-                        fallbackRoom = room
-                        fallbackRoomNumber = roomNumber
-                    end
+                if roomNumber and openValue.Value ~= true and (not bestRoomNumber or roomNumber > bestRoomNumber) then
+                    bestRoom = room
+                    bestRoomNumber = roomNumber
                 end
             end
         end
 
-        return bestRoom or fallbackRoom, bestRoomNumber or fallbackRoomNumber
+        return bestRoom, bestRoomNumber
     end
 
     local function firewallTrackEntranceOpenValue(room)
@@ -1250,7 +1232,6 @@ if isEndlessFirewallMode() then
                     firewallSetStatus("Would enter room " .. tostring(roomNumber) .. positionText)
                 else
                     firewallSetStatus("Entering room " .. tostring(roomNumber))
-                    firewallState.lastEnteredRoomNumber = roomNumber
                     firewallTeleportAndWalk(room)
                 end
 
@@ -1359,7 +1340,6 @@ if isEndlessFirewallMode() then
 
         firewallState.currentTargetRoom = nil
         firewallState.currentTargetRoomNumber = nil
-        firewallState.lastEnteredRoomNumber = nil
         firewallState.firewallRoomNumber = nil
         firewallSetStatus("Off")
         firewallRefreshRoomLabels()
@@ -1382,7 +1362,6 @@ if isEndlessFirewallMode() then
         firewallState.platformsReady = false
         firewallState.elevatorKeyStarted = false
         firewallState.chaseTeleportUsed = false
-        firewallState.lastEnteredRoomNumber = nil
         firewallSetStatus("Starting")
 
         for _, room in ipairs(chaseRooms:GetChildren()) do

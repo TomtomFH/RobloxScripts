@@ -2483,6 +2483,15 @@ local function chatNotificationExtractSender(senderText)
     return sender:match("([^%s]+)$") or sender
 end
 
+local function chatNotificationRemoveLeadingTags(text)
+    local withoutTags = text or ""
+    while withoutTags:match("^%s*%[[^%]]+%]%s*") do
+        withoutTags = withoutTags:gsub("^%s*%[[^%]]+%]%s*", "", 1)
+    end
+
+    return chatNotificationTrim(withoutTags)
+end
+
 local function chatNotificationGetScrollView()
     local ok, result = pcall(function()
         return CoreGui
@@ -2502,24 +2511,27 @@ local function chatNotificationParseMessage(bodyText)
     local cleanBody = chatNotificationStripRichText(bodyText)
     local fromName, message = cleanBody:match("^%s*%[From%s+([^%]]+)%]%s+.-:%s*(.*)$")
     if not fromName then
-        local withoutTags = cleanBody
-        while withoutTags:match("^%s*%[[^%]]+%]%s*") do
-            withoutTags = withoutTags:gsub("^%s*%[[^%]]+%]%s*", "", 1)
-        end
-
+        local withoutTags = chatNotificationRemoveLeadingTags(cleanBody)
         fromName, message = withoutTags:match("^%s*(%S+)%s*:%s*(.*)$")
     end
 
-    if chatNotificationExtractSender(fromName) ~= CHAT_NOTIFICATION_USERNAME then
+    local sender = chatNotificationExtractSender(fromName)
+    print("[Pressure Notify] Raw:", cleanBody)
+    print("[Pressure Notify] Parsed sender:", sender or "nil", "Message:", message or "nil")
+
+    if sender ~= CHAT_NOTIFICATION_USERNAME then
+        print("[Pressure Notify] Ignored sender:", sender or "nil")
         return nil
     end
 
     message = chatNotificationTrim(message)
     if message:sub(1, 1) ~= "-" then
+        print("[Pressure Notify] Ignored missing prefix:", message)
         return nil
     end
 
     local notificationText = chatNotificationTrim(message:sub(2))
+    print("[Pressure Notify] Showing:", notificationText ~= "" and notificationText or message)
     return notificationText ~= "" and notificationText or message
 end
 

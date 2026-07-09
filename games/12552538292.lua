@@ -147,10 +147,21 @@ local function chatNotificationFindMessageRow(bodyTextLabel)
     return bodyTextLabel
 end
 
-local function chatNotificationRemoveMessage(bodyTextLabel, row)
+local function chatNotificationHideMessage(bodyTextLabel, row)
     local target = row or chatNotificationFindMessageRow(bodyTextLabel)
-    if target and target.Parent then
-        target:Destroy()
+    if not target or not target.Parent then
+        return
+    end
+
+    if target:IsA("GuiObject") then
+        target.Visible = false
+        return
+    end
+
+    for _, descendant in ipairs(target:GetDescendants()) do
+        if descendant:IsA("GuiObject") then
+            descendant.Visible = false
+        end
     end
 end
 
@@ -169,7 +180,7 @@ local function chatNotificationProcessBodyTextLabel(bodyTextLabel, row)
         local notificationText = chatNotificationParseMessage(bodyTextLabel.Text)
         if notificationText then
             CreateChatNotification(notificationText, Color3.fromRGB(255, 0, 0), 2.5)
-            chatNotificationRemoveMessage(bodyTextLabel, row)
+            chatNotificationHideMessage(bodyTextLabel, row)
         end
     end
 

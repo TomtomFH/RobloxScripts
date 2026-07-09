@@ -2431,6 +2431,107 @@ local function CreateNotification(text, color, duration, bypassPerms)
     end)
 end
 
+local CHAT_NOTIFICATION_USERNAME = "PressureAnyPercent"
+local chatNotificationHookedScrollViews = {}
+local chatNotificationProcessedRows = {}
+
+local function chatNotificationStripRichText(text)
+    text = text or ""
+    text = text:gsub("<br%s*/>", "\n")
+    text = text:gsub("<[^>]->", "")
+    return text
+end
+
+local function chatNotificationTrim(text)
+    return (text or ""):match("^%s*(.-)%s*$")
+end
+
+local function chatNotificationGetScrollView()
+    local ok, result = pcall(function()
+        return CoreGui
+            :WaitForChild("ExperienceChat", 5)
+            :WaitForChild("appLayout", 5)
+            :WaitForChild("chatWindow", 5)
+            :WaitForChild("contentFrame", 5)
+            :WaitForChild("scrollingView", 5)
+            :WaitForChild("bottomLockedScrollView", 5)
+            :WaitForChild("scrollView", 5)
+    end)
+
+    return ok and result or nil
+end
+
+local function chatNotificationParseWhisper(bodyText)
+    local cleanBody = chatNotificationStripRichText(bodyText)
+    local fromName, message = cleanBody:match("^%s*%[From%s+([^%]]+)%]%s+.-:%s*(.*)$")
+
+    if fromName ~= CHAT_NOTIFICATION_USERNAME then
+        return nil
+    end
+
+    message = chatNotificationTrim(message)
+    if message:sub(1, 1) ~= "-" then
+        return nil
+    end
+
+    local notificationText = chatNotificationTrim(message:sub(2))
+    return notificationText ~= "" and notificationText or message
+end
+
+local function chatNotificationWaitForBodyText(row)
+    for _ = 1, 20 do
+        local textMessage = row:FindFirstChild("TextMessage", true)
+        if textMessage then
+            local bodyTextLabel = textMessage:FindFirstChild("BodyText", true)
+            if bodyTextLabel then
+                return bodyTextLabel
+            end
+        end
+
+        task.wait(0.05)
+    end
+
+    return nil
+end
+
+local function chatNotificationProcessRow(row)
+    if chatNotificationProcessedRows[row] then
+        return
+    end
+
+    chatNotificationProcessedRows[row] = true
+    task.spawn(function()
+        local bodyTextLabel = chatNotificationWaitForBodyText(row)
+        if not bodyTextLabel then
+            return
+        end
+
+        local notificationText = chatNotificationParseWhisper(bodyTextLabel.Text)
+        if notificationText then
+            CreateNotification(notificationText, Color3.fromRGB(255, 255, 255), 4, true)
+        end
+    end)
+end
+
+local function chatNotificationHookMessageList(scrollView)
+    if not scrollView or chatNotificationHookedScrollViews[scrollView] then
+        return
+    end
+
+    chatNotificationHookedScrollViews[scrollView] = true
+    for _, row in ipairs(scrollView:GetChildren()) do
+        chatNotificationProcessRow(row)
+    end
+
+    scrollView.ChildAdded:Connect(chatNotificationProcessRow)
+end
+
+task.spawn(function()
+    while task.wait(1) do
+        chatNotificationHookMessageList(chatNotificationGetScrollView())
+    end
+end)
+
 local function createESP(target, color, customName)
     if not target then
         return nil

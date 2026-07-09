@@ -99,6 +99,7 @@ if isEndlessFirewallMode() then
     local FIREWALL_MOUSE_AIM_BIND_NAME = "TomtomFirewallPromptMouseAim"
     local FIREWALL_MOUSE_AIM_PRIORITY = 300
     local FIREWALL_DOOR_LOOK_DURATION = 0.25
+    local FIREWALL_CHASE_DRY_RUN = true
 
     local function firewallSetStatus(text)
         if firewallStatusLabel then
@@ -1060,9 +1061,21 @@ if isEndlessFirewallMode() then
                     continue
                 end
 
-                firewallSetStatus("Entering room " .. tostring(roomNumber))
-                firewallState.lastEnteredRoomNumber = roomNumber
-                firewallTeleportAndWalk(room)
+                if FIREWALL_CHASE_DRY_RUN then
+                    local teleportPart = firewallGetTeleportPartForRoom(room)
+                    local positionText = teleportPart and string.format(
+                        " @ %.1f, %.1f, %.1f",
+                        teleportPart.Position.X,
+                        teleportPart.Position.Y,
+                        teleportPart.Position.Z
+                    ) or ""
+                    firewallSetStatus("Would enter room " .. tostring(roomNumber) .. positionText)
+                else
+                    firewallSetStatus("Entering room " .. tostring(roomNumber))
+                    firewallState.lastEnteredRoomNumber = roomNumber
+                    firewallTeleportAndWalk(room)
+                end
+
                 task.wait(FIREWALL_RETRY_DELAY)
             end
         end)

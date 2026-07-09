@@ -71,7 +71,8 @@ if isEndlessFirewallMode() then
         platformsReady = false,
         lastKeycardAttempt = 0,
         lastElevatorKeyAttempt = 0,
-        elevatorKeyStarted = false
+        elevatorKeyStarted = false,
+        cameraForceId = 0
     }
 
     local FIREWALL_PLATFORM_NAME = "EntranceExitPlatform"
@@ -91,6 +92,9 @@ if isEndlessFirewallMode() then
     local FIREWALL_ELEVATOR_KEY_DISTANCE = 3
     local FIREWALL_PROMPT_HEIGHT_OFFSET = 2.5
     local FIREWALL_CAMERA_HEIGHT_OFFSET = 1.5
+    local FIREWALL_CAMERA_FORCE_DURATION = 0.9
+    local FIREWALL_CAMERA_BIND_NAME = "TomtomFirewallPromptCamera"
+    local FIREWALL_CAMERA_BIND_PRIORITY = 250
 
     local function firewallSetStatus(text)
         if firewallStatusLabel then
@@ -573,39 +577,37 @@ if isEndlessFirewallMode() then
         return door and door:FindFirstChild("RemoteFunction", true) or nil
     end
 
-    local function firewallGetCameraModule()
-        local playerGui = player:FindFirstChild("PlayerGui")
-        local mainGui = playerGui and playerGui:FindFirstChild("Main")
-        local client = mainGui and mainGui:FindFirstChild("Client")
-        local mainClient = client and client:FindFirstChild("MainClient")
-        local cameraModuleScript = mainClient and mainClient:FindFirstChild("CameraModule")
-
-        if not cameraModuleScript then
-            return nil
-        end
-
-        local ok, cameraModule = pcall(require, cameraModuleScript)
-        return ok and cameraModule or nil
-    end
-
-    local function firewallSyncCameraModule(cameraCFrame)
-        local cameraModule = firewallGetCameraModule()
+    local function firewallForceCamera(cameraCFrame, duration)
         local camera = workspace.CurrentCamera
         if not camera or not cameraCFrame then
             return
         end
 
-        camera.CFrame = cameraCFrame
-        if cameraModule then
-            pcall(function()
-                cameraModule.Switch("PlayerControl")
-            end)
-            if cameraModule.CameraUpdate then
-                pcall(function()
-                    cameraModule.CameraUpdate(1 / 60)
-                end)
+        firewallState.cameraForceId += 1
+        local forceId = firewallState.cameraForceId
+
+        local function applyCamera()
+            local currentCamera = workspace.CurrentCamera
+            if currentCamera then
+                currentCamera.CameraType = Enum.CameraType.Scriptable
+                currentCamera.CFrame = cameraCFrame
             end
         end
+
+        pcall(function()
+            runService:UnbindFromRenderStep(FIREWALL_CAMERA_BIND_NAME)
+        end)
+
+        applyCamera()
+        runService:BindToRenderStep(FIREWALL_CAMERA_BIND_NAME, FIREWALL_CAMERA_BIND_PRIORITY, applyCamera)
+
+        task.delay(duration or FIREWALL_CAMERA_FORCE_DURATION, function()
+            if firewallState.cameraForceId == forceId then
+                pcall(function()
+                    runService:UnbindFromRenderStep(FIREWALL_CAMERA_BIND_NAME)
+                end)
+            end
+        end)
     end
 
     local function firewallTeleportToPart(part)
@@ -657,7 +659,7 @@ if isEndlessFirewallMode() then
 
         character:PivotTo(targetCFrame)
         root.CFrame = targetCFrame
-        firewallSyncCameraModule(cameraCFrame)
+        firewallForceCamera(cameraCFrame)
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
 

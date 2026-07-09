@@ -71,8 +71,7 @@ if isEndlessFirewallMode() then
         platformsReady = false,
         lastKeycardAttempt = 0,
         lastElevatorKeyAttempt = 0,
-        elevatorKeyStarted = false,
-        cameraLockPart = nil
+        elevatorKeyStarted = false
     }
 
     local FIREWALL_PLATFORM_NAME = "EntranceExitPlatform"
@@ -589,97 +588,24 @@ if isEndlessFirewallMode() then
         return ok and cameraModule or nil
     end
 
-    local function firewallWrapAngle(angle)
-        if math.abs(angle) > 180 then
-            angle = angle - angle / math.abs(angle) * 360
-        end
-
-        return angle
-    end
-
-    local function firewallGetYawDelta(fromCFrame, toCFrame)
-        local _, currentYaw = fromCFrame:ToOrientation()
-        local _, targetYaw = toCFrame:ToOrientation()
-        return firewallWrapAngle(math.deg(targetYaw - currentYaw))
-    end
-
-    local function firewallForceCameraLook(targetCFrame)
+    local function firewallSyncCameraModule(cameraCFrame)
         local cameraModule = firewallGetCameraModule()
         local camera = workspace.CurrentCamera
-        if not cameraModule or not camera then
+        if not camera then
             return
         end
 
-        local yawDelta = firewallGetYawDelta(camera.CFrame, targetCFrame)
-        cameraModule.ForceLookX = (cameraModule.ForceLookX or 0) + yawDelta
         camera.CFrame = targetCFrame
-    end
-
-    local function firewallHoldFacing(root, targetCFrame, duration)
-        local cameraModule = firewallGetCameraModule()
-        local startTime = os.clock()
-
-        repeat
-            if root and root.Parent then
-                root.CFrame = targetCFrame
+        if cameraModule then
+            pcall(function()
+                cameraModule.Switch("PlayerControl")
+            end)
+            if cameraModule.CameraUpdate then
+                pcall(function()
+                    cameraModule.CameraUpdate(1 / 60)
+                end)
             end
-
-            if cameraModule and workspace.CurrentCamera then
-                local yawDelta = firewallGetYawDelta(workspace.CurrentCamera.CFrame, targetCFrame)
-                cameraModule.ForceLookX = (cameraModule.ForceLookX or 0) + yawDelta
-                workspace.CurrentCamera.CFrame = targetCFrame
-            end
-
-            runService.RenderStepped:Wait()
-        until os.clock() - startTime >= duration
-    end
-
-    local function firewallGetCameraLockPart()
-        if firewallState.cameraLockPart and firewallState.cameraLockPart.Parent then
-            return firewallState.cameraLockPart
         end
-
-        local part = Instance.new("Part")
-        part.Name = "PressureFirewallCameraLock"
-        part.Anchored = true
-        part.CanCollide = false
-        part.CanTouch = false
-        part.CanQuery = false
-        part.Transparency = 1
-        part.Size = Vector3.new(1, 1, 1)
-        part.Parent = workspace
-        firewallState.cameraLockPart = part
-        return part
-    end
-
-    local function firewallForceCameraView(cameraCFrame)
-        local cameraModule = firewallGetCameraModule()
-        local camera = workspace.CurrentCamera
-        if not cameraModule or not camera then
-            if camera then
-                camera.CFrame = cameraCFrame
-            end
-            return
-        end
-
-        local lockPart = firewallGetCameraLockPart()
-        lockPart.CFrame = cameraCFrame
-
-        pcall(function()
-            cameraModule.Switch("ForcedCamView", lockPart, {}, false, false)
-        end)
-        camera.CFrame = cameraCFrame
-    end
-
-    local function firewallRestoreCameraView()
-        local cameraModule = firewallGetCameraModule()
-        if not cameraModule then
-            return
-        end
-
-        pcall(function()
-            cameraModule.Switch("PlayerControl")
-        end)
     end
 
     local function firewallTeleportToPart(part)
@@ -731,11 +657,9 @@ if isEndlessFirewallMode() then
 
         character:PivotTo(targetCFrame)
         root.CFrame = targetCFrame
-        firewallForceCameraLook(targetCFrame)
-        firewallForceCameraView(cameraCFrame)
+        firewallSyncCameraModule(cameraCFrame)
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
-        firewallHoldFacing(root, targetCFrame, 0.35)
 
         if humanoid then
             task.delay(0.8, function()
@@ -767,7 +691,6 @@ if isEndlessFirewallMode() then
             prompt:InputHoldBegin()
             task.wait()
             prompt:InputHoldEnd()
-            firewallRestoreCameraView()
         end)
     end
 
@@ -1030,10 +953,6 @@ if isEndlessFirewallMode() then
         firewallState.currentTargetRoom = nil
         firewallState.currentTargetRoomNumber = nil
         firewallState.firewallRoomNumber = nil
-        if firewallState.cameraLockPart then
-            firewallState.cameraLockPart:Destroy()
-            firewallState.cameraLockPart = nil
-        end
         firewallSetStatus("Off")
         firewallRefreshRoomLabels()
     end

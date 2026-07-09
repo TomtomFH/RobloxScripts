@@ -68,7 +68,10 @@ if isEndlessFirewallMode() then
         currentTargetRoomNumber = nil,
         firewallRoomNumber = nil,
         chaseReady = false,
-        lastKeycardAttempt = 0
+        platformsReady = false,
+        lastKeycardAttempt = 0,
+        lastElevatorKeyAttempt = 0,
+        elevatorKeyStarted = false
     }
 
     local FIREWALL_PLATFORM_NAME = "EntranceExitPlatform"
@@ -84,6 +87,7 @@ if isEndlessFirewallMode() then
     local FIREWALL_WALK_THROUGH_DISTANCE = 18
     local FIREWALL_RETRY_DELAY = 0.25
     local FIREWALL_MAX_ROOMS_AHEAD = 10
+    local FIREWALL_PROMPT_DISTANCE = 5
 
     local function firewallSetStatus(text)
         if firewallStatusLabel then
@@ -258,7 +262,7 @@ if isEndlessFirewallMode() then
     end
 
     local function firewallCreatePlatformForRoom(room)
-        if not firewallState.enabled or not firewallState.chaseRooms or not room:IsDescendantOf(firewallState.chaseRooms) then
+        if not firewallState.enabled or not firewallState.platformsReady or not firewallState.chaseRooms or not room:IsDescendantOf(firewallState.chaseRooms) then
             return
         end
 
@@ -306,6 +310,10 @@ if isEndlessFirewallMode() then
     end
 
     local function firewallQueueCreatePlatform(room)
+        if not firewallState.platformsReady then
+            return
+        end
+
         if firewallState.pendingRooms[room] then
             return
         end
@@ -473,6 +481,16 @@ if isEndlessFirewallMode() then
         firewallTeleportToPartAndWalk(firewallGetTeleportPartForRoom(room))
     end
 
+    local function firewallQueueAllPlatforms()
+        if not firewallState.chaseRooms then
+            return
+        end
+
+        for _, room in ipairs(firewallState.chaseRooms:GetChildren()) do
+            firewallQueueCreatePlatform(room)
+        end
+    end
+
     local function firewallGetStartRoom()
         return roomsFolder:FindFirstChild("Start")
     end
@@ -541,6 +559,13 @@ if isEndlessFirewallMode() then
         return proxyPart and proxyPart:FindFirstChild("ProximityPrompt") or nil
     end
 
+    local function firewallGetElevatorKeyPrompt()
+        local elevator = workspace:FindFirstChild("Elevator")
+        local elevatorKey = elevator and elevator:FindFirstChild("ElevatorKey")
+        local highlight = elevatorKey and elevatorKey:FindFirstChild("Highlight")
+        return highlight and highlight:FindFirstChild("ProximityPrompt") or nil
+    end
+
     local function firewallGetDoorRemote(door)
         return door and door:FindFirstChild("RemoteFunction", true) or nil
     end
@@ -557,6 +582,28 @@ if isEndlessFirewallMode() then
 
         local position = part.Position + Vector3.yAxis * FIREWALL_TELEPORT_HEIGHT_OFFSET
         character:PivotTo(CFrame.lookAt(position, part.Position))
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+    end
+
+    local function firewallTeleportInFrontOfPart(part)
+        if not part then
+            return
+        end
+
+        local character, root = firewallGetCharacter()
+        if not character or not root then
+            return
+        end
+
+        local targetPosition = part.Position
+        local frontDirection = part.CFrame.LookVector
+        if frontDirection.Magnitude <= 0 then
+            frontDirection = (root.Position - targetPosition).Magnitude > 0 and (root.Position - targetPosition).Unit or Vector3.zAxis
+        end
+
+        local position = targetPosition + frontDirection.Unit * FIREWALL_PROMPT_DISTANCE + Vector3.yAxis * FIREWALL_TELEPORT_HEIGHT_OFFSET
+        character:PivotTo(CFrame.lookAt(position, targetPosition))
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
     end
@@ -626,18 +673,19 @@ if isEndlessFirewallMode() then
 
                 if startRoom and startDoorOpenValue and startDoorOpenValue.Value == false then
                     firewallState.chaseReady = false
+                    firewallState.platformsReady = false
                     local passwordPaper = firewallGetStartPasswordPaper()
 
                     if passwordPaper then
                         local code = firewallReadPasswordPaperCode(passwordPaper)
                         local doorPart = firewallGetDoorPartFromOpenValue(startDoorOpenValue)
                         firewallSetStatus(code and "Opening start door" or "Reading start code")
-                        firewallTeleportToPartAndWalk(doorPart)
+                        firewallTeleportInFrontOfPart(doorPart)
                         firewallEnterDoorCode(startDoor, code)
                     elseif firewallHasNormalKeycard() then
                         local prompt = firewallGetDoorPrompt(startDoor)
                         firewallSetStatus("Using start keycard")
-                        firewallTeleportToPart(firewallGetPromptPart(prompt) or firewallGetDoorPartFromOpenValue(startDoorOpenValue))
+                        firewallTeleportInFrontOfPart(firewallGetPromptPart(prompt) or firewallGetDoorPartFromOpenValue(startDoorOpenValue))
                         firewallTriggerPrompt(prompt)
                     else
                         local keycard = firewallGetStartKeycard()
@@ -646,7 +694,7 @@ if isEndlessFirewallMode() then
                             if os.clock() - firewallState.lastKeycardAttempt >= 1 then
                                 firewallState.lastKeycardAttempt = os.clock()
                                 local prompt = firewallGetKeycardPrompt(keycard)
-                                firewallTeleportToPart(firewallGetPromptPart(prompt) or keycard:FindFirstChildWhichIsA("BasePart", true))
+                                firewallTeleportInFrontOfPart(firewallGetPromptPart(prompt) or keycard:FindFirstChildWhichIsA("BasePart", true))
                                 firewallTriggerPrompt(prompt)
                             end
                         else
@@ -658,9 +706,49 @@ if isEndlessFirewallMode() then
                     continue
                 end
 
+                if startRoom and startDoorOpenValue and startDoorOpenValue.Value == true then
+                    local elevator = workspace:FindFirstChild("Elevator")
+                    local elevatorKeyPrompt = firewallGetElevatorKeyPrompt()
+
+                    if not elevator then
+                        firewallState.chaseReady = false
+                        firewallState.platformsReady = false
+                        firewallState.elevatorKeyStarted = false
+                        firewallSetStatus("Waiting for elevator")
+                        task.wait(0.25)
+                        continue
+                    end
+
+                    if elevatorKeyPrompt then
+                        firewallState.chaseReady = false
+                        firewallState.platformsReady = false
+                        firewallState.elevatorKeyStarted = true
+                        firewallSetStatus("Using elevator key")
+
+                        if os.clock() - firewallState.lastElevatorKeyAttempt >= 1 then
+                            firewallState.lastElevatorKeyAttempt = os.clock()
+                            firewallTeleportInFrontOfPart(firewallGetPromptPart(elevatorKeyPrompt))
+                            firewallTriggerPrompt(elevatorKeyPrompt)
+                        end
+
+                        task.wait(FIREWALL_RETRY_DELAY)
+                        continue
+                    end
+
+                    if not firewallState.elevatorKeyStarted then
+                        firewallState.chaseReady = false
+                        firewallState.platformsReady = false
+                        firewallSetStatus("Waiting for elevator key")
+                        task.wait(0.25)
+                        continue
+                    end
+                end
+
                 if not firewallState.chaseReady then
                     firewallState.chaseReady = true
+                    firewallState.platformsReady = true
                     firewallSetStatus("Running")
+                    firewallQueueAllPlatforms()
                     firewallRetargetDoorLoop()
                 end
 
@@ -777,6 +865,8 @@ if isEndlessFirewallMode() then
         firewallState.doorLoopId += 1
         firewallState.phaseLoopId += 1
         firewallState.chaseReady = false
+        firewallState.platformsReady = false
+        firewallState.elevatorKeyStarted = false
 
         for _, connection in ipairs(firewallState.mainConnections) do
             connection:Disconnect()
@@ -817,6 +907,8 @@ if isEndlessFirewallMode() then
         firewallState.enabled = true
         firewallState.chaseRooms = chaseRooms
         firewallState.chaseReady = false
+        firewallState.platformsReady = false
+        firewallState.elevatorKeyStarted = false
         firewallSetStatus("Starting")
 
         for _, room in ipairs(chaseRooms:GetChildren()) do

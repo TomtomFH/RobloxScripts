@@ -729,15 +729,22 @@ if isEndlessFirewallMode() then
 
     local firewallRetargetDoorLoop
 
+    local function firewallIsRoomBehindCurrent(roomNumber)
+        local currentRoomNumber = firewallState.currentRoomNumber or firewallUpdateRoomLabel()
+        return currentRoomNumber and roomNumber and roomNumber < currentRoomNumber
+    end
+
     local function firewallGetLatestEntranceNotOpenRoom()
         local bestRoom = nil
         local bestRoomNumber = nil
+        local currentRoomNumber = firewallState.currentRoomNumber or firewallUpdateRoomLabel()
 
         for room, openValue in pairs(firewallState.roomOpenValues) do
             if firewallState.chaseRooms and room:IsDescendantOf(firewallState.chaseRooms) and openValue and openValue.Parent then
                 local roomNumber = firewallGetRoomNumber(room)
                 local teleportPart = firewallGetTeleportPartForRoom(room)
-                if roomNumber and teleportPart and openValue.Value ~= true and (not bestRoomNumber or roomNumber > bestRoomNumber) then
+                local isBehindCurrent = currentRoomNumber and roomNumber and roomNumber < currentRoomNumber
+                if roomNumber and not isBehindCurrent and teleportPart and openValue.Value ~= true and (not bestRoomNumber or roomNumber > bestRoomNumber) then
                     bestRoom = room
                     bestRoomNumber = roomNumber
                 end
@@ -1625,6 +1632,10 @@ if isEndlessFirewallMode() then
 
                 local latestRoom, latestRoomNumber = firewallGetLatestEntranceNotOpenRoom()
                 if latestRoom ~= room or latestRoomNumber ~= roomNumber then
+                    break
+                end
+
+                if firewallIsRoomBehindCurrent(roomNumber) then
                     break
                 end
 

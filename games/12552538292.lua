@@ -73,8 +73,6 @@ if isEndlessFirewallMode() then
         lastKeycardAttempt = 0,
         lastElevatorKeyAttempt = 0,
         elevatorKeyStarted = false,
-        startInteractableDoorWalked = false,
-        elevatorBigDoorWalked = false,
         chaseTeleportUsed = false,
         mouseAimId = 0
     }
@@ -103,6 +101,8 @@ if isEndlessFirewallMode() then
     local FIREWALL_MOUSE_AIM_PRIORITY = 300
     local FIREWALL_DOOR_LOOK_DURATION = 0.25
     local FIREWALL_CHASE_DRY_RUN = true
+    local FIREWALL_TELEPORT_GLIDE_TIME = 1.15
+    local FIREWALL_TELEPORT_DROP_HEIGHT = 3
 
     local function firewallSetStatus(text)
         if firewallStatusLabel then
@@ -544,30 +544,40 @@ if isEndlessFirewallMode() then
         return roomsFolder:FindFirstChild("FirewallEnd")
     end
 
-    local function firewallGetInteractableDoorPart(room, doorName)
-        local interactables = room and room:FindFirstChild("Interactables")
-        local door = interactables and interactables:FindFirstChild(doorName)
-        if not door then
+    local function firewallGetPartFromInstance(instance)
+        if not instance then
             return nil
         end
 
-        if door:IsA("BasePart") then
-            return door
+        if instance:IsA("BasePart") then
+            return instance
         end
 
-        if door:IsA("Model") then
-            return door.PrimaryPart or door:FindFirstChildWhichIsA("BasePart", true)
+        if instance:IsA("Model") then
+            return instance.PrimaryPart or instance:FindFirstChildWhichIsA("BasePart", true)
         end
 
-        return door:FindFirstChildWhichIsA("BasePart", true)
+        return instance:FindFirstChildWhichIsA("BasePart", true)
     end
 
-    local function firewallGetStartInteractableDoorPart()
-        return firewallGetInteractableDoorPart(firewallGetFirewallStartRoom(), "NormalDoor")
+    local function firewallGetInteractableDoor(room, doorName)
+        local interactables = room and room:FindFirstChild("Interactables")
+        return interactables and interactables:FindFirstChild(doorName) or nil
     end
 
-    local function firewallGetElevatorBigDoorPart()
-        return firewallGetInteractableDoorPart(firewallGetFirewallElevatorRoom(), "BigDoor")
+    local function firewallGetInteractableDoorInfo(room, doorName)
+        local door = firewallGetInteractableDoor(room, doorName)
+        local part = firewallGetPartFromInstance(door)
+        local openValue = door and door:FindFirstChild("OpenValue")
+        return door, part, openValue and openValue:IsA("BoolValue") and openValue or nil
+    end
+
+    local function firewallGetStartInteractableDoorInfo()
+        return firewallGetInteractableDoorInfo(firewallGetFirewallStartRoom(), "NormalDoor")
+    end
+
+    local function firewallGetElevatorBigDoorInfo()
+        return firewallGetInteractableDoorInfo(firewallGetFirewallElevatorRoom(), "BigDoor")
     end
 
     local function firewallGetTutorialTeleportTrigger()
@@ -764,6 +774,64 @@ if isEndlessFirewallMode() then
         character:PivotTo(CFrame.lookAt(position, position + lookDirection.Unit))
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
+    end
+
+    local function firewallGlideFromDoorToTeleport(doorPart, teleportPart)
+        if not doorPart or not teleportPart then
+            return
+        end
+
+        firewallTeleportToPartAndWalk(doorPart)
+        task.wait(0.15)
+
+        local character, root, humanoid = firewallGetCharacter()
+        if not character or not root then
+            return
+        end
+
+        local lookDirection = Vector3.new(teleportPart.CFrame.LookVector.X, 0, teleportPart.CFrame.LookVector.Z)
+        if lookDirection.Magnitude <= 0 then
+            lookDirection = Vector3.zAxis
+        end
+
+        local glidePosition = Vector3.new(teleportPart.Position.X, root.Position.Y, teleportPart.Position.Z)
+        local glideCFrame = CFrame.lookAt(glidePosition, glidePosition + lookDirection.Unit)
+        local oldAutoRotate = humanoid and humanoid.AutoRotate or nil
+        if humanoid then
+            humanoid.AutoRotate = false
+        end
+
+        local velocityConnection = runService.Heartbeat:Connect(function()
+            if root and root.Parent then
+                root.AssemblyLinearVelocity = Vector3.zero
+                root.AssemblyAngularVelocity = Vector3.zero
+            end
+        end)
+
+        local tween = tweenService:Create(root, TweenInfo.new(FIREWALL_TELEPORT_GLIDE_TIME, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+            CFrame = glideCFrame
+        })
+        tween:Play()
+        tween.Completed:Wait()
+
+        if velocityConnection then
+            velocityConnection:Disconnect()
+        end
+
+        if root and root.Parent then
+            local dropPosition = teleportPart.Position + Vector3.yAxis * FIREWALL_TELEPORT_DROP_HEIGHT
+            root.CFrame = CFrame.lookAt(dropPosition, dropPosition + lookDirection.Unit)
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+        end
+
+        if humanoid and oldAutoRotate ~= nil then
+            task.delay(0.5, function()
+                if humanoid.Parent then
+                    humanoid.AutoRotate = oldAutoRotate
+                end
+            end)
+        end
     end
 
     local function firewallGetTargetContainer(part)
@@ -989,17 +1057,28 @@ if isEndlessFirewallMode() then
                 end
 
                 if startRoom and startDoorOpenValue and startDoorOpenValue.Value == true then
-                    if not firewallState.startInteractableDoorWalked then
-                        local startInteractableDoor = firewallGetStartInteractableDoorPart()
-                        if startInteractableDoor then
-                            firewallState.chaseReady = false
-                            firewallState.platformsReady = false
-                            firewallState.startInteractableDoorWalked = true
-                            firewallSetStatus("Entering start firewall door")
-                            firewallTeleportToPartAndWalk(startInteractableDoor)
-                            task.wait(FIREWALL_RETRY_DELAY)
+                    local _, startInteractableDoorPart, startInteractableDoorOpenValue = firewallGetStartInteractableDoorInfo()
+                    if not startInteractableDoorOpenValue then
+                        firewallState.chaseReady = false
+                        firewallState.platformsReady = false
+                        firewallSetStatus("Waiting for start firewall door")
+                        task.wait(0.25)
+                        continue
+                    end
+
+                    if startInteractableDoorOpenValue.Value ~= true then
+                        firewallState.chaseReady = false
+                        firewallState.platformsReady = false
+                        if not startInteractableDoorPart then
+                            firewallSetStatus("Waiting for start firewall door part")
+                            task.wait(0.25)
                             continue
                         end
+
+                        firewallSetStatus("Entering start firewall door")
+                        firewallTeleportToPartAndWalk(startInteractableDoorPart)
+                        task.wait(FIREWALL_RETRY_DELAY)
+                        continue
                     end
 
                     local elevator = workspace:FindFirstChild("Elevator")
@@ -1056,15 +1135,31 @@ if isEndlessFirewallMode() then
                     if not firewallModel then
                         firewallState.chaseReady = false
                         firewallState.platformsReady = false
-                        if not firewallState.elevatorBigDoorWalked then
-                            local bigDoor = firewallGetElevatorBigDoorPart()
-                            if bigDoor then
-                                firewallState.elevatorBigDoorWalked = true
-                                firewallSetStatus("Entering elevator big door")
-                                firewallTeleportToPartAndWalk(bigDoor)
-                                task.wait(FIREWALL_RETRY_DELAY)
+
+                        local _, bigDoorPart, bigDoorOpenValue = firewallGetElevatorBigDoorInfo()
+                        if not bigDoorOpenValue then
+                            firewallSetStatus("Waiting for elevator big door")
+                            task.wait(0.25)
+                            continue
+                        end
+
+                        if bigDoorOpenValue.Value ~= true then
+                            if not bigDoorPart then
+                                firewallSetStatus("Waiting for elevator big door part")
+                                task.wait(0.25)
                                 continue
                             end
+
+                            firewallSetStatus("Entering elevator big door")
+                            firewallTeleportToPartAndWalk(bigDoorPart)
+                            task.wait(FIREWALL_RETRY_DELAY)
+                            continue
+                        end
+
+                        if not bigDoorPart then
+                            firewallSetStatus("Waiting for elevator big door part")
+                            task.wait(0.25)
+                            continue
                         end
 
                         local teleportTrigger = firewallGetTutorialTeleportTrigger()
@@ -1072,7 +1167,7 @@ if isEndlessFirewallMode() then
                         if teleportTrigger and not firewallState.chaseTeleportUsed then
                             firewallState.chaseTeleportUsed = true
                             firewallSetStatus("Entering firewall chase")
-                            firewallTeleportToPart(teleportTrigger)
+                            firewallGlideFromDoorToTeleport(bigDoorPart, teleportTrigger)
                         elseif teleportTrigger then
                             firewallSetStatus("Waiting for firewall")
                         else
@@ -1242,8 +1337,6 @@ if isEndlessFirewallMode() then
         firewallState.chaseReady = false
         firewallState.platformsReady = false
         firewallState.elevatorKeyStarted = false
-        firewallState.startInteractableDoorWalked = false
-        firewallState.elevatorBigDoorWalked = false
         firewallState.chaseTeleportUsed = false
 
         for _, connection in ipairs(firewallState.mainConnections) do
@@ -1288,8 +1381,6 @@ if isEndlessFirewallMode() then
         firewallState.chaseReady = false
         firewallState.platformsReady = false
         firewallState.elevatorKeyStarted = false
-        firewallState.startInteractableDoorWalked = false
-        firewallState.elevatorBigDoorWalked = false
         firewallState.chaseTeleportUsed = false
         firewallState.lastEnteredRoomNumber = nil
         firewallSetStatus("Starting")

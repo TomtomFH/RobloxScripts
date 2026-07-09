@@ -13,12 +13,6 @@ local roomsFolder = gameplayFolder:WaitForChild("Rooms", 60)
 local player = players.LocalPlayer
 
 local function isEndlessFirewallMode()
-    local requiredRooms = {
-        Start = false,
-        FirewallStart = false,
-        FirewallEnd = false
-    }
-
     local allowedRooms = {
         Start = true,
         FirewallStart = true,
@@ -29,23 +23,18 @@ local function isEndlessFirewallMode()
     local deadline = os.clock() + 5
     repeat
         local hasUnexpectedRoom = false
-
-        for roomName in pairs(requiredRooms) do
-            requiredRooms[roomName] = false
-        end
+        local hasAllowedRoom = false
 
         for _, room in ipairs(roomsFolder:GetChildren()) do
             if allowedRooms[room.Name] then
-                if requiredRooms[room.Name] ~= nil then
-                    requiredRooms[room.Name] = true
-                end
+                hasAllowedRoom = true
             else
                 hasUnexpectedRoom = true
                 break
             end
         end
 
-        if not hasUnexpectedRoom and requiredRooms.Start and requiredRooms.FirewallStart and requiredRooms.FirewallEnd then
+        if not hasUnexpectedRoom and hasAllowedRoom then
             return true
         end
 

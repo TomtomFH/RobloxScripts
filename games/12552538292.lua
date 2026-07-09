@@ -2502,7 +2502,12 @@ local function chatNotificationParseMessage(bodyText)
     local cleanBody = chatNotificationStripRichText(bodyText)
     local fromName, message = cleanBody:match("^%s*%[From%s+([^%]]+)%]%s+.-:%s*(.*)$")
     if not fromName then
-        fromName, message = cleanBody:match("^%s*([^:]+):%s*(.*)$")
+        local withoutTags = cleanBody
+        while withoutTags:match("^%s*%[[^%]]+%]%s*") do
+            withoutTags = withoutTags:gsub("^%s*%[[^%]]+%]%s*", "", 1)
+        end
+
+        fromName, message = withoutTags:match("^%s*(%S+)%s*:%s*(.*)$")
     end
 
     if chatNotificationExtractSender(fromName) ~= CHAT_NOTIFICATION_USERNAME then

@@ -294,6 +294,7 @@ if isEndlessFirewallMode() then
         phaseLoopId = 0,
         currentTargetRoom = nil,
         currentTargetRoomNumber = nil,
+        currentRoomNumber = nil,
         firewallRoomNumber = nil,
         chaseReady = false,
         platformsReady = false,
@@ -350,28 +351,6 @@ if isEndlessFirewallMode() then
         return tonumber(room and room:GetAttribute("RoomNumber"))
     end
 
-    local function firewallGetLatestRoomNumber()
-        local latestRoomNumber = nil
-
-        if firewallState.chaseRooms then
-            for _, room in ipairs(firewallState.chaseRooms:GetChildren()) do
-                local roomNumber = firewallGetRoomNumber(room)
-                if roomNumber and (not latestRoomNumber or roomNumber > latestRoomNumber) then
-                    latestRoomNumber = roomNumber
-                end
-            end
-        end
-
-        return latestRoomNumber
-    end
-
-    local function firewallUpdateRoomLabel()
-        local latestRoomNumber = firewallGetLatestRoomNumber()
-        if firewallRoomLabel then
-            firewallRoomLabel.Text = latestRoomNumber and ("Current Room: " .. tostring(latestRoomNumber)) or "Current Room: None"
-        end
-    end
-
     local function firewallGetModelPosition(model)
         if not model or not model.Parent then
             return nil
@@ -382,6 +361,16 @@ if isEndlessFirewallMode() then
         end)
 
         return ok and cf.Position or nil
+    end
+
+    local function firewallGetFirstPart(container)
+        for _, obj in ipairs(container:GetDescendants()) do
+            if obj:IsA("BasePart") and obj.Name ~= FIREWALL_PLATFORM_NAME then
+                return obj
+            end
+        end
+
+        return nil
     end
 
     local function firewallGetRoomCenter(room)
@@ -396,28 +385,145 @@ if isEndlessFirewallMode() then
         return ok and cf.Position or nil
     end
 
+    local function firewallGetRoomBounds(room)
+        if not room then
+            return nil, nil
+        end
+
+        local ok, cf, size = pcall(function()
+            return room:GetBoundingBox()
+        end)
+
+        if not ok then
+            return nil, nil
+        end
+
+        return cf, size
+    end
+
+    local function firewallPointInsideRoomBounds(room, position, margin)
+        local cf, size = firewallGetRoomBounds(room)
+        if not cf or not size or not position then
+            return false
+        end
+
+        margin = margin or 3
+        local localPosition = cf:PointToObjectSpace(position)
+        return math.abs(localPosition.X) <= (size.X / 2) + margin
+            and math.abs(localPosition.Y) <= (size.Y / 2) + margin
+            and math.abs(localPosition.Z) <= (size.Z / 2) + margin
+    end
+
+    local function firewallGetRoomPathParts(room)
+        local entrances = room and room:FindFirstChild("Entrances")
+        local exits = room and (room:FindFirstChild("Exits") or room:FindFirstChild("Exists"))
+        return entrances and firewallGetFirstPart(entrances) or nil, exits and firewallGetFirstPart(exits) or nil
+    end
+
+    local function firewallGetRoomPositionScore(room, position)
+        if not room or not position then
+            return nil
+        end
+
+        local entrancePart, exitPart = firewallGetRoomPathParts(room)
+        if entrancePart and exitPart then
+            local startPosition = entrancePart.Position
+            local endPosition = exitPart.Position
+            local path = endPosition - startPosition
+            local pathLengthSquared = path:Dot(path)
+
+            if pathLengthSquared > 0.01 then
+                local t = math.clamp((position - startPosition):Dot(path) / pathLengthSquared, 0, 1)
+                local closest = startPosition + path * t
+                local lateral = Vector3.new(position.X - closest.X, 0, position.Z - closest.Z).Magnitude
+                local vertical = math.abs(position.Y - closest.Y)
+                local outsidePenalty = 0
+
+                if t <= 0 or t >= 1 then
+                    local rawT = (position - startPosition):Dot(path) / pathLengthSquared
+                    outsidePenalty = math.abs(rawT - t) * math.sqrt(pathLengthSquared)
+                end
+
+                local score = lateral + vertical * 0.25 + outsidePenalty * 2
+                if firewallPointInsideRoomBounds(room, position, 4) then
+                    score -= 100
+                end
+
+                return score
+            end
+        end
+
+        local center = firewallGetRoomCenter(room)
+        if center then
+            local score = (center - position).Magnitude
+            if firewallPointInsideRoomBounds(room, position, 4) then
+                score -= 100
+            end
+
+            return score
+        end
+
+        return nil
+    end
+
     local function firewallGetClosestRoomNumberToPosition(position)
         if not position or not firewallState.chaseRooms then
             return nil
         end
 
         local closestRoomNumber = nil
-        local closestDistance = math.huge
+        local closestScore = math.huge
+        local containedRoomNumber = nil
+        local containedScore = math.huge
 
         for _, room in ipairs(firewallState.chaseRooms:GetChildren()) do
             local roomNumber = firewallGetRoomNumber(room)
-            local center = firewallGetRoomCenter(room)
+            local score = firewallGetRoomPositionScore(room, position)
 
-            if roomNumber and center then
-                local distance = (center - position).Magnitude
-                if distance < closestDistance then
-                    closestDistance = distance
-                    closestRoomNumber = roomNumber
+            if roomNumber and score and score < closestScore then
+                closestScore = score
+                closestRoomNumber = roomNumber
+            end
+
+            if roomNumber and score and firewallPointInsideRoomBounds(room, position, 2) and score < containedScore then
+                containedScore = score
+                containedRoomNumber = roomNumber
+            end
+        end
+
+        return containedRoomNumber or closestRoomNumber
+    end
+
+    local function firewallGetCharacterRootPosition()
+        local character = player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        return root and root.Position or nil
+    end
+
+    local function firewallUpdateRoomLabel()
+        local roomNumber = firewallGetClosestRoomNumberToPosition(firewallGetCharacterRootPosition())
+
+        firewallState.currentRoomNumber = roomNumber
+        if firewallRoomLabel then
+            firewallRoomLabel.Text = roomNumber and ("Current Room: " .. tostring(roomNumber)) or "Current Room: Unknown"
+        end
+
+        return roomNumber
+    end
+
+    local function firewallGetLatestRoomNumber()
+        local latestRoomNumber = nil
+
+        if firewallState.chaseRooms then
+            for _, room in ipairs(firewallState.chaseRooms:GetChildren()) do
+                local roomNumber = firewallGetRoomNumber(room)
+                if roomNumber and (not latestRoomNumber or roomNumber > latestRoomNumber) then
+                    latestRoomNumber = roomNumber
                 end
             end
         end
 
-        return closestRoomNumber
+        return latestRoomNumber
     end
 
     local function firewallUpdateActualRoom()
@@ -446,16 +552,6 @@ if isEndlessFirewallMode() then
         local openValue = entrances:FindFirstChild("OpenValue", true)
         if openValue and openValue:IsA("ValueBase") then
             return openValue
-        end
-
-        return nil
-    end
-
-    local function firewallGetFirstPart(container)
-        for _, obj in ipairs(container:GetDescendants()) do
-            if obj:IsA("BasePart") and obj.Name ~= FIREWALL_PLATFORM_NAME then
-                return obj
-            end
         end
 
         return nil

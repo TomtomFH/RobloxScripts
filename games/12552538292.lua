@@ -571,6 +571,44 @@ if isEndlessFirewallMode() then
         return door and door:FindFirstChild("RemoteFunction", true) or nil
     end
 
+    local function firewallGetCameraModule()
+        local playerGui = player:FindFirstChild("PlayerGui")
+        local mainGui = playerGui and playerGui:FindFirstChild("Main")
+        local client = mainGui and mainGui:FindFirstChild("Client")
+        local mainClient = client and client:FindFirstChild("MainClient")
+        local cameraModuleScript = mainClient and mainClient:FindFirstChild("CameraModule")
+
+        if not cameraModuleScript then
+            return nil
+        end
+
+        local ok, cameraModule = pcall(require, cameraModuleScript)
+        return ok and cameraModule or nil
+    end
+
+    local function firewallWrapAngle(angle)
+        if math.abs(angle) > 180 then
+            angle = angle - angle / math.abs(angle) * 360
+        end
+
+        return angle
+    end
+
+    local function firewallForceCameraLook(targetCFrame)
+        local cameraModule = firewallGetCameraModule()
+        local camera = workspace.CurrentCamera
+        if not cameraModule or not camera then
+            return
+        end
+
+        local _, currentYaw = camera.CFrame:ToOrientation()
+        local _, targetYaw = targetCFrame:ToOrientation()
+        local yawDelta = firewallWrapAngle(math.deg(targetYaw - currentYaw))
+
+        cameraModule.ForceLookX = (cameraModule.ForceLookX or 0) + yawDelta
+        camera.CFrame = targetCFrame
+    end
+
     local function firewallTeleportToPart(part)
         if not part then
             return
@@ -618,6 +656,7 @@ if isEndlessFirewallMode() then
 
         character:PivotTo(targetCFrame)
         root.CFrame = targetCFrame
+        firewallForceCameraLook(targetCFrame)
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
 
@@ -645,6 +684,8 @@ if isEndlessFirewallMode() then
         end
 
         pcall(function()
+            runService.RenderStepped:Wait()
+            runService.RenderStepped:Wait()
             prompt.HoldDuration = 0
             prompt:InputHoldBegin()
             task.wait()

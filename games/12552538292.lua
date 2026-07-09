@@ -18,7 +18,6 @@ local chatNotificationHookedScrollViews = {}
 local chatNotificationProcessedRows = {}
 local chatNotificationHookedLabels = {}
 local chatNotificationCoreGuiHooked = false
-local chatNotificationLastScrollStatus = nil
 
 local function chatNotificationStripRichText(text)
     text = text or ""
@@ -116,22 +115,17 @@ local function chatNotificationParseMessage(bodyText)
     end
 
     local sender = chatNotificationExtractSender(fromName)
-    print("[Pressure Notify] Raw:", cleanBody)
-    print("[Pressure Notify] Parsed sender:", sender or "nil", "Message:", message or "nil")
 
     if sender ~= CHAT_NOTIFICATION_USERNAME then
-        print("[Pressure Notify] Ignored sender:", sender or "nil")
         return nil
     end
 
     message = chatNotificationTrim(message)
     if message:sub(1, 1) ~= "-" then
-        print("[Pressure Notify] Ignored missing prefix:", message)
         return nil
     end
 
     local notificationText = chatNotificationTrim(message:sub(2))
-    print("[Pressure Notify] Showing:", notificationText ~= "" and notificationText or message)
     return notificationText ~= "" and notificationText or message
 end
 
@@ -192,7 +186,6 @@ local function chatNotificationHookMessageList(scrollView)
         return
     end
 
-    print("[Pressure Notify] Hooked chat scroll view:", scrollView:GetFullName())
     chatNotificationHookedScrollViews[scrollView] = true
     for _, row in ipairs(scrollView:GetChildren()) do
         chatNotificationProcessRow(row)
@@ -207,7 +200,6 @@ local function chatNotificationHookCoreGuiFallback()
     end
 
     chatNotificationCoreGuiHooked = true
-    print("[Pressure Notify] Hooked CoreGui BodyText fallback")
 
     for _, descendant in ipairs(CoreGui:GetDescendants()) do
         if descendant.Name == "BodyText" and descendant:IsA("TextLabel") then
@@ -228,14 +220,7 @@ task.spawn(function()
     while task.wait(1) do
         local scrollView = chatNotificationGetScrollView()
         if scrollView then
-            if chatNotificationLastScrollStatus ~= "found" then
-                print("[Pressure Notify] Chat scroll view found")
-                chatNotificationLastScrollStatus = "found"
-            end
             chatNotificationHookMessageList(scrollView)
-        elseif chatNotificationLastScrollStatus ~= "missing" then
-            print("[Pressure Notify] Chat scroll view missing, fallback still active")
-            chatNotificationLastScrollStatus = "missing"
         end
     end
 end)

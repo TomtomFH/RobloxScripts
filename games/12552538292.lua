@@ -88,6 +88,7 @@ if isEndlessFirewallMode() then
     local FIREWALL_RETRY_DELAY = 0.25
     local FIREWALL_MAX_ROOMS_AHEAD = 10
     local FIREWALL_PROMPT_DISTANCE = 5
+    local FIREWALL_ELEVATOR_KEY_DISTANCE = 3
     local FIREWALL_PROMPT_HEIGHT_OFFSET = 2.5
 
     local function firewallSetStatus(text)
@@ -594,6 +595,12 @@ if isEndlessFirewallMode() then
         return angle
     end
 
+    local function firewallGetYawDelta(fromCFrame, toCFrame)
+        local _, currentYaw = fromCFrame:ToOrientation()
+        local _, targetYaw = toCFrame:ToOrientation()
+        return firewallWrapAngle(math.deg(targetYaw - currentYaw))
+    end
+
     local function firewallForceCameraLook(targetCFrame)
         local cameraModule = firewallGetCameraModule()
         local camera = workspace.CurrentCamera
@@ -601,12 +608,28 @@ if isEndlessFirewallMode() then
             return
         end
 
-        local _, currentYaw = camera.CFrame:ToOrientation()
-        local _, targetYaw = targetCFrame:ToOrientation()
-        local yawDelta = firewallWrapAngle(math.deg(targetYaw - currentYaw))
-
+        local yawDelta = firewallGetYawDelta(camera.CFrame, targetCFrame)
         cameraModule.ForceLookX = (cameraModule.ForceLookX or 0) + yawDelta
         camera.CFrame = targetCFrame
+    end
+
+    local function firewallHoldFacing(root, targetCFrame, duration)
+        local cameraModule = firewallGetCameraModule()
+        local startTime = os.clock()
+
+        repeat
+            if root and root.Parent then
+                root.CFrame = targetCFrame
+            end
+
+            if cameraModule and workspace.CurrentCamera then
+                local yawDelta = firewallGetYawDelta(workspace.CurrentCamera.CFrame, targetCFrame)
+                cameraModule.ForceLookX = (cameraModule.ForceLookX or 0) + yawDelta
+                workspace.CurrentCamera.CFrame = targetCFrame
+            end
+
+            runService.RenderStepped:Wait()
+        until os.clock() - startTime >= duration
     end
 
     local function firewallTeleportToPart(part)
@@ -625,7 +648,7 @@ if isEndlessFirewallMode() then
         root.AssemblyAngularVelocity = Vector3.zero
     end
 
-    local function firewallTeleportInFrontOfPart(part, sideMultiplier)
+    local function firewallTeleportInFrontOfPart(part, sideMultiplier, distance, heightOffset)
         if not part then
             return
         end
@@ -646,7 +669,7 @@ if isEndlessFirewallMode() then
             offsetDirection = rootOffset.Magnitude > 0.05 and rootOffset or (cameraOffset and cameraOffset.Magnitude > 0.05 and cameraOffset or Vector3.zAxis)
         end
 
-        local position = targetPosition + offsetDirection.Unit * FIREWALL_PROMPT_DISTANCE + Vector3.yAxis * FIREWALL_PROMPT_HEIGHT_OFFSET
+        local position = targetPosition + offsetDirection.Unit * (distance or FIREWALL_PROMPT_DISTANCE) + Vector3.yAxis * (heightOffset or FIREWALL_PROMPT_HEIGHT_OFFSET)
         local lookTarget = Vector3.new(targetPosition.X, position.Y, targetPosition.Z)
         local targetCFrame = CFrame.lookAt(position, lookTarget)
 
@@ -659,9 +682,10 @@ if isEndlessFirewallMode() then
         firewallForceCameraLook(targetCFrame)
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
+        firewallHoldFacing(root, targetCFrame, 0.35)
 
         if humanoid then
-            task.delay(0.35, function()
+            task.delay(0.8, function()
                 if humanoid.Parent then
                     humanoid.AutoRotate = true
                 end
@@ -757,7 +781,7 @@ if isEndlessFirewallMode() then
                             if os.clock() - firewallState.lastKeycardAttempt >= 1 then
                                 firewallState.lastKeycardAttempt = os.clock()
                                 local prompt = firewallGetKeycardPrompt(keycard)
-                                firewallTeleportInFrontOfPart(firewallGetPromptPart(prompt) or keycard:FindFirstChildWhichIsA("BasePart", true))
+                                firewallTeleportInFrontOfPart(firewallGetPromptPart(prompt) or keycard:FindFirstChildWhichIsA("BasePart", true), 1)
                                 firewallTriggerPrompt(prompt)
                             end
                         else
@@ -790,7 +814,7 @@ if isEndlessFirewallMode() then
 
                         if os.clock() - firewallState.lastElevatorKeyAttempt >= 1 then
                             firewallState.lastElevatorKeyAttempt = os.clock()
-                            firewallTeleportInFrontOfPart(firewallGetPromptPart(elevatorKeyPrompt), -1)
+                            firewallTeleportInFrontOfPart(firewallGetPromptPart(elevatorKeyPrompt), 1, FIREWALL_ELEVATOR_KEY_DISTANCE)
                             firewallTriggerPrompt(elevatorKeyPrompt)
                         end
 

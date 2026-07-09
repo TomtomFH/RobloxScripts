@@ -71,7 +71,8 @@ if isEndlessFirewallMode() then
         platformsReady = false,
         lastKeycardAttempt = 0,
         lastElevatorKeyAttempt = 0,
-        elevatorKeyStarted = false
+        elevatorKeyStarted = false,
+        cameraLockPart = nil
     }
 
     local FIREWALL_PLATFORM_NAME = "EntranceExitPlatform"
@@ -90,6 +91,7 @@ if isEndlessFirewallMode() then
     local FIREWALL_PROMPT_DISTANCE = 5
     local FIREWALL_ELEVATOR_KEY_DISTANCE = 3
     local FIREWALL_PROMPT_HEIGHT_OFFSET = 2.5
+    local FIREWALL_CAMERA_HEIGHT_OFFSET = 1.5
 
     local function firewallSetStatus(text)
         if firewallStatusLabel then
@@ -632,6 +634,54 @@ if isEndlessFirewallMode() then
         until os.clock() - startTime >= duration
     end
 
+    local function firewallGetCameraLockPart()
+        if firewallState.cameraLockPart and firewallState.cameraLockPart.Parent then
+            return firewallState.cameraLockPart
+        end
+
+        local part = Instance.new("Part")
+        part.Name = "PressureFirewallCameraLock"
+        part.Anchored = true
+        part.CanCollide = false
+        part.CanTouch = false
+        part.CanQuery = false
+        part.Transparency = 1
+        part.Size = Vector3.new(1, 1, 1)
+        part.Parent = workspace
+        firewallState.cameraLockPart = part
+        return part
+    end
+
+    local function firewallForceCameraView(cameraCFrame)
+        local cameraModule = firewallGetCameraModule()
+        local camera = workspace.CurrentCamera
+        if not cameraModule or not camera then
+            if camera then
+                camera.CFrame = cameraCFrame
+            end
+            return
+        end
+
+        local lockPart = firewallGetCameraLockPart()
+        lockPart.CFrame = cameraCFrame
+
+        pcall(function()
+            cameraModule.Switch("ForcedCamView", lockPart, {}, false, false)
+        end)
+        camera.CFrame = cameraCFrame
+    end
+
+    local function firewallRestoreCameraView()
+        local cameraModule = firewallGetCameraModule()
+        if not cameraModule then
+            return
+        end
+
+        pcall(function()
+            cameraModule.Switch("PlayerControl")
+        end)
+    end
+
     local function firewallTeleportToPart(part)
         if not part then
             return
@@ -672,6 +722,8 @@ if isEndlessFirewallMode() then
         local position = targetPosition + offsetDirection.Unit * (distance or FIREWALL_PROMPT_DISTANCE) + Vector3.yAxis * (heightOffset or FIREWALL_PROMPT_HEIGHT_OFFSET)
         local lookTarget = Vector3.new(targetPosition.X, position.Y, targetPosition.Z)
         local targetCFrame = CFrame.lookAt(position, lookTarget)
+        local cameraPosition = position + Vector3.yAxis * FIREWALL_CAMERA_HEIGHT_OFFSET
+        local cameraCFrame = CFrame.lookAt(cameraPosition, targetPosition)
 
         if humanoid then
             humanoid.AutoRotate = false
@@ -680,6 +732,7 @@ if isEndlessFirewallMode() then
         character:PivotTo(targetCFrame)
         root.CFrame = targetCFrame
         firewallForceCameraLook(targetCFrame)
+        firewallForceCameraView(cameraCFrame)
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
         firewallHoldFacing(root, targetCFrame, 0.35)
@@ -714,6 +767,7 @@ if isEndlessFirewallMode() then
             prompt:InputHoldBegin()
             task.wait()
             prompt:InputHoldEnd()
+            firewallRestoreCameraView()
         end)
     end
 
@@ -781,7 +835,7 @@ if isEndlessFirewallMode() then
                             if os.clock() - firewallState.lastKeycardAttempt >= 1 then
                                 firewallState.lastKeycardAttempt = os.clock()
                                 local prompt = firewallGetKeycardPrompt(keycard)
-                                firewallTeleportInFrontOfPart(firewallGetPromptPart(prompt) or keycard:FindFirstChildWhichIsA("BasePart", true), 1)
+                                firewallTeleportInFrontOfPart(firewallGetPromptPart(prompt) or keycard:FindFirstChildWhichIsA("BasePart", true), -1)
                                 firewallTriggerPrompt(prompt)
                             end
                         else
@@ -976,6 +1030,10 @@ if isEndlessFirewallMode() then
         firewallState.currentTargetRoom = nil
         firewallState.currentTargetRoomNumber = nil
         firewallState.firewallRoomNumber = nil
+        if firewallState.cameraLockPart then
+            firewallState.cameraLockPart:Destroy()
+            firewallState.cameraLockPart = nil
+        end
         firewallSetStatus("Off")
         firewallRefreshRoomLabels()
     end

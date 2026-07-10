@@ -1094,6 +1094,39 @@ if isEndlessFirewallMode() then
         return true
     end
 
+    local function firewallYawCameraToward(targetPosition, yaw)
+        local camera = workspace.CurrentCamera
+        if not camera or not targetPosition then
+            return false
+        end
+
+        local cameraPosition = camera.CFrame.Position
+        local flatDirection = Vector3.new(targetPosition.X - cameraPosition.X, 0, targetPosition.Z - cameraPosition.Z)
+        if flatDirection.Magnitude <= 0 then
+            return false
+        end
+
+        local stepAlpha = math.clamp(math.abs(yaw) / math.rad(45), 0.12, 0.45)
+        local currentLook = camera.CFrame.LookVector
+        local currentFlatLook = Vector3.new(currentLook.X, 0, currentLook.Z)
+        if currentFlatLook.Magnitude <= 0 then
+            currentFlatLook = flatDirection
+        end
+
+        local newFlatLook = currentFlatLook.Unit:Lerp(flatDirection.Unit, stepAlpha)
+        if newFlatLook.Magnitude <= 0 then
+            return false
+        end
+
+        local verticalLook = currentLook.Y
+        local horizontalScale = math.sqrt(math.max(0, 1 - verticalLook * verticalLook))
+        local newLook = newFlatLook.Unit * horizontalScale + Vector3.yAxis * verticalLook
+
+        camera.CFrame = CFrame.lookAt(cameraPosition, cameraPosition + newLook)
+        firewallSetMouseAimDebug(string.format("camera yaw fallback %.1f", math.deg(yaw)))
+        return true
+    end
+
     local function firewallMouseAimStep(targetPosition)
         local camera = workspace.CurrentCamera
         if not camera or not targetPosition then
@@ -1121,15 +1154,12 @@ if isEndlessFirewallMode() then
             return true
         end
 
-        return firewallSendMouseMove(math.clamp(dx, -250, 250), 0)
+        local movedMouse = firewallSendMouseMove(math.clamp(dx, -250, 250), 0)
+        firewallYawCameraToward(targetPosition, yaw)
+        return movedMouse
     end
 
     firewallMouseAimAtPosition = function(targetPosition, duration)
-        if type(mousemoverel) ~= "function" then
-            firewallSetMouseAimDebug("mousemoverel missing", true)
-            return
-        end
-
         if not targetPosition then
             firewallSetMouseAimDebug("start missing target", true)
             return

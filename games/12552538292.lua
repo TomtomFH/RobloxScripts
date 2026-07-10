@@ -820,7 +820,7 @@ if isEndlessFirewallMode() then
 
         local startTime = os.clock()
         if firewallMouseAimAtPosition then
-            task.spawn(firewallMouseAimAtPosition, flatDoorPosition, FIREWALL_DOOR_LOOK_DURATION)
+            task.spawn(firewallMouseAimAtPosition, flatDoorPosition, FIREWALL_WALK_DURATION)
         end
 
         while firewallState.enabled and os.clock() - startTime < FIREWALL_WALK_DURATION do
@@ -1082,35 +1082,25 @@ if isEndlessFirewallMode() then
             return false
         end
 
-        local flatTargetPosition = Vector3.new(targetPosition.X, camera.CFrame.Position.Y, targetPosition.Z)
-        local viewportPoint, visible = camera:WorldToViewportPoint(flatTargetPosition)
-        local dx, dy
+        local flatDirection = Vector3.new(
+            targetPosition.X - camera.CFrame.Position.X,
+            0,
+            targetPosition.Z - camera.CFrame.Position.Z
+        )
 
-        if visible and viewportPoint.Z > 0 then
-            local center = camera.ViewportSize / 2
-            local delta = Vector2.new(viewportPoint.X - center.X, viewportPoint.Y - center.Y)
-            if math.abs(delta.X) <= FIREWALL_MOUSE_AIM_DEADZONE and math.abs(delta.Y) <= FIREWALL_MOUSE_AIM_DEADZONE then
-                return true
-            end
-
-            dx = delta.X * FIREWALL_MOUSE_AIM_SCALE
-            dy = delta.Y * FIREWALL_MOUSE_AIM_SCALE
-        else
-            local direction = flatTargetPosition - camera.CFrame.Position
-            if direction.Magnitude <= 0 then
-                return false
-            end
-
-            local localDirection = camera.CFrame:VectorToObjectSpace(direction.Unit)
-            local yaw = math.atan2(localDirection.X, -localDirection.Z)
-            local flat = math.sqrt(localDirection.X * localDirection.X + localDirection.Z * localDirection.Z)
-            local pitch = math.atan2(localDirection.Y, flat)
-
-            dx = math.deg(yaw) * 8
-            dy = -math.deg(pitch) * 8
+        if flatDirection.Magnitude <= 0 then
+            return false
         end
 
-        return firewallSendMouseMove(math.clamp(dx, -250, 250), math.clamp(dy, -250, 250))
+        local localDirection = camera.CFrame:VectorToObjectSpace(flatDirection.Unit)
+        local yaw = math.atan2(localDirection.X, -localDirection.Z)
+        local dx = math.deg(yaw) * 8
+
+        if math.abs(dx) <= FIREWALL_MOUSE_AIM_DEADZONE then
+            return true
+        end
+
+        return firewallSendMouseMove(math.clamp(dx, -250, 250), 0)
     end
 
     firewallMouseAimAtPosition = function(targetPosition, duration)

@@ -304,6 +304,7 @@ if isEndlessFirewallMode() then
     local firewallRoomLabel = nil
     local firewallActualRoomLabel = nil
     local firewallStatusLabel = nil
+    local firewallMouseAimLabel = nil
 
     local firewallState = {
         enabled = false,
@@ -324,7 +325,8 @@ if isEndlessFirewallMode() then
         lastElevatorKeyAttempt = 0,
         elevatorKeyStarted = false,
         chaseTeleportUsed = false,
-        mouseAimId = 0
+        mouseAimId = 0,
+        lastMouseAimDebug = 0
     }
 
     local FIREWALL_PLATFORM_NAME = "EntranceExitPlatform"
@@ -358,6 +360,20 @@ if isEndlessFirewallMode() then
         if firewallStatusLabel then
             firewallStatusLabel.Text = "Status: " .. tostring(text)
         end
+    end
+
+    local function firewallSetMouseAimDebug(text, force)
+        if not firewallMouseAimLabel then
+            return
+        end
+
+        local now = os.clock()
+        if not force and now - firewallState.lastMouseAimDebug < 0.15 then
+            return
+        end
+
+        firewallState.lastMouseAimDebug = now
+        firewallMouseAimLabel.Text = "Mouse Aim: " .. tostring(text)
     end
 
     local function firewallGetChaseRooms()
@@ -1069,16 +1085,19 @@ if isEndlessFirewallMode() then
 
     local function firewallSendMouseMove(dx, dy)
         if type(mousemoverel) ~= "function" then
+            firewallSetMouseAimDebug("mousemoverel missing", true)
             return false
         end
 
         mousemoverel(dx, dy)
+        firewallSetMouseAimDebug(string.format("move dx=%.1f dy=%.1f", dx, dy))
         return true
     end
 
     local function firewallMouseAimStep(targetPosition)
         local camera = workspace.CurrentCamera
         if not camera or not targetPosition then
+            firewallSetMouseAimDebug(not camera and "no camera" or "no target", true)
             return false
         end
 
@@ -1089,6 +1108,7 @@ if isEndlessFirewallMode() then
         )
 
         if flatDirection.Magnitude <= 0 then
+            firewallSetMouseAimDebug("target overlaps camera", true)
             return false
         end
 
@@ -1097,6 +1117,7 @@ if isEndlessFirewallMode() then
         local dx = math.deg(yaw) * 8
 
         if math.abs(dx) <= FIREWALL_MOUSE_AIM_DEADZONE then
+            firewallSetMouseAimDebug(string.format("deadzone dx=%.1f", dx))
             return true
         end
 
@@ -1104,7 +1125,13 @@ if isEndlessFirewallMode() then
     end
 
     firewallMouseAimAtPosition = function(targetPosition, duration)
-        if type(mousemoverel) ~= "function" or not targetPosition then
+        if type(mousemoverel) ~= "function" then
+            firewallSetMouseAimDebug("mousemoverel missing", true)
+            return
+        end
+
+        if not targetPosition then
+            firewallSetMouseAimDebug("start missing target", true)
             return
         end
 
@@ -1116,6 +1143,7 @@ if isEndlessFirewallMode() then
         end)
 
         firewallStopMouseAim()
+        firewallSetMouseAimDebug("started", true)
         runService:BindToRenderStep(FIREWALL_MOUSE_AIM_BIND_NAME, FIREWALL_MOUSE_AIM_PRIORITY, function()
             firewallMouseAimStep(targetPosition)
         end)
@@ -1127,6 +1155,7 @@ if isEndlessFirewallMode() then
 
         if firewallState.mouseAimId == aimId then
             firewallStopMouseAim()
+            firewallSetMouseAimDebug("stopped", true)
         end
     end
 
@@ -1258,25 +1287,27 @@ if isEndlessFirewallMode() then
         table.insert(candidates, Vector3.new(direction.X, 0, direction.Z).Unit)
     end
 
-    local function firewallGetVisiblePromptPosition(part, character, root, sideMultiplier, distance, heightOffset)
+    local function firewallGetVisiblePromptPosition(part, character, root, sideMultiplier, distance, heightOffset, useRightVector)
         local targetPosition = part.Position
         local promptDistance = distance or FIREWALL_PROMPT_DISTANCE
         local promptHeight = heightOffset or FIREWALL_PROMPT_HEIGHT_OFFSET
         local side = sideMultiplier or -1
         local lookVector = Vector3.new(part.CFrame.LookVector.X, 0, part.CFrame.LookVector.Z)
         local rightVector = Vector3.new(part.CFrame.RightVector.X, 0, part.CFrame.RightVector.Z)
+        local primaryVector = useRightVector and rightVector or lookVector
+        local secondaryVector = useRightVector and lookVector or rightVector
         local rootOffset = root and Vector3.new(root.Position.X - targetPosition.X, 0, root.Position.Z - targetPosition.Z) or Vector3.zero
         local candidates = {}
 
-        firewallAddDirectionCandidate(candidates, lookVector * side)
+        firewallAddDirectionCandidate(candidates, primaryVector * side)
         firewallAddDirectionCandidate(candidates, rootOffset)
-        firewallAddDirectionCandidate(candidates, lookVector * -side)
-        firewallAddDirectionCandidate(candidates, rightVector)
-        firewallAddDirectionCandidate(candidates, rightVector * -1)
-        firewallAddDirectionCandidate(candidates, (lookVector * side) + rightVector)
-        firewallAddDirectionCandidate(candidates, (lookVector * side) - rightVector)
-        firewallAddDirectionCandidate(candidates, (lookVector * -side) + rightVector)
-        firewallAddDirectionCandidate(candidates, (lookVector * -side) - rightVector)
+        firewallAddDirectionCandidate(candidates, primaryVector * -side)
+        firewallAddDirectionCandidate(candidates, secondaryVector)
+        firewallAddDirectionCandidate(candidates, secondaryVector * -1)
+        firewallAddDirectionCandidate(candidates, (primaryVector * side) + secondaryVector)
+        firewallAddDirectionCandidate(candidates, (primaryVector * side) - secondaryVector)
+        firewallAddDirectionCandidate(candidates, (primaryVector * -side) + secondaryVector)
+        firewallAddDirectionCandidate(candidates, (primaryVector * -side) - secondaryVector)
         firewallAddDirectionCandidate(candidates, Vector3.xAxis)
         firewallAddDirectionCandidate(candidates, -Vector3.xAxis)
         firewallAddDirectionCandidate(candidates, Vector3.zAxis)
@@ -1297,7 +1328,7 @@ if isEndlessFirewallMode() then
         return bestPosition or (targetPosition + Vector3.zAxis * promptDistance + Vector3.yAxis * promptHeight)
     end
 
-    local function firewallTeleportInFrontOfPart(part, sideMultiplier, distance, heightOffset)
+    local function firewallTeleportInFrontOfPart(part, sideMultiplier, distance, heightOffset, useRightVector)
         if not part then
             return
         end
@@ -1308,7 +1339,7 @@ if isEndlessFirewallMode() then
         end
 
         local targetPosition = part.Position
-        local position = firewallGetVisiblePromptPosition(part, character, root, sideMultiplier, distance, heightOffset)
+        local position = firewallGetVisiblePromptPosition(part, character, root, sideMultiplier, distance, heightOffset, useRightVector)
         local lookTarget = Vector3.new(targetPosition.X, position.Y, targetPosition.Z)
         local targetCFrame = CFrame.lookAt(position, lookTarget)
 
@@ -1318,7 +1349,7 @@ if isEndlessFirewallMode() then
 
         character:PivotTo(targetCFrame)
         root.CFrame = targetCFrame
-        firewallMouseAimAtPosition(targetPosition, FIREWALL_MOUSE_AIM_DURATION)
+        firewallMouseAimAtPosition(lookTarget, FIREWALL_MOUSE_AIM_DURATION)
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
 
@@ -1407,12 +1438,12 @@ if isEndlessFirewallMode() then
                         local code = firewallReadPasswordPaperCode(passwordPaper)
                         local doorPart = firewallGetDoorPartFromOpenValue(startDoorOpenValue)
                         firewallSetStatus(code and "Opening start door" or "Reading start code")
-                        firewallTeleportInFrontOfPart(doorPart)
+                        firewallTeleportInFrontOfPart(doorPart, -1, nil, nil, true)
                         firewallEnterDoorCode(startDoor, code)
                     elseif firewallHasNormalKeycard() then
                         local prompt = firewallGetDoorPrompt(startDoor)
                         firewallSetStatus("Using start keycard")
-                        firewallTeleportInFrontOfPart(firewallGetPromptPart(prompt) or firewallGetDoorPartFromOpenValue(startDoorOpenValue))
+                        firewallTeleportInFrontOfPart(firewallGetPromptPart(prompt) or firewallGetDoorPartFromOpenValue(startDoorOpenValue), -1, nil, nil, true)
                         firewallTriggerPrompt(prompt)
                     else
                         local keycard = firewallGetStartKeycard()
@@ -1902,6 +1933,7 @@ if isEndlessFirewallMode() then
     firewallRoomLabel = CreateValueLabel("Firewall", "Current Room: None")
     firewallActualRoomLabel = CreateValueLabel("Firewall", "Firewall Room: Unknown")
     firewallStatusLabel = CreateValueLabel("Firewall", "Status: Off")
+    firewallMouseAimLabel = CreateValueLabel("Firewall", "Mouse Aim: Idle")
     CreateToggle("Firewall", "Endless Firewall Helper", function(state)
         if state.Value then
             firewallEnable()

@@ -1094,39 +1094,6 @@ if isEndlessFirewallMode() then
         return true
     end
 
-    local function firewallYawCameraToward(targetPosition, yaw)
-        local camera = workspace.CurrentCamera
-        if not camera or not targetPosition then
-            return false
-        end
-
-        local cameraPosition = camera.CFrame.Position
-        local flatDirection = Vector3.new(targetPosition.X - cameraPosition.X, 0, targetPosition.Z - cameraPosition.Z)
-        if flatDirection.Magnitude <= 0 then
-            return false
-        end
-
-        local stepAlpha = math.clamp(math.abs(yaw) / math.rad(45), 0.12, 0.45)
-        local currentLook = camera.CFrame.LookVector
-        local currentFlatLook = Vector3.new(currentLook.X, 0, currentLook.Z)
-        if currentFlatLook.Magnitude <= 0 then
-            currentFlatLook = flatDirection
-        end
-
-        local newFlatLook = currentFlatLook.Unit:Lerp(flatDirection.Unit, stepAlpha)
-        if newFlatLook.Magnitude <= 0 then
-            return false
-        end
-
-        local verticalLook = currentLook.Y
-        local horizontalScale = math.sqrt(math.max(0, 1 - verticalLook * verticalLook))
-        local newLook = newFlatLook.Unit * horizontalScale + Vector3.yAxis * verticalLook
-
-        camera.CFrame = CFrame.lookAt(cameraPosition, cameraPosition + newLook)
-        firewallSetMouseAimDebug(string.format("camera yaw fallback %.1f", math.deg(yaw)))
-        return true
-    end
-
     local function firewallMouseAimStep(targetPosition)
         local camera = workspace.CurrentCamera
         if not camera or not targetPosition then
@@ -1134,32 +1101,44 @@ if isEndlessFirewallMode() then
             return false
         end
 
-        local flatDirection = Vector3.new(
-            targetPosition.X - camera.CFrame.Position.X,
-            0,
-            targetPosition.Z - camera.CFrame.Position.Z
-        )
+        local viewportPoint, visible = camera:WorldToViewportPoint(targetPosition)
+        local dx, dy
 
-        if flatDirection.Magnitude <= 0 then
-            firewallSetMouseAimDebug("target overlaps camera", true)
-            return false
+        if visible and viewportPoint.Z > 0 then
+            local center = camera.ViewportSize / 2
+            local delta = Vector2.new(viewportPoint.X - center.X, viewportPoint.Y - center.Y)
+            if math.abs(delta.X) <= FIREWALL_MOUSE_AIM_DEADZONE and math.abs(delta.Y) <= FIREWALL_MOUSE_AIM_DEADZONE then
+                firewallSetMouseAimDebug(string.format("deadzone dx=%.1f dy=%.1f", delta.X, delta.Y))
+                return true
+            end
+
+            dx = delta.X * FIREWALL_MOUSE_AIM_SCALE
+            dy = delta.Y * FIREWALL_MOUSE_AIM_SCALE
+        else
+            local direction = targetPosition - camera.CFrame.Position
+            if direction.Magnitude <= 0 then
+                firewallSetMouseAimDebug("target overlaps camera", true)
+                return false
+            end
+
+            local localDirection = camera.CFrame:VectorToObjectSpace(direction.Unit)
+            local yaw = math.atan2(localDirection.X, -localDirection.Z)
+            local flat = math.sqrt(localDirection.X * localDirection.X + localDirection.Z * localDirection.Z)
+            local pitch = math.atan2(localDirection.Y, flat)
+
+            dx = math.deg(yaw) * 8
+            dy = -math.deg(pitch) * 8
         end
 
-        local localDirection = camera.CFrame:VectorToObjectSpace(flatDirection.Unit)
-        local yaw = math.atan2(localDirection.X, -localDirection.Z)
-        local dx = math.deg(yaw) * 8
-
-        if math.abs(dx) <= FIREWALL_MOUSE_AIM_DEADZONE then
-            firewallSetMouseAimDebug(string.format("deadzone dx=%.1f", dx))
-            return true
-        end
-
-        local movedMouse = firewallSendMouseMove(math.clamp(dx, -250, 250), 0)
-        firewallYawCameraToward(targetPosition, yaw)
-        return movedMouse
+        return firewallSendMouseMove(math.clamp(dx, -250, 250), math.clamp(dy, -250, 250))
     end
 
     firewallMouseAimAtPosition = function(targetPosition, duration)
+        if type(mousemoverel) ~= "function" then
+            firewallSetMouseAimDebug("mousemoverel missing", true)
+            return
+        end
+
         if not targetPosition then
             firewallSetMouseAimDebug("start missing target", true)
             return
@@ -1379,7 +1358,7 @@ if isEndlessFirewallMode() then
 
         character:PivotTo(targetCFrame)
         root.CFrame = targetCFrame
-        firewallMouseAimAtPosition(lookTarget, FIREWALL_MOUSE_AIM_DURATION)
+        firewallMouseAimAtPosition(targetPosition, FIREWALL_MOUSE_AIM_DURATION)
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
 

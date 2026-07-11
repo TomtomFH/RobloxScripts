@@ -4848,7 +4848,7 @@ local generatorAutoState = {
     connections = {}
 }
 
-local GENERATOR_SUCCESS_INTERVAL = 0.5
+local GENERATOR_SUCCESS_INTERVAL = 0.31
 
 local function generatorDisconnectAll()
     for i = #generatorAutoState.connections, 1, -1 do

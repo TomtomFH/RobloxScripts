@@ -4907,6 +4907,7 @@ local function generatorStartLoop(generator, prompt)
 
     local token = {}
     generatorAutoState.activeLoops[generator] = token
+    CreateNotification("DONT CLICK, BANNABLE", Color3.fromRGB(255, 0, 0), 2.5, true)
 
     task.spawn(function()
         task.wait(0.1)

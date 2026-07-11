@@ -4845,10 +4845,49 @@ local generatorAutoState = {
     enabled = false,
     hookedPrompts = {},
     activeLoops = {},
+    warningGuis = {},
     connections = {}
 }
 
 local GENERATOR_SUCCESS_INTERVAL = 0.31
+
+local function generatorHideWarning(generator)
+    local gui = generatorAutoState.warningGuis[generator]
+    generatorAutoState.warningGuis[generator] = nil
+
+    if gui and gui.Parent then
+        gui:Destroy()
+    end
+end
+
+local function generatorShowWarning(generator)
+    generatorHideWarning(generator)
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "GeneratorWarningGui"
+    gui.ResetOnSpawn = false
+    gui.Parent = playerGui
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 0, 120)
+    label.Position = UDim2.new(0, 0, 0.3, 0)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.fromRGB(255, 0, 0)
+    label.Font = Enum.Font.GothamBold
+    label.TextScaled = true
+    label.Text = "DONT CLICK, BANNABLE"
+    label.TextStrokeTransparency = 0.5
+    label.TextStrokeColor3 = Color3.new(0, 0, 0)
+    label.TextTransparency = 1
+    label.Parent = gui
+
+    generatorAutoState.warningGuis[generator] = gui
+
+    tweenService:Create(label, TweenInfo.new(0.25), {
+        TextTransparency = 0,
+        TextStrokeTransparency = 0.5
+    }):Play()
+end
 
 local function generatorDisconnectAll()
     for i = #generatorAutoState.connections, 1, -1 do
@@ -4893,6 +4932,7 @@ end
 
 local function generatorStopLoop(generator)
     generatorAutoState.activeLoops[generator] = nil
+    generatorHideWarning(generator)
 end
 
 local function generatorStartLoop(generator, prompt)
@@ -4907,7 +4947,7 @@ local function generatorStartLoop(generator, prompt)
 
     local token = {}
     generatorAutoState.activeLoops[generator] = token
-    CreateNotification("DONT CLICK, BANNABLE", Color3.fromRGB(255, 0, 0), 2.5, true)
+    generatorShowWarning(generator)
 
     task.spawn(function()
         task.wait(0.1)
@@ -4923,6 +4963,7 @@ local function generatorStartLoop(generator, prompt)
 
         if generatorAutoState.activeLoops[generator] == token then
             generatorAutoState.activeLoops[generator] = nil
+            generatorHideWarning(generator)
         end
     end)
 end
@@ -4984,6 +5025,9 @@ local function generatorStopAuto()
     generatorDisconnectAll()
     table.clear(generatorAutoState.hookedPrompts)
     table.clear(generatorAutoState.activeLoops)
+    for generator in pairs(generatorAutoState.warningGuis) do
+        generatorHideWarning(generator)
+    end
 end
 
 local function onPlayerAdded(player)

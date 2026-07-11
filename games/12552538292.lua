@@ -7,6 +7,7 @@ local players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local tweenService = game:GetService("TweenService")
 local runService = game:GetService("RunService")
+local proximityPromptService = game:GetService("ProximityPromptService")
 local gameplayFolder = workspace:WaitForChild("GameplayFolder", 60)
 local roomsFolder = gameplayFolder:WaitForChild("Rooms", 60)
 
@@ -4840,6 +4841,208 @@ local function doorStartAutoDoor()
     end)
 end
 
+local generatorAutoState = {
+    enabled = false,
+    hookedPrompts = {},
+    activeLoops = {},
+    connections = {},
+    heartbeatElapsed = 0
+}
+
+local GENERATOR_SUCCESS_INTERVAL = 0.5
+local GENERATOR_HEARTBEAT_INTERVAL = 0.1
+local GENERATOR_REPAIR_OFFSET = CFrame.new(
+    -7.62939453e-6,
+    3.10618591,
+    3.7726059,
+    1, 0, 0,
+    0, 1, 0,
+    0, 0, 1
+)
+
+local function generatorDisconnectAll()
+    for i = #generatorAutoState.connections, 1, -1 do
+        local connection = generatorAutoState.connections[i]
+        if connection then
+            connection:Disconnect()
+        end
+
+        generatorAutoState.connections[i] = nil
+    end
+end
+
+local function generatorGetRootPart()
+    local character = player.Character
+    if not character then
+        return nil
+    end
+
+    return character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart
+end
+
+local function generatorFindFromPrompt(prompt)
+    local current = prompt and prompt.Parent
+
+    while current and current ~= workspace do
+        if current:IsA("Model") then
+            local proxyPart = current:FindFirstChild("ProxyPart")
+            local fixed = current:FindFirstChild("Fixed")
+            local remoteEvent = current:FindFirstChild("RemoteEvent")
+            local remoteFunction = current:FindFirstChild("RemoteFunction")
+            local progressBar = current:FindFirstChild("ProgressBar")
+            local validFixed = fixed and (fixed:IsA("IntValue") or fixed:IsA("NumberValue"))
+            local validPrompt = proxyPart and prompt:IsDescendantOf(proxyPart)
+
+            if validFixed
+                and validPrompt
+                and remoteEvent
+                and remoteEvent:IsA("RemoteEvent")
+                and remoteFunction
+                and remoteFunction:IsA("RemoteFunction")
+                and progressBar
+            then
+                return current
+            end
+        end
+
+        current = current.Parent
+    end
+
+    return nil
+end
+
+local function generatorIsLocalPlayerFixing(generator, prompt)
+    if not generatorAutoState.enabled or not generator or not generator:IsDescendantOf(workspace) then
+        return false
+    end
+
+    local root = generatorGetRootPart()
+    local fixed = generator:FindFirstChild("Fixed")
+    local proxyPart = generator:FindFirstChild("ProxyPart")
+    local remoteEvent = generator:FindFirstChild("RemoteEvent")
+
+    if not root or not fixed or not proxyPart or not remoteEvent then
+        return false
+    end
+
+    if fixed.Value >= 100 or prompt.Enabled then
+        return false
+    end
+
+    if (root.Position - proxyPart.Position).Magnitude > 6.5 then
+        return false
+    end
+
+    local expectedCFrame = generator:GetPivot() * GENERATOR_REPAIR_OFFSET
+    if (root.Position - expectedCFrame.Position).Magnitude > 2.5 then
+        return false
+    end
+
+    if root.CFrame.LookVector:Dot(expectedCFrame.LookVector) < 0.8 then
+        return false
+    end
+
+    return true
+end
+
+local function generatorStartSuccessLoop(generator, prompt)
+    if generatorAutoState.activeLoops[generator] then
+        return
+    end
+
+    local token = {}
+    generatorAutoState.activeLoops[generator] = token
+
+    task.spawn(function()
+        while generatorAutoState.enabled and generatorAutoState.activeLoops[generator] == token do
+            task.wait(GENERATOR_SUCCESS_INTERVAL)
+
+            if generatorAutoState.activeLoops[generator] ~= token then
+                break
+            end
+
+            if not generatorIsLocalPlayerFixing(generator, prompt) then
+                break
+            end
+
+            local fixed = generator:FindFirstChild("Fixed")
+            local remoteEvent = generator:FindFirstChild("RemoteEvent")
+
+            if not fixed or fixed.Value >= 100 or not remoteEvent or not remoteEvent:IsA("RemoteEvent") then
+                break
+            end
+
+            remoteEvent:FireServer(true)
+        end
+
+        if generatorAutoState.activeLoops[generator] == token then
+            generatorAutoState.activeLoops[generator] = nil
+        end
+    end)
+end
+
+local function generatorHookPrompt(prompt)
+    if not generatorAutoState.enabled or generatorAutoState.hookedPrompts[prompt] then
+        return
+    end
+
+    local generator = generatorFindFromPrompt(prompt)
+    if not generator then
+        return
+    end
+
+    generatorAutoState.hookedPrompts[prompt] = generator
+    generatorAutoState.connections[#generatorAutoState.connections + 1] = prompt.Destroying:Connect(function()
+        generatorAutoState.hookedPrompts[prompt] = nil
+        generatorAutoState.activeLoops[generator] = nil
+    end)
+end
+
+local function generatorStep(deltaTime)
+    generatorAutoState.heartbeatElapsed += deltaTime
+    if generatorAutoState.heartbeatElapsed < GENERATOR_HEARTBEAT_INTERVAL then
+        return
+    end
+
+    generatorAutoState.heartbeatElapsed = 0
+    for prompt, generator in pairs(generatorAutoState.hookedPrompts) do
+        if not prompt:IsDescendantOf(game) or not generator:IsDescendantOf(workspace) then
+            generatorAutoState.hookedPrompts[prompt] = nil
+            generatorAutoState.activeLoops[generator] = nil
+            continue
+        end
+
+        if generatorIsLocalPlayerFixing(generator, prompt) then
+            generatorStartSuccessLoop(generator, prompt)
+        end
+    end
+end
+
+local function generatorStartAuto()
+    if generatorAutoState.enabled then
+        return
+    end
+
+    generatorAutoState.enabled = true
+    generatorAutoState.heartbeatElapsed = 0
+
+    generatorAutoState.connections[#generatorAutoState.connections + 1] = proximityPromptService.PromptShown:Connect(function(prompt)
+        generatorHookPrompt(prompt)
+    end)
+
+    generatorAutoState.connections[#generatorAutoState.connections + 1] = runService.Heartbeat:Connect(generatorStep)
+    generatorAutoState.connections[#generatorAutoState.connections + 1] = player.CharacterRemoving:Connect(function()
+        table.clear(generatorAutoState.activeLoops)
+    end)
+end
+
+local function generatorStopAuto()
+    generatorAutoState.enabled = false
+    generatorDisconnectAll()
+    table.clear(generatorAutoState.hookedPrompts)
+    table.clear(generatorAutoState.activeLoops)
+end
+
 local function onPlayerAdded(player)
     local health = player:WaitForChild("PlayerFolder"):WaitForChild("Health")
     health:GetPropertyChangedSignal("Value"):Connect(function()
@@ -4929,6 +5132,14 @@ end, false)
 
 CreateToggle("World", "Auto Crouch Event", function(state)
     setFeature("AutoCrouchEvent", state.Value)
+end, false)
+
+CreateToggle("World", "Auto Generator", function(state)
+    if state.Value then
+        generatorStartAuto()
+    else
+        generatorStopAuto()
+    end
 end, false)
 
 CreateToggle("World", "Remove Fog", function(state)

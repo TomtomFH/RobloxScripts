@@ -7,6 +7,7 @@ local players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local tweenService = game:GetService("TweenService")
 local runService = game:GetService("RunService")
+local proximityPromptService = game:GetService("ProximityPromptService")
 local gameplayFolder = workspace:WaitForChild("GameplayFolder", 60)
 local roomsFolder = gameplayFolder:WaitForChild("Rooms", 60)
 
@@ -2405,7 +2406,6 @@ local featureState = {
 
 local activeESPs = {}
 local activeTracers = {}
-local createESP
 local atmosphereConn = nil
 local playerFogConn = nil
 local playerFogDescConn = nil
@@ -2609,38 +2609,25 @@ local cleanupEyefestationConns
 
 do
     local activeConnections = {}
-    local attributeConnections = {}
     local watchedRooms = {}
-    local roomsFolderConnections = {}
-    local pendingLiveInspections = setmetatable({}, { __mode = "k" })
-    local eyefestationESPs = setmetatable({}, { __mode = "k" })
-
-    local function isEyefestationName(name)
-        return string.find(string.lower(name or ""), "eyefestation", 1, true) ~= nil
-    end
+    local roomsFolderConnection = nil
 
     local function hookActive(active)
         if not active or not active:IsA("BoolValue") or active.Name ~= "Active" then
             return
         end
 
-        if featureState.DisableEyefestation and active.Value ~= false then
-            active.Value = false
-        end
-
         if activeConnections[active] then
             return
         end
 
-        activeConnections[active] = active:GetPropertyChangedSignal("Value"):Connect(function()
-            if featureState.DisableEyefestation and active.Value ~= false then
-                active.Value = false
+        if featureState.DisableEyefestation then
+            active.Value = false
+        end
 
-                task.defer(function()
-                    if featureState.DisableEyefestation and active.Parent and active.Value ~= false then
-                        active.Value = false
-                    end
-                end)
+        activeConnections[active] = active:GetPropertyChangedSignal("Value"):Connect(function()
+            if featureState.DisableEyefestation then
+                active.Value = false
             end
         end)
 
@@ -2655,248 +2642,86 @@ do
         end)
     end
 
-    local function isExactEyefestationActive(active)
-        if not active:IsA("BoolValue") or active.Name ~= "Active" then
-            return false
-        end
-
-        local parent = active.Parent
-        local grandparent = parent and parent.Parent
-
-        return (parent ~= nil and parent.Name == "Eyefestation")
-            or (grandparent ~= nil and grandparent.Name == "Eyefestation")
-    end
-
-    local function hookActiveAttribute(target)
-        if not target or attributeConnections[target] then
+    local function watchEyefestation(eyefestation)
+        if not eyefestation or eyefestation.Name ~= "Eyefestation" then
             return
         end
 
-        if featureState.DisableEyefestation and target:GetAttribute("Active") ~= nil then
-            target:SetAttribute("Active", false)
+        local active = eyefestation:FindFirstChild("Active") or eyefestation:WaitForChild("Active", 5)
+        if active then
+            hookActive(active)
         end
 
-        attributeConnections[target] = target:GetAttributeChangedSignal("Active"):Connect(function()
-            if featureState.DisableEyefestation and target:GetAttribute("Active") ~= false then
-                target:SetAttribute("Active", false)
-            end
-        end)
-
-        target.AncestryChanged:Connect(function(_, parent)
-            if not parent then
-                local connection = attributeConnections[target]
-                if connection then
-                    connection:Disconnect()
-                    attributeConnections[target] = nil
-                end
+        eyefestation.ChildAdded:Connect(function(child)
+            if child.Name == "Active" and child:IsA("BoolValue") then
+                hookActive(child)
             end
         end)
     end
 
-    local function findEyefestationAncestor(instance, room)
-        local current = instance.Parent
-
-        while current do
-            if isEyefestationName(current.Name) then
-                return current
-            end
-            if current == room then
-                break
-            end
-            current = current.Parent
-        end
-
-        return nil
-    end
-
-    local function removeEyefestation(eyefestation)
-        if not featureState.DisableEyefestation
-            or not eyefestation
-            or eyefestation.Name ~= "Eyefestation"
-            or not eyefestation.Parent
-        then
-            return false
-        end
-
-        local parent = eyefestation.Parent
-        local existing = eyefestationESPs[parent]
-
-        if createESP and (not existing or not existing.Parent) then
-            local billboard = createESP(parent, Color3.fromRGB(255, 0, 0), "Eyefestation")
-            if billboard then
-                billboard:SetAttribute("ESPType", "Monster")
-                eyefestationESPs[parent] = billboard
-            end
-        end
-
-        eyefestation:Destroy()
-        return true
-    end
-
-    local function inspectRoomDescendant(room, descendant)
-        if isEyefestationName(descendant.Name) then
-            local eyefestation = descendant.Name == "Eyefestation"
-                and descendant
-                or descendant:FindFirstChild("Eyefestation", true)
-
-            if eyefestation and removeEyefestation(eyefestation) then
-                return
-            end
-        end
-
-        if isExactEyefestationActive(descendant) then
-            hookActive(descendant)
-        elseif isEyefestationName(descendant.Name) then
-            hookActiveAttribute(descendant)
-
-            local active = descendant:FindFirstChild("Active", true)
-            if active and active:IsA("BoolValue") then
-                hookActive(active)
-            end
-        elseif descendant:IsA("BoolValue") and descendant.Name == "Active" then
-            if findEyefestationAncestor(descendant, room) then
-                hookActive(descendant)
-            end
-        end
-    end
-
-    local function scheduleLiveInspection(room, descendant)
-        local relevant = descendant.Name == "Active" or isEyefestationName(descendant.Name)
-        if not relevant then
+    local function watchSpawn(spawn)
+        if not spawn or spawn.Name ~= "EyefestationSpawn" then
             return
         end
 
-        inspectRoomDescendant(room, descendant)
-
-        if not descendant.Parent then
-            return
+        local eyefestation = spawn:FindFirstChild("Eyefestation") or spawn:WaitForChild("Eyefestation", 5)
+        if eyefestation then
+            watchEyefestation(eyefestation)
         end
 
-        if descendant:IsA("BoolValue")
-            and descendant.Name == "Active"
-            and activeConnections[descendant]
-        then
-            return
-        end
-
-        if isEyefestationName(descendant.Name) then
-            local active = descendant:FindFirstChild("Active", true)
-            if active and activeConnections[active] then
-                return
+        spawn.ChildAdded:Connect(function(child)
+            if child.Name == "Eyefestation" then
+                watchEyefestation(child)
             end
-        end
-
-        if pendingLiveInspections[descendant] then
-            return
-        end
-
-        pendingLiveInspections[descendant] = true
-
-        task.spawn(function()
-            for _ = 1, 40 do
-                if not descendant.Parent then
-                    break
-                end
-
-                inspectRoomDescendant(room, descendant)
-
-                if descendant:IsA("BoolValue") and descendant.Name == "Active" then
-                    if activeConnections[descendant] then
-                        break
-                    end
-                elseif isEyefestationName(descendant.Name) then
-                    local active = descendant:FindFirstChild("Active", true)
-                    if active and activeConnections[active] then
-                        break
-                    end
-                end
-
-                task.wait(0.05)
-            end
-
-            pendingLiveInspections[descendant] = nil
         end)
     end
 
-    local function unwatchRoom(room)
-        local record = watchedRooms[room]
-        watchedRooms[room] = nil
-
-        if not record then
+    local function watchInteractables(interactables)
+        if not interactables or interactables.Name ~= "Interactables" then
             return
         end
 
-        for _, connection in ipairs(record.connections) do
-            connection:Disconnect()
+        local spawn = interactables:FindFirstChild("EyefestationSpawn") or interactables:WaitForChild("EyefestationSpawn", 5)
+        if spawn then
+            watchSpawn(spawn)
         end
 
-        for active, connection in pairs(activeConnections) do
-            if active:IsDescendantOf(room) then
-                connection:Disconnect()
-                activeConnections[active] = nil
+        interactables.ChildAdded:Connect(function(child)
+            if child.Name == "EyefestationSpawn" then
+                watchSpawn(child)
             end
-        end
-
-        for target, connection in pairs(attributeConnections) do
-            if target == room or target:IsDescendantOf(room) then
-                connection:Disconnect()
-                attributeConnections[target] = nil
-            end
-        end
+        end)
     end
 
     local function watchRoom(room)
-        if not room or watchedRooms[room] then
+        if not room or not room:IsA("Model") or watchedRooms[room] then
             return
         end
 
-        local record = { connections = {} }
-        watchedRooms[room] = record
-
-        record.connections[#record.connections + 1] = room.DescendantAdded:Connect(function(descendant)
-            scheduleLiveInspection(room, descendant)
-        end)
-
-        local existingEyefestation = room:FindFirstChild("Eyefestation", true)
-        if existingEyefestation then
-            inspectRoomDescendant(room, existingEyefestation)
-        end
-
-        local existingSpawn = room:FindFirstChild("EyefestationSpawn", true)
-        if existingSpawn then
-            inspectRoomDescendant(room, existingSpawn)
-        end
+        watchedRooms[room] = true
 
         task.spawn(function()
-            local queue = { room }
-            local index = 1
-            local processedCount = 0
-
-            while index <= #queue and room.Parent do
-                local parent = queue[index]
-                index = index + 1
-
-                for _, child in ipairs(parent:GetChildren()) do
-                    inspectRoomDescendant(room, child)
-                    table.insert(queue, child)
-                    processedCount = processedCount + 1
-
-                    if processedCount % 100 == 0 then
-                        task.wait()
-                    end
-                end
+            local interactables = room:FindFirstChild("Interactables") or room:WaitForChild("Interactables", 5)
+            if interactables then
+                watchInteractables(interactables)
             end
         end)
 
-        record.connections[#record.connections + 1] = room.AncestryChanged:Connect(function(_, parent)
+        room.ChildAdded:Connect(function(child)
+            if child.Name == "Interactables" then
+                watchInteractables(child)
+            end
+        end)
+
+        room.AncestryChanged:Connect(function(_, parent)
             if not parent then
-                unwatchRoom(room)
+                watchedRooms[room] = nil
             end
         end)
     end
 
     setupEyefestationListener = function()
-        if #roomsFolderConnections > 0 then
+        if roomsFolderConnection then
             return
         end
 
@@ -2904,105 +2729,20 @@ do
             watchRoom(room)
         end
 
-        roomsFolderConnections[#roomsFolderConnections + 1] = roomsFolder.ChildAdded:Connect(function(room)
+        roomsFolderConnection = roomsFolder.ChildAdded:Connect(function(room)
             watchRoom(room)
-        end)
-
-        roomsFolderConnections[#roomsFolderConnections + 1] = roomsFolder.ChildRemoved:Connect(function(room)
-            unwatchRoom(room)
-        end)
-
-        roomsFolderConnections[#roomsFolderConnections + 1] = roomsFolder.DescendantAdded:Connect(function(descendant)
-            scheduleLiveInspection(roomsFolder, descendant)
-        end)
-
-        roomsFolderConnections[#roomsFolderConnections + 1] = workspace.DescendantAdded:Connect(function(descendant)
-            if descendant.Name ~= "Active" and not isEyefestationName(descendant.Name) then
-                return
-            end
-
-            scheduleLiveInspection(workspace, descendant)
-        end)
-
-        roomsFolderConnections[#roomsFolderConnections + 1] = runService.Stepped:Connect(function()
-            if not featureState.DisableEyefestation then
-                return
-            end
-
-            for active in pairs(activeConnections) do
-                if active.Parent and active.Value ~= false then
-                    active.Value = false
-                end
-            end
-        end)
-
-        roomsFolderConnections[#roomsFolderConnections + 1] = runService.Heartbeat:Connect(function()
-            if not featureState.DisableEyefestation then
-                return
-            end
-
-            for active in pairs(activeConnections) do
-                if active.Parent and active.Value then
-                    active.Value = false
-                end
-            end
-
-            for target in pairs(attributeConnections) do
-                if target.Parent and target:GetAttribute("Active") == true then
-                    target:SetAttribute("Active", false)
-                end
-            end
         end)
     end
 
     scanAndDisableAllEyefestation = function()
-        for _, descendant in ipairs(roomsFolder:GetDescendants()) do
-            if isExactEyefestationActive(descendant) then
-                hookActive(descendant)
-            else
-                inspectRoomDescendant(roomsFolder, descendant)
-            end
-        end
-
         for active in pairs(activeConnections) do
             if active and active.Parent and active:IsA("BoolValue") then
                 active.Value = false
             end
         end
-
-        for target in pairs(attributeConnections) do
-            if target and target.Parent and target:GetAttribute("Active") ~= nil then
-                target:SetAttribute("Active", false)
-            end
-        end
-
-        for _, room in ipairs(roomsFolder:GetChildren()) do
-            local eyefestation = room:FindFirstChild("Eyefestation", true)
-            if eyefestation then
-                inspectRoomDescendant(room, eyefestation)
-            end
-
-            local spawn = room:FindFirstChild("EyefestationSpawn", true)
-            if spawn then
-                inspectRoomDescendant(room, spawn)
-            end
-        end
     end
 
     cleanupEyefestationConns = function()
-        for active, connection in pairs(activeConnections) do
-            if not active.Parent then
-                connection:Disconnect()
-                activeConnections[active] = nil
-            end
-        end
-
-        for target, connection in pairs(attributeConnections) do
-            if not target.Parent then
-                connection:Disconnect()
-                attributeConnections[target] = nil
-            end
-        end
     end
 
     setupEyefestationListener()
@@ -3136,14 +2876,14 @@ local function CreateNotification(text, color, duration, bypassPerms)
     end)
 end
 
-createESP = function(target, color, customName)
+local function createESP(target, color, customName)
     if not target then
         return nil
     end
 
     local adornee = target
     if target:IsA("Model") then
-        adornee = target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart", true)
+        adornee = target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart")
     end
 
     if not adornee or not adornee:IsA("BasePart") then
@@ -3192,9 +2932,6 @@ createESP = function(target, color, customName)
     ls.Parent = l
 
     activeESPs[b] = true
-    b.Destroying:Connect(function()
-        activeESPs[b] = nil
-    end)
     return b
 end
 
@@ -3437,252 +3174,122 @@ local function processEntrance(door)
     end)
 end
 
-local trackedItemNames = {}
-local trackedItemESPs = setmetatable({}, { __mode = "k" })
-local itemRoomConnections = {}
+local function detectItem(v)
+    if v:WaitForChild("ProxyPart", 5) then
+        local interactionType = v:GetAttribute("InteractionType")
 
-local function addTrackedNames(names)
-    for _, name in ipairs(names) do
-        trackedItemNames[name] = true
-    end
-end
+        if interactionType == "CurrencyBase" then
+            local amount = tonumber(v:GetAttribute("Amount"))
+            local name = "$" .. amount
+            local color
 
-addTrackedNames({
-    "AltBattery1", "AltBattery2", "AltBattery3", "DefaultBattery1", "DefaultBattery2",
-    "DefaultBattery3", "RoomsBattery", "Neostyk1", "Neostyk2", "Neostyk3",
-    "BigFlashBeacon", "Defib", "Lantern", "Blueprint", "Caps", "DoorsGold1",
-    "DoorsGold2", "DoorsGold3", "GOLDDD", "HypnoCoin", "Regret", "Studs",
-    "SuperCredits", "DrawerLandmine", "Landmine", "Relic", "BeaconGun", "Blacklight", "Book",
-    "CaptainsCompass", "Chainsaw", "CodeBreacher", "Currency50", "Decoder",
-    "DwellerPiece", "eFlashlightHighGrade", "Flamethrower", "FlashBeacon",
-    "FlashBeaconHighGrade", "Flashlight", "Gravelight", "Gummylight", "HealthBoost",
-    "Medkit", "Notebook", "PanicButton", "RemoteC4", "Scanner", "SmallLantern",
-    "Splorglight", "SPRINT", "StunBaton", "ThePrototype", "ToolGun", "WindupLight",
-    "InnerKeyCard", "NormalKeyCard", "PasswordPaper", "RidgeKeyCard",
-    "RedeemerRevolver", "ShopBlacklight", "ShopBook", "ShopCodeBreacher", "ShopDefib",
-    "ShopDwellerPiece", "ShopFlashBeacon", "ShopFlashlight", "ShopGravelight",
-    "ShopGummylight", "ShopHealthBoost", "ShopLantern", "ShopMedkit", "ShopSPRINT",
-    "ShopWindupLight", "BlueToyRemote", "CrateBlacklight", "CrateBook",
-    "CrateCodeBreacher", "CrateDefib", "CrateFlashBeacon", "CrateFlashlight",
-    "CrateGravelight", "CrateGummylight", "CrateHealthBoost", "CrateLantern",
-    "CrateMedkit", "CrateWindupLight", "DoubleSprint", "BiggerStatue", "DiVine",
-    "MeatWallDweller", "NoGood", "Rebarb", "RottenWallDweller", "Searchlights",
-    "Statue", "Styx", "TheInvisibleMan", "Tripwire", "Turret", "WallDweller", "LeftPage"
-})
-
-local function addNumberedItems(prefix, numbers)
-    for _, number in ipairs(numbers) do
-        trackedItemNames[prefix .. number] = true
-    end
-end
-
-local oneToSeven = { 1, 2, 3, 4, 5, 6, 7 }
-local oneToEight = { 1, 2, 3, 4, 5, 6, 7, 8 }
-local oneToTen = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }
-local oneToTwelve = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }
-local fifteenVariants = { 1, 2, 3, 4, 5, 6, 7, 9, 10 }
-
-addNumberedItems("Currency5-", oneToSeven)
-addNumberedItems("Currency10-", oneToEight)
-addNumberedItems("Currency15-", fifteenVariants)
-addNumberedItems("Currency25-", oneToTwelve)
-addNumberedItems("Currency50-", oneToEight)
-addNumberedItems("Currency100-", oneToTen)
-addNumberedItems("Currency200-", oneToSeven)
-addNumberedItems("UCurrency5-", oneToSeven)
-addNumberedItems("UCurrency10-", oneToEight)
-addNumberedItems("UCurrency15-", fifteenVariants)
-addNumberedItems("UCurrency25-", oneToTwelve)
-addNumberedItems("UCurrency50-", oneToEight)
-
-local dangerItemNames = {
-    DrawerLandmine = "Landmine",
-    Landmine = "Landmine",
-    RedeemerRevolver = "Revolver",
-    BiggerStatue = "Bigger Statue",
-    DiVine = "DiVine",
-    MeatWallDweller = "Meat Wall Dweller",
-    NoGood = "NoGood",
-    Rebarb = "Rebarb",
-    RottenWallDweller = "Rotten Wall Dweller",
-    Searchlights = "Searchlights",
-    Statue = "Statue",
-    Styx = "Styx",
-    TheInvisibleMan = "The Invisible Man",
-    Tripwire = "Tripwire",
-    Turret = "Turret",
-    WallDweller = "Wall Dweller"
-}
-
-local batteryItemNames = {
-    AltBattery1 = true,
-    AltBattery2 = true,
-    AltBattery3 = true,
-    DefaultBattery1 = true,
-    DefaultBattery2 = true,
-    DefaultBattery3 = true,
-    RoomsBattery = true,
-    Neostyk1 = true,
-    Neostyk2 = true,
-    Neostyk3 = true
-}
-
-local function getCurrencyAmount(item)
-    local amount = tonumber(item:GetAttribute("Amount"))
-    if amount then
-        return amount
-    end
-
-    return tonumber(item.Name:match("^U?Currency(%d+)%-"))
-end
-
-local function getItemVisual(item)
-    local interactionType = item:GetAttribute("InteractionType")
-
-    if dangerItemNames[item.Name] then
-        return Color3.fromRGB(255, 0, 0), dangerItemNames[item.Name]
-    elseif item.Name == "LeftPage" then
-        return Color3.fromRGB(0, 255, 255), "Document"
-    end
-
-    local amount = getCurrencyAmount(item)
-    if interactionType == "CurrencyBase" or amount then
-        amount = amount or 0
-
-        if amount < 25 then
-            return Color3.fromRGB(0, 100, 0), "$" .. amount
-        elseif amount < 50 then
-            return Color3.fromRGB(255, 150, 0), "$" .. amount
-        elseif amount < 500 then
-            return Color3.fromRGB(255, 255, 100), "$" .. amount
-        end
-
-        return Color3.fromRGB(255, 0, 255), "$" .. amount
-    end
-
-    if item.Name == "PasswordPaper" or interactionType == "PasswordPaper" then
-        return Color3.fromRGB(0, 150, 200), "Password"
-    elseif item.Name == "InnerKeyCard" or interactionType == "InnerKeyCard" then
-        return Color3.fromRGB(0, 150, 200), "Purple Keycard"
-    elseif item.Name == "NormalKeyCard" or item.Name == "RidgeKeyCard" or interactionType == "KeyCard" then
-        return Color3.fromRGB(0, 150, 200), "Keycard"
-    elseif batteryItemNames[item.Name] or interactionType == "Battery" then
-        return Color3.fromRGB(125, 100, 50), "Battery"
-    elseif interactionType == "ItemBase" then
-        return Color3.fromRGB(150, 255, 100), nil
-    end
-
-    return nil, nil
-end
-
-local function detectItem(item)
-    if not item:IsA("Model") or not trackedItemNames[item.Name] then
-        return
-    end
-
-    local function createItemESP()
-        local existing = trackedItemESPs[item]
-        if existing and existing.Parent then
-            return true
-        end
-
-        if not (item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart", true)) then
-            return false
-        end
-
-        local color, label = getItemVisual(item)
-        local billboard = createESP(item, color, label)
-
-        if billboard then
-            billboard:SetAttribute("ESPType", "Item")
-            trackedItemESPs[item] = billboard
-            return true
-        end
-
-        return false
-    end
-
-    if featureState.ItemESP and dangerItemNames[item.Name] and createItemESP() then
-        return
-    end
-
-    task.spawn(function()
-        for _ = 1, 20 do
-            if not item.Parent or not featureState.ItemESP then
-                return
+            if amount < 25 then
+                color = Color3.fromRGB(0, 100, 0)
+            elseif amount < 50 then
+                color = Color3.fromRGB(255, 150, 0)
+            elseif amount < 100 then
+                color = Color3.fromRGB(255, 255, 100)
+            elseif amount < 500 then
+                color = Color3.fromRGB(255, 255, 100)
+            else
+                color = Color3.fromRGB(255, 0, 255)
             end
 
-            if createItemESP() then
-                return
+            if featureState.ItemESP then
+                local b = createESP(v, color, name)
+                if b and b.SetAttribute then
+                    pcall(function()
+                        b:SetAttribute("ESPType", "Item")
+                    end)
+                end
             end
-
-            task.wait(0.1)
+        elseif interactionType == "KeyCard" then
+            if featureState.ItemESP then
+                local b = createESP(v, Color3.fromRGB(0, 150, 200), "Keycard")
+                if b and b.SetAttribute then
+                    pcall(function()
+                        b:SetAttribute("ESPType", "Item")
+                    end)
+                end
+            end
+        elseif interactionType == "PasswordPaper" then
+            if featureState.ItemESP then
+                local b = createESP(v, Color3.fromRGB(0, 150, 200), "Password")
+                if b and b.SetAttribute then
+                    pcall(function()
+                        b:SetAttribute("ESPType", "Item")
+                    end)
+                end
+            end
+        elseif interactionType == "InnerKeyCard" then
+            if featureState.ItemESP then
+                local b = createESP(v, Color3.fromRGB(0, 150, 200), "Purple Keycard")
+                if b and b.SetAttribute then
+                    pcall(function()
+                        b:SetAttribute("ESPType", "Item")
+                    end)
+                end
+            end
+        elseif interactionType == "ItemBase" then
+            if featureState.ItemESP then
+                local b = createESP(v, Color3.fromRGB(150, 255, 100))
+                if b and b.SetAttribute then
+                    pcall(function()
+                        b:SetAttribute("ESPType", "Item")
+                    end)
+                end
+            end
+        elseif interactionType == "Battery" then
+            if featureState.ItemESP then
+                local b = createESP(v, Color3.fromRGB(125, 100, 50), "Battery")
+                if b and b.SetAttribute then
+                    pcall(function()
+                        b:SetAttribute("ESPType", "Item")
+                    end)
+                end
+            end
+        else
+            if featureState.ItemESP then
+                local b = createESP(v)
+                if b and b.SetAttribute then
+                    pcall(function()
+                        b:SetAttribute("ESPType", "Item")
+                    end)
+                end
+            end
         end
+    end
+end
+
+local function handleSpawn(spawn)
+    for _, v in ipairs(spawn:GetChildren()) do
+        detectItem(v)
+    end
+    spawn.ChildAdded:Connect(function(v)
+        detectItem(v)
     end)
 end
 
-local function scanRoomItems(room)
-    task.spawn(function()
-        local queue = { room }
-        local index = 1
-        local processedCount = 0
-        local regularItems = {}
-
-        while index <= #queue and room.Parent do
-            local parent = queue[index]
-            index = index + 1
-
-            for _, child in ipairs(parent:GetChildren()) do
-                if child:IsA("Model") and trackedItemNames[child.Name] then
-                    if dangerItemNames[child.Name] then
-                        detectItem(child)
-                    else
-                        table.insert(regularItems, child)
-                    end
-                end
-
-                table.insert(queue, child)
-                processedCount = processedCount + 1
-
-                if processedCount % 100 == 0 then
-                    task.wait()
-                end
-            end
-        end
-
-        for itemIndex, item in ipairs(regularItems) do
-            if not room.Parent then
-                return
-            end
-
-            detectItem(item)
-
-            if itemIndex % 50 == 0 then
-                task.wait()
-            end
-        end
+local function handleSpawnLocation(spawnLocation)
+    for _, v in ipairs(spawnLocation:GetChildren()) do
+        handleSpawn(v)
+    end
+    spawnLocation.ChildAdded:Connect(function(v)
+        handleSpawn(v)
     end)
 end
 
 local function handleRoom(room)
-    if itemRoomConnections[room] then
-        return
+    for _, v in ipairs(room:GetDescendants()) do
+        if v.Name == "SpawnLocations" and v:IsA("Folder") then
+            handleSpawnLocation(v)
+        end
     end
-
-    scanRoomItems(room)
-
-    itemRoomConnections[room] = room.DescendantAdded:Connect(function(descendant)
-        detectItem(descendant)
+    room.DescendantAdded:Connect(function(v)
+        if v.Name == "SpawnLocations" and v:IsA("Folder") then
+            handleSpawnLocation(v)
+        end
     end)
-end
-
-local function unhandleRoom(room)
-    local connection = itemRoomConnections[room]
-    itemRoomConnections[room] = nil
-
-    if connection then
-        connection:Disconnect()
-    end
 end
 
 for _, room in ipairs(roomsFolder:GetChildren()) do
@@ -3695,33 +3302,6 @@ roomsFolder.ChildAdded:Connect(function(newRoom)
     task.spawn(function()
         handleRoom(newRoom)
     end)
-end)
-
-roomsFolder.ChildRemoved:Connect(unhandleRoom)
-
-monstersFolder = gameplayFolder:FindFirstChild("Monsters") or monstersFolder
-if monstersFolder then
-    task.spawn(function()
-        handleRoom(monstersFolder)
-    end)
-end
-
-gameplayFolder.ChildAdded:Connect(function(child)
-    if child.Name == "Monsters" then
-        monstersFolder = child
-        task.spawn(function()
-            handleRoom(child)
-        end)
-    end
-end)
-
-gameplayFolder.ChildRemoved:Connect(function(child)
-    if child == monstersFolder or child.Name == "Monsters" then
-        unhandleRoom(child)
-        if child == monstersFolder then
-            monstersFolder = nil
-        end
-    end
 end)
 
 local workspaceTargetList = {{
@@ -3855,11 +3435,6 @@ local function normalizeName(str)
     return tostring(str):lower():gsub("%s+", "")
 end
 
-local workspaceTargetsByName = {}
-for _, target in ipairs(workspaceTargetList) do
-    workspaceTargetsByName[normalizeName(target.Name)] = target
-end
-
 local function findTarget(target, childName, callback)
     task.spawn(function()
         local found = childName and target:WaitForChild(childName, 1) or target
@@ -3869,76 +3444,37 @@ local function findTarget(target, childName, callback)
     end)
 end
 
-local function processWorkspaceTarget(child)
-    if not (child:IsA("BasePart") or child:IsA("Model")) then
-        return
-    end
-
-    local normalizedName = normalizeName(child.Name)
-    local target = workspaceTargetsByName[normalizedName]
-
-    if not target and string.find(normalizedName, "walldweller", 1, true) then
-        target = {
-            Color = Color3.fromRGB(255, 0, 0),
-            Label = splitCamelCase(child.Name)
-        }
-    end
-
-    if not target then
-        return
-    end
-
+workspace.ChildAdded:Connect(function(child)
     task.spawn(function()
-        local txt = target.CustomLabel or target.Label
-        CreateNotification(txt, target.Color, 2.5)
-        if target.remove then
-            child:Destroy()
+        if not (child:IsA("BasePart") or child:IsA("Model")) then
             return
         end
-        findTarget(child, target.ChildName, function(targetchild)
-            if targetchild then
-                if featureState.MonsterVisuals then
-                    local b = createESP(targetchild, target.Color, target.Label)
-                    if b and b.SetAttribute then
-                        pcall(function()
-                            b:SetAttribute("ESPType", "Monster")
-                        end)
-                    end
-                    -- Monster visuals include tracers
-                    createTracer(targetchild, target.Color, "Monster")
+        for _, target in ipairs(workspaceTargetList) do
+            if normalizeName(child.Name) == normalizeName(target.Name) then
+                local txt = target.CustomLabel or target.Label
+                CreateNotification(txt, target.Color, 2.5)
+                if target.remove then
+                    child:Destroy()
+                    return
                 end
+                findTarget(child, target.ChildName, function(targetchild)
+                    if targetchild then
+                        if featureState.MonsterVisuals then
+                            local b = createESP(targetchild, target.Color, target.Label)
+                            if b and b.SetAttribute then
+                                pcall(function()
+                                    b:SetAttribute("ESPType", "Monster")
+                                end)
+                            end
+                            -- Monster visuals include tracers
+                            createTracer(targetchild, target.Color, "Monster")
+                        end
+                    end
+                end)
+                return
             end
-        end)
+        end
     end)
-end
-
-workspace.ChildAdded:Connect(processWorkspaceTarget)
-
-local monsterTargetFolderConnection = nil
-
-local function hookMonsterTargetFolder(folder)
-    if monsterTargetFolderConnection then
-        monsterTargetFolderConnection:Disconnect()
-        monsterTargetFolderConnection = nil
-    end
-
-    if folder then
-        monsterTargetFolderConnection = folder.DescendantAdded:Connect(processWorkspaceTarget)
-    end
-end
-
-hookMonsterTargetFolder(monstersFolder)
-
-gameplayFolder.ChildAdded:Connect(function(child)
-    if child.Name == "Monsters" then
-        hookMonsterTargetFolder(child)
-    end
-end)
-
-gameplayFolder.ChildRemoved:Connect(function(child)
-    if child.Name == "Monsters" then
-        hookMonsterTargetFolder(nil)
-    end
 end)
 
 -- TODO: fix existing items not getting an esp
@@ -4011,12 +3547,21 @@ local function refreshVisuals()
 end
 
 local function scanExistingItemsInRooms()
+    -- iterate rooms and spawn locations to find existing items and apply ESP/tracer
     for _, room in ipairs(roomsFolder:GetChildren()) do
-        scanRoomItems(room)
-    end
-
-    if monstersFolder and monstersFolder.Parent then
-        scanRoomItems(monstersFolder)
+        for _, desc in ipairs(room:GetDescendants()) do
+            if desc.Name == "SpawnLocations" and desc:IsA("Folder") then
+                for _, spawn in ipairs(desc:GetChildren()) do
+                    for _, item in ipairs(spawn:GetChildren()) do
+                        task.spawn(function()
+                            pcall(function()
+                                detectItem(item)
+                            end)
+                        end)
+                    end
+                end
+            end
+        end
     end
 end
 
@@ -5298,13 +4843,10 @@ end
 
 local generatorAutoState = {
     enabled = false,
-    hookedGenerators = {},
-    roomConnections = {},
+    hookedPrompts = {},
     activeLoops = {},
     warningGuis = {},
-    mainConnections = {},
-    pendingGenerators = setmetatable({}, { __mode = "k" }),
-    scanId = 0
+    connections = {}
 }
 
 local GENERATOR_SUCCESS_INTERVAL = 0.31
@@ -5347,27 +4889,31 @@ local function generatorShowWarning(generator)
     }):Play()
 end
 
-local function generatorDisconnectList(connections)
-    for i = #connections, 1, -1 do
-        local connection = connections[i]
+local function generatorDisconnectAll()
+    for i = #generatorAutoState.connections, 1, -1 do
+        local connection = generatorAutoState.connections[i]
         if connection then
             connection:Disconnect()
         end
 
-        connections[i] = nil
+        generatorAutoState.connections[i] = nil
     end
 end
 
-local function generatorGetParts(generator)
-    if not generator or generator.Name ~= "Generator" then
+local function generatorFindFromPrompt(prompt)
+    local proxyPart = prompt and prompt.Parent
+    if not proxyPart or proxyPart.Name ~= "ProxyPart" then
+        return nil
+    end
+
+    local generator = proxyPart.Parent
+    if not generator then
         return nil
     end
 
     local remoteEvent = generator:FindFirstChild("RemoteEvent")
     local remoteFunction = generator:FindFirstChild("RemoteFunction")
     local fixed = generator:FindFirstChild("Fixed")
-    local proxyPart = generator:FindFirstChild("ProxyPart")
-    local prompt = proxyPart and proxyPart:FindFirstChildWhichIsA("ProximityPrompt")
 
     if not remoteEvent or not remoteEvent:IsA("RemoteEvent") then
         return nil
@@ -5381,11 +4927,7 @@ local function generatorGetParts(generator)
         return nil
     end
 
-    if not prompt then
-        return nil
-    end
-
-    return remoteEvent, prompt
+    return generator
 end
 
 local function generatorStopLoop(generator)
@@ -5415,9 +4957,7 @@ local function generatorStartLoop(generator, prompt)
             and prompt.Parent
             and prompt.Enabled == false
         do
-            pcall(function()
-                remoteEvent:FireServer(true)
-            end)
+            remoteEvent:FireServer(true)
             task.wait(GENERATOR_SUCCESS_INTERVAL)
         end
 
@@ -5436,141 +4976,32 @@ local function generatorUpdatePrompt(generator, prompt)
     end
 end
 
-local function generatorUnhook(generator)
-    local record = generatorAutoState.hookedGenerators[generator]
-    generatorAutoState.hookedGenerators[generator] = nil
-
-    if record then
-        generatorDisconnectList(record.connections)
-    end
-
-    generatorStopLoop(generator)
-end
-
-local function generatorHookGenerator(generator)
-    if not generatorAutoState.enabled or generatorAutoState.hookedGenerators[generator] then
+local function generatorHookPrompt(prompt)
+    if not generatorAutoState.enabled or generatorAutoState.hookedPrompts[prompt] then
         return
     end
 
-    local remoteEvent, prompt = generatorGetParts(generator)
-    if not remoteEvent then
+    local generator = generatorFindFromPrompt(prompt)
+    if not generator then
         return
     end
 
-    local record = {
-        prompt = prompt,
-        connections = {}
-    }
-    generatorAutoState.hookedGenerators[generator] = record
+    generatorAutoState.hookedPrompts[prompt] = generator
 
-    record.connections[#record.connections + 1] = prompt:GetPropertyChangedSignal("Enabled"):Connect(function()
+    generatorAutoState.connections[#generatorAutoState.connections + 1] = prompt:GetPropertyChangedSignal("Enabled"):Connect(function()
         generatorUpdatePrompt(generator, prompt)
     end)
 
-    record.connections[#record.connections + 1] = remoteEvent.OnClientEvent:Connect(function()
+    generatorAutoState.connections[#generatorAutoState.connections + 1] = generator.RemoteEvent.OnClientEvent:Connect(function()
         generatorStopLoop(generator)
     end)
 
-    record.connections[#record.connections + 1] = prompt.Destroying:Connect(function()
-        generatorUnhook(generator)
-    end)
-
-    record.connections[#record.connections + 1] = generator.Destroying:Connect(function()
-        generatorUnhook(generator)
+    generatorAutoState.connections[#generatorAutoState.connections + 1] = prompt.Destroying:Connect(function()
+        generatorAutoState.hookedPrompts[prompt] = nil
+        generatorStopLoop(generator)
     end)
 
     generatorUpdatePrompt(generator, prompt)
-end
-
-local function generatorDetect(descendant)
-    if not generatorAutoState.enabled
-        or descendant.Name ~= "Generator"
-        or generatorAutoState.hookedGenerators[descendant]
-        or generatorAutoState.pendingGenerators[descendant]
-    then
-        return
-    end
-
-    generatorAutoState.pendingGenerators[descendant] = true
-
-    task.spawn(function()
-        for _ = 1, 20 do
-            if not generatorAutoState.enabled or not descendant.Parent then
-                generatorAutoState.pendingGenerators[descendant] = nil
-                return
-            end
-
-            generatorHookGenerator(descendant)
-            if generatorAutoState.hookedGenerators[descendant] then
-                generatorAutoState.pendingGenerators[descendant] = nil
-                return
-            end
-
-            task.wait(0.1)
-        end
-
-        generatorAutoState.pendingGenerators[descendant] = nil
-    end)
-end
-
-local function generatorUnwatchRoom(room)
-    local connection = generatorAutoState.roomConnections[room]
-    generatorAutoState.roomConnections[room] = nil
-
-    if connection then
-        connection:Disconnect()
-    end
-
-    for generator in pairs(generatorAutoState.hookedGenerators) do
-        if generator:IsDescendantOf(room) then
-            generatorUnhook(generator)
-        end
-    end
-end
-
-local function generatorWatchRoom(room)
-    if not generatorAutoState.enabled or generatorAutoState.roomConnections[room] then
-        return
-    end
-
-    generatorAutoState.roomConnections[room] = room.DescendantAdded:Connect(generatorDetect)
-
-    local scanId = generatorAutoState.scanId
-    task.spawn(function()
-        local queue = { room }
-        local index = 1
-        local processedCount = 0
-
-        while generatorAutoState.enabled
-            and generatorAutoState.scanId == scanId
-            and index <= #queue
-            and room.Parent
-        do
-            local parent = queue[index]
-            index = index + 1
-
-            for _, child in ipairs(parent:GetChildren()) do
-                generatorDetect(child)
-                table.insert(queue, child)
-                processedCount = processedCount + 1
-
-                if processedCount % 100 == 0 then
-                    task.wait()
-                end
-            end
-        end
-    end)
-end
-
-local function generatorStopAllLoops()
-    local generators = {}
-    for generator in pairs(generatorAutoState.activeLoops) do
-        table.insert(generators, generator)
-    end
-
-    for _, generator in ipairs(generators) do
-        generatorStopLoop(generator)
-    end
 end
 
 local function generatorStartAuto()
@@ -5579,48 +5010,24 @@ local function generatorStartAuto()
     end
 
     generatorAutoState.enabled = true
-    generatorAutoState.scanId += 1
 
-    for _, room in ipairs(roomsFolder:GetChildren()) do
-        generatorWatchRoom(room)
-    end
-
-    generatorAutoState.mainConnections[#generatorAutoState.mainConnections + 1] = roomsFolder.ChildAdded:Connect(function(room)
-        generatorWatchRoom(room)
+    generatorAutoState.connections[#generatorAutoState.connections + 1] = proximityPromptService.PromptShown:Connect(function(prompt)
+        generatorHookPrompt(prompt)
     end)
 
-    generatorAutoState.mainConnections[#generatorAutoState.mainConnections + 1] = roomsFolder.ChildRemoved:Connect(function(room)
-        generatorUnwatchRoom(room)
-    end)
-
-    generatorAutoState.mainConnections[#generatorAutoState.mainConnections + 1] = player.CharacterRemoving:Connect(function()
-        generatorStopAllLoops()
+    generatorAutoState.connections[#generatorAutoState.connections + 1] = player.CharacterRemoving:Connect(function()
+        table.clear(generatorAutoState.activeLoops)
     end)
 end
 
 local function generatorStopAuto()
     generatorAutoState.enabled = false
-    generatorAutoState.scanId += 1
-    generatorDisconnectList(generatorAutoState.mainConnections)
-
-    local rooms = {}
-    for room in pairs(generatorAutoState.roomConnections) do
-        table.insert(rooms, room)
+    generatorDisconnectAll()
+    table.clear(generatorAutoState.hookedPrompts)
+    table.clear(generatorAutoState.activeLoops)
+    for generator in pairs(generatorAutoState.warningGuis) do
+        generatorHideWarning(generator)
     end
-    for _, room in ipairs(rooms) do
-        generatorUnwatchRoom(room)
-    end
-
-    local generators = {}
-    for generator in pairs(generatorAutoState.hookedGenerators) do
-        table.insert(generators, generator)
-    end
-    for _, generator in ipairs(generators) do
-        generatorUnhook(generator)
-    end
-
-    generatorStopAllLoops()
-    table.clear(generatorAutoState.pendingGenerators)
 end
 
 local function onPlayerAdded(player)

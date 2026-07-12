@@ -5359,7 +5359,7 @@ local function generatorDisconnectList(connections)
 end
 
 local function generatorGetParts(generator)
-    if not generator or generator.Name ~= "Generator" then
+    if not generator then
         return nil
     end
 
@@ -5483,33 +5483,51 @@ local function generatorHookGenerator(generator)
 end
 
 local function generatorDetect(descendant)
-    if not generatorAutoState.enabled
-        or descendant.Name ~= "Generator"
-        or generatorAutoState.hookedGenerators[descendant]
-        or generatorAutoState.pendingGenerators[descendant]
+    if not generatorAutoState.enabled then
+        return
+    end
+
+    local generator = nil
+
+    if descendant.Name == "Generator" then
+        generator = descendant
+    elseif descendant.Name == "ProxyPart" then
+        generator = descendant.Parent
+    elseif descendant:IsA("ProximityPrompt") and descendant.Parent and descendant.Parent.Name == "ProxyPart" then
+        generator = descendant.Parent.Parent
+    elseif descendant.Name == "RemoteEvent"
+        or descendant.Name == "RemoteFunction"
+        or descendant.Name == "Fixed"
+    then
+        generator = descendant.Parent
+    end
+
+    if not generator
+        or generatorAutoState.hookedGenerators[generator]
+        or generatorAutoState.pendingGenerators[generator]
     then
         return
     end
 
-    generatorAutoState.pendingGenerators[descendant] = true
+    generatorAutoState.pendingGenerators[generator] = true
 
     task.spawn(function()
         for _ = 1, 20 do
-            if not generatorAutoState.enabled or not descendant.Parent then
-                generatorAutoState.pendingGenerators[descendant] = nil
+            if not generatorAutoState.enabled or not generator.Parent then
+                generatorAutoState.pendingGenerators[generator] = nil
                 return
             end
 
-            generatorHookGenerator(descendant)
-            if generatorAutoState.hookedGenerators[descendant] then
-                generatorAutoState.pendingGenerators[descendant] = nil
+            generatorHookGenerator(generator)
+            if generatorAutoState.hookedGenerators[generator] then
+                generatorAutoState.pendingGenerators[generator] = nil
                 return
             end
 
             task.wait(0.1)
         end
 
-        generatorAutoState.pendingGenerators[descendant] = nil
+        generatorAutoState.pendingGenerators[generator] = nil
     end)
 end
 

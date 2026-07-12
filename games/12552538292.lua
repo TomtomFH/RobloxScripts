@@ -2399,6 +2399,7 @@ local featureState = {
     MonsterVisuals = false,
     ForceHidePopups = false,
     DisableEyefestation = false,
+    RemoveLopee = false,
     AutoCrouchEvent = false,
     RemoveAtmosphere = false
 }
@@ -4024,6 +4025,69 @@ local function scanExistingItemsInRooms()
     end
 end
 
+local lopeeConnections = {}
+local lopeeLoopId = 0
+
+local function isLopeeObject(object)
+    return object.Name == "Lopee"
+        or object.Name == "LopeeGlitch"
+        or object.Name == "LopeePart"
+end
+
+local function removeLopeeObject(object)
+    if featureState.RemoveLopee and object and object.Parent and isLopeeObject(object) then
+        object:Destroy()
+    end
+end
+
+local function stopRemoveLopee()
+    lopeeLoopId += 1
+
+    for index = #lopeeConnections, 1, -1 do
+        lopeeConnections[index]:Disconnect()
+        lopeeConnections[index] = nil
+    end
+end
+
+local function startRemoveLopee()
+    stopRemoveLopee()
+    runService:UnbindFromRenderStep("Lopee")
+
+    task.spawn(function()
+        local processedCount = 0
+        for _, object in ipairs(workspace:GetDescendants()) do
+            removeLopeeObject(object)
+            processedCount += 1
+
+            if processedCount % 200 == 0 then
+                task.wait()
+            end
+        end
+    end)
+
+    for _, object in ipairs(playerGui:GetChildren()) do
+        if object.Name == "Pixel" then
+            object:Destroy()
+        end
+    end
+
+    lopeeConnections[#lopeeConnections + 1] = workspace.DescendantAdded:Connect(removeLopeeObject)
+    lopeeConnections[#lopeeConnections + 1] = playerGui.ChildAdded:Connect(function(object)
+        if featureState.RemoveLopee and object.Name == "Pixel" then
+            object:Destroy()
+        end
+    end)
+
+    lopeeLoopId += 1
+    local loopId = lopeeLoopId
+    task.spawn(function()
+        while featureState.RemoveLopee and lopeeLoopId == loopId do
+            runService:UnbindFromRenderStep("Lopee")
+            task.wait(0.25)
+        end
+    end)
+end
+
 local function setFeature(name, enabled)
     featureState[name] = enabled
     if name == "ItemESP" then
@@ -4039,6 +4103,12 @@ local function setFeature(name, enabled)
             setupAtmosphereListener()
         else
             cleanupAtmosphereListener()
+        end
+    elseif name == "RemoveLopee" then
+        if enabled then
+            startRemoveLopee()
+        else
+            stopRemoveLopee()
         end
     elseif name == "AutoCrouchEvent" then
         if enabled then
@@ -5771,6 +5841,10 @@ end, false)
 
 CreateToggle("World", "Disable Eyefestation", function(state)
     setFeature("DisableEyefestation", state.Value)
+end, false)
+
+CreateToggle("World", "Remove Lopee", function(state)
+    setFeature("RemoveLopee", state.Value)
 end, false)
 
 CreateToggle("World", "Auto Crouch Event", function(state)

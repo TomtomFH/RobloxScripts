@@ -5393,6 +5393,42 @@ local function generatorStopLoop(generator)
     generatorHideWarning(generator)
 end
 
+local function generatorHideESP(generator)
+    local record = generatorAutoState.hookedGenerators[generator]
+    local billboard = record and record.esp or nil
+
+    if record then
+        record.esp = nil
+    end
+
+    if billboard and billboard.Parent then
+        billboard:Destroy()
+    end
+end
+
+local function generatorUpdateESP(generator, prompt)
+    local record = generatorAutoState.hookedGenerators[generator]
+    if not record then
+        return
+    end
+
+    if not prompt.Enabled then
+        generatorHideESP(generator)
+        return
+    end
+
+    if record.esp and record.esp.Parent then
+        return
+    end
+
+    local proxyPart = prompt.Parent
+    local billboard = createESP(proxyPart, Color3.fromRGB(255, 245, 180), "Generator")
+    if billboard then
+        billboard:SetAttribute("ESPType", "Generator")
+        record.esp = billboard
+    end
+end
+
 local function generatorStartLoop(generator, prompt)
     if generatorAutoState.activeLoops[generator] then
         return
@@ -5429,6 +5465,8 @@ local function generatorStartLoop(generator, prompt)
 end
 
 local function generatorUpdatePrompt(generator, prompt)
+    generatorUpdateESP(generator, prompt)
+
     if prompt.Enabled == false then
         generatorStartLoop(generator, prompt)
     else
@@ -5438,12 +5476,13 @@ end
 
 local function generatorUnhook(generator)
     local record = generatorAutoState.hookedGenerators[generator]
-    generatorAutoState.hookedGenerators[generator] = nil
 
     if record then
+        generatorHideESP(generator)
         generatorDisconnectList(record.connections)
     end
 
+    generatorAutoState.hookedGenerators[generator] = nil
     generatorStopLoop(generator)
 end
 
@@ -5459,6 +5498,7 @@ local function generatorHookGenerator(generator)
 
     local record = {
         prompt = prompt,
+        esp = nil,
         connections = {}
     }
     generatorAutoState.hookedGenerators[generator] = record
@@ -5468,6 +5508,7 @@ local function generatorHookGenerator(generator)
     end)
 
     record.connections[#record.connections + 1] = remoteEvent.OnClientEvent:Connect(function()
+        generatorHideESP(generator)
         generatorStopLoop(generator)
     end)
 

@@ -3576,7 +3576,7 @@ local function getItemVisual(item)
 end
 
 local function detectItem(item)
-    if not item:IsA("Model") or not trackedItemNames[item.Name] then
+    if not (item:IsA("Model") or item:IsA("BasePart")) or not trackedItemNames[item.Name] then
         return
     end
 
@@ -3586,7 +3586,11 @@ local function detectItem(item)
             return true
         end
 
-        if not (item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart", true)) then
+        local hasVisualPart = item:IsA("BasePart")
+            or item.PrimaryPart
+            or item:FindFirstChildWhichIsA("BasePart", true)
+
+        if not hasVisualPart then
             return false
         end
 
@@ -3633,7 +3637,7 @@ local function scanRoomItems(room)
             index = index + 1
 
             for _, child in ipairs(parent:GetChildren()) do
-                if child:IsA("Model") and trackedItemNames[child.Name] then
+                if (child:IsA("Model") or child:IsA("BasePart")) and trackedItemNames[child.Name] then
                     if dangerItemNames[child.Name] then
                         detectItem(child)
                     else

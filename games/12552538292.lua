@@ -3861,8 +3861,14 @@ local function normalizeName(str)
 end
 
 local workspaceTargetsByName = {}
+local removableWorkspaceTargets = {}
 for _, target in ipairs(workspaceTargetList) do
-    workspaceTargetsByName[normalizeName(target.Name)] = target
+    local normalizedName = normalizeName(target.Name)
+    workspaceTargetsByName[normalizedName] = target
+
+    if target.remove then
+        removableWorkspaceTargets[normalizedName] = true
+    end
 end
 
 local function findTarget(target, childName, callback)
@@ -3918,6 +3924,24 @@ local function processWorkspaceTarget(child)
 end
 
 workspace.ChildAdded:Connect(processWorkspaceTarget)
+
+task.spawn(function()
+    local processedCount = 0
+
+    for _, object in ipairs(workspace:GetDescendants()) do
+        if object.Parent
+            and (object:IsA("BasePart") or object:IsA("Model"))
+            and removableWorkspaceTargets[normalizeName(object.Name)]
+        then
+            object:Destroy()
+        end
+
+        processedCount += 1
+        if processedCount % 200 == 0 then
+            task.wait()
+        end
+    end
+end)
 
 local monsterTargetFolderConnection = nil
 

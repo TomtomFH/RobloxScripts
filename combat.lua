@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
 local localPlayer = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -19,10 +20,37 @@ local tracerStartPosition = "Bottom"
 local ignoreTeammatesEnabled = false
 local aimbotEnabled = false
 local aimbotAimPart = "Head"
+local randomAimParts = {}
+local visibleAimParts = {}
 local aimbotTeamCheckEnabled = true
 local aimbotWallCheckEnabled = true
+local aimbotVirtualInputEnabled = false
+local aimbotVirtualAimSpeed = "Immediate"
+local aimbotPredictionEnabled = true
+local aimbotPredictionTarget = nil
+local aimbotLastPredictionError = nil
+local aimbotLastPredictionTime = nil
+local aimbotMeasuredScreenSpeed = nil
+local aimbotVirtualResponse = nil
+local aimbotLastVirtualTarget = nil
+local aimbotLastVirtualError = nil
+local aimbotLastVirtualCommand = nil
+local aimbotImmediateFallbackResponse = 256
+local aimbotImmediateMaxCommand = 240
+local aimbotImmediateLocked = false
+local aimbotImmediateLockedTarget = nil
+local aimbotImmediateLockRadius = 3
+local aimbotImmediateReleaseRadius = 6
 local rightMouseHeld = false
 local aimbotConnection = nil
+local triggerbotEnabled = false
+local triggerbotMouseButton = "Left Click"
+local triggerbotTeamCheckEnabled = true
+local triggerbotConnection = nil
+local triggerbotLastClick = 0
+local triggerbotClickInterval = 0.05
+local triggerbotButtonDown = false
+local triggerbotSendingRightClick = false
 local boxGui = nil
 local boxConnection = nil
 local boxFrames2D = {}
@@ -51,6 +79,10 @@ end
 
 local function shouldAimAtPlayer(player)
     return player ~= localPlayer and player.Parent == Players and not (aimbotTeamCheckEnabled and isTeammate(player))
+end
+
+local function shouldTriggerAtPlayer(player)
+    return player ~= localPlayer and player.Parent == Players and not (triggerbotTeamCheckEnabled and isTeammate(player))
 end
 
 local function resolveUiParent()
@@ -866,22 +898,32 @@ local function setIgnoreTeammatesEnabled(enabled)
     end
 end
 
-local function getAimPart(character)
-    if not character then
+local function getAimScreenOffset(worldPosition)
+    camera = workspace.CurrentCamera
+    if not camera then
         return nil
     end
 
-    if aimbotAimPart == "Head" then
-        return character:FindFirstChild("Head")
+    if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
+        local viewportPoint, visible = camera:WorldToViewportPoint(worldPosition)
+        if not visible or viewportPoint.Z <= 0 then
+            return nil
+        end
+
+        return Vector2.new(viewportPoint.X, viewportPoint.Y) - camera.ViewportSize * 0.5
     end
 
-    return character:FindFirstChild("UpperTorso")
-        or character:FindFirstChild("Torso")
-        or character:FindFirstChild("HumanoidRootPart")
+    local screenPoint, visible = camera:WorldToScreenPoint(worldPosition)
+    if not visible or screenPoint.Z <= 0 then
+        return nil
+    end
+
+    return Vector2.new(screenPoint.X, screenPoint.Y) - UserInputService:GetMouseLocation()
 end
 
-local function hasAimbotLineOfSight(targetPart, targetCharacter)
-    if not aimbotWallCheckEnabled then
+
+local function isAimbotPartVisible(targetPart, targetCharacter, forceCheck)
+    if not forceCheck and not aimbotWallCheckEnabled then
         return true
     end
 
@@ -890,15 +932,108 @@ local function hasAimbotLineOfSight(targetPart, targetCharacter)
         return false
     end
 
+    local excludedInstances = {camera}
+    if localPlayer.Character then
+        excludedInstances[#excludedInstances + 1] = localPlayer.Character
+    end
+
     local origin = camera.CFrame.Position
     local direction = targetPart.Position - origin
     local raycastParams = RaycastParams.new()
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-    raycastParams.FilterDescendantsInstances = {localPlayer.Character}
+    raycastParams.FilterDescendantsInstances = excludedInstances
     raycastParams.IgnoreWater = true
 
     local result = workspace:Raycast(origin, direction, raycastParams)
     return not result or result.Instance:IsDescendantOf(targetCharacter)
+end
+
+local function getTorsoAimPart(character)
+    return character:FindFirstChild("UpperTorso")
+        or character:FindFirstChild("Torso")
+        or character:FindFirstChild("HumanoidRootPart")
+end
+
+local function getRandomAimPart(character)
+    local cachedPart = randomAimParts[character]
+    if cachedPart and cachedPart.Parent == character then
+        return cachedPart
+    end
+
+    local candidates = {}
+    local head = character:FindFirstChild("Head")
+    local torso = getTorsoAimPart(character)
+
+    if head then
+        candidates[#candidates + 1] = head
+    end
+    if torso then
+        candidates[#candidates + 1] = torso
+    end
+
+    if #candidates == 0 then
+        return nil
+    end
+
+    local selectedPart = candidates[math.random(1, #candidates)]
+    randomAimParts[character] = selectedPart
+    return selectedPart
+end
+
+local function getClosestVisibleAimPart(character)
+    local closestPart = nil
+    local closestDistance = math.huge
+    local cachedPart = visibleAimParts[character]
+    local cachedDistance = nil
+
+    for _, descendant in ipairs(character:GetDescendants()) do
+        if descendant:IsA("BasePart")
+            and descendant.Name ~= "HumanoidRootPart"
+            and descendant.Transparency < 1
+            and descendant.LocalTransparencyModifier < 1
+            and isAimbotPartVisible(descendant, character, true)
+        then
+            local screenOffset = getAimScreenOffset(descendant.Position)
+            if screenOffset then
+                local distance = screenOffset.Magnitude
+                if descendant == cachedPart then
+                    cachedDistance = distance
+                end
+
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestPart = descendant
+                end
+            end
+        end
+    end
+
+    if cachedDistance and cachedDistance <= closestDistance + 4 then
+        return cachedPart
+    end
+
+    visibleAimParts[character] = closestPart
+    return closestPart
+end
+
+local function getAimPart(character)
+    if not character then
+        return nil
+    end
+
+    if aimbotAimPart == "Head" then
+        return character:FindFirstChild("Head")
+    elseif aimbotAimPart == "Random" then
+        return getRandomAimPart(character)
+    elseif aimbotAimPart == "Visible" then
+        return getClosestVisibleAimPart(character)
+    end
+
+    return getTorsoAimPart(character)
+end
+
+local function hasAimbotLineOfSight(targetPart, targetCharacter)
+    return isAimbotPartVisible(targetPart, targetCharacter, false)
 end
 
 local function getClosestAimTarget()
@@ -907,7 +1042,6 @@ local function getClosestAimTarget()
         return nil
     end
 
-    local mousePosition = UserInputService:GetMouseLocation()
     local closestPart = nil
     local closestDistance = math.huge
 
@@ -918,11 +1052,9 @@ local function getClosestAimTarget()
             local aimPart = getAimPart(character)
 
             if humanoid and humanoid.Health > 0 and aimPart and hasAimbotLineOfSight(aimPart, character) then
-                local viewportPoint, visible = camera:WorldToViewportPoint(aimPart.Position)
-                if visible and viewportPoint.Z > 0 then
-                    local screenPosition = Vector2.new(viewportPoint.X, viewportPoint.Y)
-                    local distance = (screenPosition - mousePosition).Magnitude
-
+                local screenOffset = getAimScreenOffset(aimPart.Position)
+                if screenOffset then
+                    local distance = screenOffset.Magnitude
                     if distance < closestDistance then
                         closestDistance = distance
                         closestPart = aimPart
@@ -933,6 +1065,153 @@ local function getClosestAimTarget()
     end
 
     return closestPart
+end
+
+local function getVirtualAimSettings()
+    if aimbotVirtualAimSpeed == "Immediate" then
+        return 0.45, 22
+    elseif aimbotVirtualAimSpeed == "Balanced" then
+        return 0.18, 10
+    end
+
+    return 0.08, 5
+end
+
+local function getFallbackVirtualAimScreenSpeed()
+    if aimbotVirtualAimSpeed == "Immediate" then
+        return 2600
+    elseif aimbotVirtualAimSpeed == "Balanced" then
+        return 1400
+    end
+
+    return 700
+end
+
+local function resetAimbotPredictionTracking()
+    aimbotPredictionTarget = nil
+    aimbotLastPredictionError = nil
+    aimbotLastPredictionTime = nil
+    aimbotMeasuredScreenSpeed = nil
+end
+
+local function getAimScreenErrorVector(worldPosition)
+    return getAimScreenOffset(worldPosition)
+end
+
+local function getAimScreenError(worldPosition)
+    local errorVector = getAimScreenErrorVector(worldPosition)
+    return errorVector and errorVector.Magnitude or nil
+end
+
+local function resetVirtualAimController(resetCalibration)
+    aimbotLastVirtualTarget = nil
+    aimbotLastVirtualError = nil
+    aimbotLastVirtualCommand = nil
+    aimbotImmediateLocked = false
+    aimbotImmediateLockedTarget = nil
+
+    if resetCalibration then
+        aimbotVirtualResponse = nil
+    end
+end
+
+local function updateVirtualAimCalibration(targetPart, currentError)
+    if aimbotLastVirtualTarget ~= targetPart then
+        resetVirtualAimController(false)
+        aimbotLastVirtualTarget = targetPart
+        return
+    end
+
+    if not aimbotLastVirtualError or not aimbotLastVirtualCommand then
+        return
+    end
+
+    local commandMagnitude = aimbotLastVirtualCommand.Magnitude
+    if commandMagnitude < 0.25 or aimbotLastVirtualError.Magnitude < aimbotImmediateReleaseRadius then
+        return
+    end
+
+    local observedClosure = aimbotLastVirtualError - currentError
+    local responseSample = observedClosure:Dot(aimbotLastVirtualCommand.Unit) / commandMagnitude
+
+    if responseSample <= 0.05 or responseSample > 512 then
+        return
+    end
+
+    if not aimbotVirtualResponse then
+        aimbotVirtualResponse = responseSample
+    else
+        responseSample = math.clamp(responseSample, aimbotVirtualResponse * 0.5, aimbotVirtualResponse * 2)
+        aimbotVirtualResponse = aimbotVirtualResponse * 0.85 + responseSample * 0.15
+    end
+end
+
+local function recordVirtualAimCommand(targetPart, currentError, command)
+    aimbotLastVirtualTarget = targetPart
+    aimbotLastVirtualError = currentError
+    aimbotLastVirtualCommand = command
+end
+
+local function getEstimatedAimTravelTime(targetPart, screenError)
+    if aimbotVirtualAimSpeed == "Immediate" then
+        if screenError <= aimbotImmediateReleaseRadius then
+            return 0
+        end
+
+        local response = aimbotVirtualResponse or aimbotImmediateFallbackResponse
+        local pixelsPerSecond = math.max(response * aimbotImmediateMaxCommand * 60, 1)
+        return math.clamp(screenError / pixelsPerSecond, 0, 0.35)
+    end
+
+    local now = os.clock()
+    local fallbackSpeed = getFallbackVirtualAimScreenSpeed()
+
+    if aimbotPredictionTarget ~= targetPart then
+        resetAimbotPredictionTracking()
+        aimbotPredictionTarget = targetPart
+    elseif aimbotLastPredictionError and aimbotLastPredictionTime then
+        local elapsed = now - aimbotLastPredictionTime
+        if elapsed > 0 then
+            local closingSpeed = (aimbotLastPredictionError - screenError) / elapsed
+            if closingSpeed > 0 then
+                closingSpeed = math.clamp(closingSpeed, fallbackSpeed * 0.15, fallbackSpeed * 4)
+
+                if aimbotMeasuredScreenSpeed then
+                    aimbotMeasuredScreenSpeed = aimbotMeasuredScreenSpeed * 0.75 + closingSpeed * 0.25
+                else
+                    aimbotMeasuredScreenSpeed = closingSpeed
+                end
+            end
+        end
+    end
+
+    aimbotLastPredictionError = screenError
+    aimbotLastPredictionTime = now
+
+    local estimatedSpeed = aimbotMeasuredScreenSpeed or fallbackSpeed
+    return math.clamp(screenError / math.max(estimatedSpeed, 1), 0, 0.35)
+end
+
+local function getPredictedAimPosition(targetPart)
+    if not aimbotVirtualInputEnabled or not aimbotPredictionEnabled then
+        return targetPart.Position
+    end
+
+    local screenError = getAimScreenError(targetPart.Position)
+    if not screenError then
+        return targetPart.Position
+    end
+
+    local character = targetPart.Parent
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    local velocitySource = rootPart or targetPart
+    local localCharacter = localPlayer.Character
+    local localRootPart = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+    local localVelocity = localRootPart and localRootPart.AssemblyLinearVelocity or Vector3.zero
+    local relativeVelocity = velocitySource.AssemblyLinearVelocity - localVelocity
+    local travelTime = getEstimatedAimTravelTime(targetPart, screenError)
+
+    return targetPart.Position + relativeVelocity * travelTime
 end
 
 local function updateAimbot()
@@ -947,7 +1226,92 @@ local function updateAimbot()
 
     local targetPart = getClosestAimTarget()
     if targetPart then
-        camera.CFrame = CFrame.new(camera.CFrame.Position, targetPart.Position)
+        local aimPosition = getPredictedAimPosition(targetPart)
+
+        if aimbotVirtualInputEnabled then
+            if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
+                local viewportPoint, visible = camera:WorldToViewportPoint(aimPosition)
+                if visible and viewportPoint.Z > 0 then
+                    local viewportCenter = camera.ViewportSize * 0.5
+                    local mouseDelta = Vector2.new(viewportPoint.X, viewportPoint.Y) - viewportCenter
+                    local errorMagnitude = mouseDelta.Magnitude
+                    local calibrationError = getAimScreenErrorVector(targetPart.Position) or mouseDelta
+
+                    updateVirtualAimCalibration(targetPart, calibrationError)
+
+                    local shouldSendInput = errorMagnitude >= 2
+                    if aimbotVirtualAimSpeed == "Immediate" then
+                        local actualErrorMagnitude = calibrationError.Magnitude
+
+                        if aimbotImmediateLockedTarget ~= targetPart then
+                            aimbotImmediateLocked = false
+                            aimbotImmediateLockedTarget = targetPart
+                        end
+
+                        if aimbotImmediateLocked then
+                            if actualErrorMagnitude <= aimbotImmediateReleaseRadius then
+                                shouldSendInput = false
+                            else
+                                aimbotImmediateLocked = false
+                            end
+                        elseif actualErrorMagnitude <= aimbotImmediateLockRadius then
+                            aimbotImmediateLocked = true
+                            shouldSendInput = false
+                        end
+                    end
+
+                    if shouldSendInput then
+                        local inputDelta
+
+                        if aimbotVirtualAimSpeed == "Immediate" then
+                            local response = math.clamp(
+                                aimbotVirtualResponse or aimbotImmediateFallbackResponse,
+                                0.1,
+                                256
+                            )
+                            inputDelta = mouseDelta * (0.94 / response)
+
+                            if inputDelta.Magnitude > aimbotImmediateMaxCommand then
+                                inputDelta = inputDelta.Unit * aimbotImmediateMaxCommand
+                            end
+                        else
+                            local gain, maxStep = getVirtualAimSettings()
+                            local proximityScale = math.clamp((errorMagnitude - 12) / 140, 0.04, 1)
+                            local inputSensitivity = math.max(UserInputService.MouseDeltaSensitivity, 0.05)
+                            inputDelta = mouseDelta * gain * proximityScale / inputSensitivity
+
+                            if inputDelta.Magnitude > maxStep then
+                                inputDelta = inputDelta.Unit * maxStep
+                            end
+                        end
+
+                        local sent = pcall(function()
+                            VirtualInputManager:SendMouseMoveDeltaEvent(inputDelta.X, inputDelta.Y, game)
+                        end)
+
+                        if sent then
+                            recordVirtualAimCommand(targetPart, calibrationError, inputDelta)
+                        else
+                            resetVirtualAimController(false)
+                        end
+                    else
+                        recordVirtualAimCommand(targetPart, calibrationError, Vector2.zero)
+                    end
+                end
+            else
+                local screenPoint, visible = camera:WorldToScreenPoint(aimPosition)
+                if visible and screenPoint.Z > 0 then
+                    pcall(function()
+                        VirtualInputManager:SendMouseMoveEvent(screenPoint.X, screenPoint.Y, game)
+                    end)
+                end
+            end
+        else
+            camera.CFrame = CFrame.new(camera.CFrame.Position, aimPosition)
+        end
+    else
+        resetAimbotPredictionTracking()
+        resetVirtualAimController(false)
     end
 end
 
@@ -966,14 +1330,22 @@ local function stopAimbotLoop()
         aimbotConnection:Disconnect()
         aimbotConnection = nil
     end
+
+    resetAimbotPredictionTracking()
+    resetVirtualAimController(false)
 end
 
 local function setAimbotAimPart(partName)
-    if partName == "Head" or partName == "Torso" then
+    if partName == "Head" or partName == "Torso" or partName == "Random" or partName == "Visible" then
         aimbotAimPart = partName
     else
         aimbotAimPart = "Head"
     end
+
+    randomAimParts = {}
+    visibleAimParts = {}
+    resetAimbotPredictionTracking()
+    resetVirtualAimController(false)
 end
 
 local function setAimbotEnabled(enabled)
@@ -994,14 +1366,216 @@ local function setAimbotWallCheckEnabled(enabled)
     aimbotWallCheckEnabled = enabled
 end
 
+local function setAimbotVirtualInputEnabled(enabled)
+    aimbotVirtualInputEnabled = enabled
+    resetAimbotPredictionTracking()
+    resetVirtualAimController(false)
+end
+
+local function setAimbotVirtualAimSpeed(speed)
+    if speed == "Balanced" or speed == "Immediate" then
+        aimbotVirtualAimSpeed = speed
+    else
+        aimbotVirtualAimSpeed = "Smooth"
+    end
+
+    resetAimbotPredictionTracking()
+    resetVirtualAimController(false)
+end
+
+local function setAimbotPredictionEnabled(enabled)
+    aimbotPredictionEnabled = enabled
+    resetAimbotPredictionTracking()
+end
+
+local function getPlayerFromHit(hit)
+    local current = hit
+
+    while current and current ~= workspace do
+        if current:IsA("Model") then
+            local player = Players:GetPlayerFromCharacter(current)
+            if player then
+                return player
+            end
+        end
+
+        current = current.Parent
+    end
+
+    return nil
+end
+
+local function getTriggerbotPoint()
+    camera = workspace.CurrentCamera
+    if not camera then
+        return nil
+    end
+
+    if (aimbotEnabled and rightMouseHeld) or UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
+        return camera.ViewportSize * 0.5, true
+    end
+
+    return UserInputService:GetMouseLocation(), false
+end
+
+local function getPlayerUnderMouse()
+    camera = workspace.CurrentCamera
+    if not camera then
+        return nil
+    end
+
+    local triggerPoint, useViewportCoordinates = getTriggerbotPoint()
+    if not triggerPoint then
+        return nil
+    end
+
+    local mouseRay
+    if useViewportCoordinates then
+        mouseRay = camera:ViewportPointToRay(triggerPoint.X, triggerPoint.Y)
+    else
+        mouseRay = camera:ScreenPointToRay(triggerPoint.X, triggerPoint.Y)
+    end
+
+    local excludedInstances = {camera}
+    if localPlayer.Character then
+        excludedInstances[#excludedInstances + 1] = localPlayer.Character
+    end
+
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+    raycastParams.FilterDescendantsInstances = excludedInstances
+    raycastParams.IgnoreWater = true
+
+    local result = workspace:Raycast(mouseRay.Origin, mouseRay.Direction * 10000, raycastParams)
+    if not result then
+        return nil
+    end
+
+    return getPlayerFromHit(result.Instance), triggerPoint
+end
+
+local function sendTriggerbotClick(triggerPoint)
+    if triggerbotButtonDown then
+        return
+    end
+
+    triggerPoint = triggerPoint or UserInputService:GetMouseLocation()
+    local mouseButton = triggerbotMouseButton == "Right Click" and 1 or 0
+    local x = math.floor(triggerPoint.X + 0.5)
+    local y = math.floor(triggerPoint.Y + 0.5)
+
+    triggerbotButtonDown = true
+    triggerbotSendingRightClick = mouseButton == 1
+
+    local pressed = pcall(function()
+        VirtualInputManager:SendMouseButtonEvent(x, y, mouseButton, true, game, 0)
+    end)
+
+    if not pressed then
+        triggerbotButtonDown = false
+        triggerbotSendingRightClick = false
+        return
+    end
+
+    task.spawn(function()
+        RunService.RenderStepped:Wait()
+
+        pcall(function()
+            VirtualInputManager:SendMouseButtonEvent(x, y, mouseButton, false, game, 0)
+        end)
+
+        triggerbotButtonDown = false
+        triggerbotSendingRightClick = false
+
+        if mouseButton == 1 then
+            rightMouseHeld = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+        end
+    end)
+end
+
+local function updateTriggerbot()
+    if not triggerbotEnabled then
+        return
+    end
+
+    if aimbotEnabled and rightMouseHeld and not aimbotVirtualInputEnabled then
+        updateAimbot()
+    end
+
+    local targetPlayer, triggerPoint = getPlayerUnderMouse()
+    if not targetPlayer or not shouldTriggerAtPlayer(targetPlayer) then
+        return
+    end
+
+    local character = targetPlayer.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then
+        return
+    end
+
+    local now = os.clock()
+    if now - triggerbotLastClick < triggerbotClickInterval then
+        return
+    end
+
+    triggerbotLastClick = now
+    sendTriggerbotClick(triggerPoint)
+end
+
+local function startTriggerbotLoop()
+    if triggerbotConnection then
+        return
+    end
+
+    triggerbotConnection = RunService.RenderStepped:Connect(function()
+        updateTriggerbot()
+    end)
+end
+
+local function stopTriggerbotLoop()
+    if triggerbotConnection then
+        triggerbotConnection:Disconnect()
+        triggerbotConnection = nil
+    end
+end
+
+local function setTriggerbotEnabled(enabled)
+    triggerbotEnabled = enabled
+    triggerbotLastClick = 0
+
+    if triggerbotEnabled then
+        startTriggerbotLoop()
+    else
+        stopTriggerbotLoop()
+    end
+end
+
+local function setTriggerbotMouseButton(buttonName)
+    if buttonName == "Right Click" then
+        triggerbotMouseButton = "Right Click"
+    else
+        triggerbotMouseButton = "Left Click"
+    end
+end
+
+local function setTriggerbotTeamCheckEnabled(enabled)
+    triggerbotTeamCheckEnabled = enabled
+end
+
 UserInputService.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+    if input.UserInputType == Enum.UserInputType.MouseButton2 and not triggerbotSendingRightClick then
         rightMouseHeld = true
+
+        if aimbotAimPart == "Random" then
+            randomAimParts = {}
+        elseif aimbotAimPart == "Visible" then
+            visibleAimParts = {}
+        end
     end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+    if input.UserInputType == Enum.UserInputType.MouseButton2 and not triggerbotSendingRightClick then
         rightMouseHeld = false
     end
 end)
@@ -1018,6 +1592,7 @@ CreateMenu("Combat")
 CreateGroup("Combat", "Main")
 CreateTab("Combat", "Main", "Visuals")
 CreateTab("Combat", "Main", "Aimbot")
+CreateTab("Combat", "Main", "Triggerbot")
 
 CreateDropdown("Visuals", "Box Style", {"2D", "3D"}, function(value)
     setBoxStyle(value)
@@ -1059,13 +1634,25 @@ CreateToggle("Visuals", "Ignore Teammates", function(state)
     setIgnoreTeammatesEnabled(state.Value)
 end, ignoreTeammatesEnabled)
 
-CreateDropdown("Aimbot", "Aim Part", {"Head", "Torso"}, function(value)
+CreateDropdown("Aimbot", "Aim Part", {"Head", "Torso", "Random", "Visible"}, function(value)
     setAimbotAimPart(value)
 end, aimbotAimPart)
 
 CreateToggle("Aimbot", "Aimbot", function(state)
     setAimbotEnabled(state.Value)
 end, aimbotEnabled)
+
+CreateToggle("Aimbot", "Virtual Input Aim", function(state)
+    setAimbotVirtualInputEnabled(state.Value)
+end, aimbotVirtualInputEnabled)
+
+CreateToggle("Aimbot", "Predictive Aim", function(state)
+    setAimbotPredictionEnabled(state.Value)
+end, aimbotPredictionEnabled)
+
+CreateDropdown("Aimbot", "Virtual Aim Speed", {"Smooth", "Balanced", "Immediate"}, function(value)
+    setAimbotVirtualAimSpeed(value)
+end, aimbotVirtualAimSpeed)
 
 CreateToggle("Aimbot", "Team Check", function(state)
     setAimbotTeamCheckEnabled(state.Value)
@@ -1074,3 +1661,15 @@ end, aimbotTeamCheckEnabled)
 CreateToggle("Aimbot", "Wall Check", function(state)
     setAimbotWallCheckEnabled(state.Value)
 end, aimbotWallCheckEnabled)
+
+CreateDropdown("Triggerbot", "Mouse Button", {"Left Click", "Right Click"}, function(value)
+    setTriggerbotMouseButton(value)
+end, triggerbotMouseButton)
+
+CreateToggle("Triggerbot", "Triggerbot", function(state)
+    setTriggerbotEnabled(state.Value)
+end, triggerbotEnabled)
+
+CreateToggle("Triggerbot", "Team Check", function(state)
+    setTriggerbotTeamCheckEnabled(state.Value)
+end, triggerbotTeamCheckEnabled)

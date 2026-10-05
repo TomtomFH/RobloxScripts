@@ -7,7 +7,23 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local localPlayer = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
-loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/Lib.lua", true))()
+local configEnvironment = type(getgenv) == "function" and getgenv() or _G
+local previousConfigScope = rawget(configEnvironment, "__TomtomFHUIConfigScope")
+configEnvironment.__TomtomFHUIConfigScope = "Combat"
+local libraryLoaded, libraryError = pcall(function()
+    local libraryChunk, compileError = loadstring(game:HttpGet(
+        "https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/Lib.lua",
+        true
+    ))
+    if not libraryChunk then
+        error(compileError)
+    end
+    libraryChunk()
+end)
+configEnvironment.__TomtomFHUIConfigScope = previousConfigScope
+if not libraryLoaded then
+    error(libraryError, 0)
+end
 
 local boxesEnabled = false
 local boxStyle = "2D"
@@ -60,6 +76,28 @@ local tracerLines = {}
 local characterOutlines = {}
 local box3DEdgeThickness = 0.1
 local boxColor = Color3.fromRGB(255, 255, 255)
+local bodyPartNames = {
+    Head = true,
+    Torso = true,
+    UpperTorso = true,
+    LowerTorso = true,
+    ["Left Arm"] = true,
+    ["Right Arm"] = true,
+    ["Left Leg"] = true,
+    ["Right Leg"] = true,
+    LeftUpperArm = true,
+    LeftLowerArm = true,
+    LeftHand = true,
+    RightUpperArm = true,
+    RightLowerArm = true,
+    RightHand = true,
+    LeftUpperLeg = true,
+    LeftLowerLeg = true,
+    LeftFoot = true,
+    RightUpperLeg = true,
+    RightLowerLeg = true,
+    RightFoot = true,
+}
 
 local function getBoxColor(player)
     if useTeamColorEnabled and player.Team then
@@ -401,61 +439,113 @@ local function getCharacterBounds(character)
         return nil
     end
 
-    local ok, boxCFrame, boxSize = pcall(function()
-        return character:GetBoundingBox()
-    end)
-    if not ok then
-        return nil
-    end
+    local root = character:FindFirstChild("HumanoidRootPart")
+    local referenceCFrame = root and root.CFrame
+    local minPoint = Vector3.new(math.huge, math.huge, math.huge)
+    local maxPoint = Vector3.new(-math.huge, -math.huge, -math.huge)
+    local foundBodyPart = false
 
-    return boxCFrame, boxSize
-end
+    for _, part in ipairs(character:GetChildren()) do
+        if part:IsA("BasePart") and bodyPartNames[part.Name] then
+            referenceCFrame = referenceCFrame or part.CFrame
+            foundBodyPart = true
 
-local function getCharacterCorners(character)
-    local boxCFrame, boxSize = getCharacterBounds(character)
-    if not boxCFrame or not boxSize then
-        return nil
-    end
-
-    local corners = {}
-    for x = -1, 1, 2 do
-        for y = -1, 1, 2 do
-            for z = -1, 1, 2 do
-                corners[#corners + 1] =
-                    boxCFrame.Position
-                    + boxCFrame.RightVector * boxSize.X * 0.5 * x
-                    + boxCFrame.UpVector * boxSize.Y * 0.5 * y
-                    + boxCFrame.LookVector * boxSize.Z * 0.5 * z
+            for x = -1, 1, 2 do
+                for y = -1, 1, 2 do
+                    for z = -1, 1, 2 do
+                        local worldCorner = part.CFrame.Position
+                            + part.CFrame.RightVector * part.Size.X * 0.5 * x
+                            + part.CFrame.UpVector * part.Size.Y * 0.5 * y
+                            + part.CFrame.LookVector * part.Size.Z * 0.5 * z
+                        local corner = referenceCFrame:PointToObjectSpace(worldCorner)
+                        minPoint = Vector3.new(
+                            math.min(minPoint.X, corner.X),
+                            math.min(minPoint.Y, corner.Y),
+                            math.min(minPoint.Z, corner.Z)
+                        )
+                        maxPoint = Vector3.new(
+                            math.max(maxPoint.X, corner.X),
+                            math.max(maxPoint.Y, corner.Y),
+                            math.max(maxPoint.Z, corner.Z)
+                        )
+                    end
+                end
             end
         end
     end
 
-    return corners
+    if not foundBodyPart or not referenceCFrame then
+        return nil
+    end
+
+    local boxSize = maxPoint - minPoint
+    local boxCenter = (minPoint + maxPoint) * 0.5
+    return referenceCFrame * CFrame.new(boxCenter), boxSize
 end
 
-local function getScreenBounds(corners)
+local function getCharacterCorners(character)
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then
+        return nil
+    end
+
+    local corners = {}
+    for _, part in ipairs(character:GetChildren()) do
+        if part:IsA("BasePart") and bodyPartNames[part.Name] then
+            for x = -1, 1, 2 do
+                for y = -1, 1, 2 do
+                    for z = -1, 1, 2 do
+                        corners[#corners + 1] = part.CFrame.Position
+                            + part.CFrame.RightVector * part.Size.X * 0.5 * x
+                            + part.CFrame.UpVector * part.Size.Y * 0.5 * y
+                            + part.CFrame.LookVector * part.Size.Z * 0.5 * z
+                    end
+                end
+            end
+        end
+    end
+
+    return #corners > 0 and corners or nil
+end
+
+local function getScreenBounds(corners, root)
     camera = workspace.CurrentCamera
     if not camera then
         return nil
     end
 
-    local minX, minY = math.huge, math.huge
-    local maxX, maxY = -math.huge, -math.huge
-    local onScreen = false
-
-    for _, corner in ipairs(corners) do
-        local viewportPoint, visible = camera:WorldToViewportPoint(corner)
-        if visible then
-            onScreen = true
+    if root then
+        local rootPoint = camera:WorldToViewportPoint(root.Position)
+        if rootPoint.Z <= 0 then
+            return nil
         end
-
-        minX = math.min(minX, viewportPoint.X)
-        minY = math.min(minY, viewportPoint.Y)
-        maxX = math.max(maxX, viewportPoint.X)
-        maxY = math.max(maxY, viewportPoint.Y)
     end
 
-    if not onScreen or maxX <= minX or maxY <= minY then
+    local minX, minY = math.huge, math.huge
+    local maxX, maxY = -math.huge, -math.huge
+    local pointsInFront = 0
+
+    for _, corner in ipairs(corners) do
+        local viewportPoint = camera:WorldToViewportPoint(corner)
+        if viewportPoint.Z > 0 then
+            pointsInFront = pointsInFront + 1
+            minX = math.min(minX, viewportPoint.X)
+            minY = math.min(minY, viewportPoint.Y)
+            maxX = math.max(maxX, viewportPoint.X)
+            maxY = math.max(maxY, viewportPoint.Y)
+        end
+    end
+
+    local viewport = camera.ViewportSize
+    if pointsInFront == 0 or maxX < 0 or minX > viewport.X or maxY < 0 or minY > viewport.Y then
+        return nil
+    end
+
+    minX = math.clamp(minX, 0, viewport.X)
+    minY = math.clamp(minY, 0, viewport.Y)
+    maxX = math.clamp(maxX, 0, viewport.X)
+    maxY = math.clamp(maxY, 0, viewport.Y)
+    if maxX - minX < 3 or maxY - minY < 3 then
         return nil
     end
 
@@ -595,7 +685,9 @@ end
 
 local function update2DBox(player)
     local frame = boxesEnabled and create2DBox(player) or boxFrames2D[player]
-    local corners = getCharacterCorners(player.Character)
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local corners = getCharacterCorners(character)
 
     if not corners then
         if frame then
@@ -606,7 +698,7 @@ local function update2DBox(player)
         return
     end
 
-    local minX, minY, maxX, maxY = getScreenBounds(corners)
+    local minX, minY, maxX, maxY = getScreenBounds(corners, root)
     if not minX then
         if frame then
             frame.Visible = false
@@ -703,7 +795,7 @@ local function update3DBox(player)
     local corners = getCharacterCorners(character)
     local minX, minY, maxX, maxY
     if corners then
-        minX, minY, maxX, maxY = getScreenBounds(corners)
+        minX, minY, maxX, maxY = getScreenBounds(corners, root)
     end
 
     if minX and boxesEnabled then

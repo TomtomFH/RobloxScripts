@@ -54,7 +54,12 @@ local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 
 -- Config System
-local ConfigFileName = "TomtomFHUI_" .. tostring(game.PlaceId) .. ".json"
+local configEnvironment = type(getgenv) == "function" and getgenv() or _G
+local requestedConfigScope = rawget(configEnvironment, "__TomtomFHUIConfigScope")
+local configScope = type(requestedConfigScope) == "string" and requestedConfigScope ~= ""
+    and requestedConfigScope:gsub("[^%w_%-]", "_") or nil
+local ConfigFileName = "TomtomFHUI_" .. (configScope or tostring(game.PlaceId)) .. ".json"
+local LegacyConfigFileName = configScope and "TomtomFHUI_" .. tostring(game.PlaceId) .. ".json" or nil
 Config = {}
 
 -- Check if filesystem is available
@@ -179,22 +184,35 @@ local function LoadConfig()
         return false
     end
     
-    local success, result = pcall(function()
+    local success, result, shouldMigrate = pcall(function()
         if not isfolder("TomtomFHUI") then
             makefolder("TomtomFHUI")
         end
         
         local filePath = "TomtomFHUI/" .. ConfigFileName
-        if isfile(filePath) then
-            local data = readfile(filePath)
+        local sourcePath = filePath
+        local shouldMigrate = false
+        if not isfile(sourcePath) and LegacyConfigFileName then
+            local legacyPath = "TomtomFHUI/" .. LegacyConfigFileName
+            if isfile(legacyPath) then
+                sourcePath = legacyPath
+                shouldMigrate = true
+            end
+        end
+
+        if isfile(sourcePath) then
+            local data = readfile(sourcePath)
             local decoded = HttpService:JSONDecode(data)
-            return decoded
+            return decoded, shouldMigrate
         end
         return nil
     end)
     
     if success and result then
         Config = result
+        if shouldMigrate then
+            SaveConfig()
+        end
         return true
     end
     return false
@@ -384,18 +402,11 @@ function CreateGroup(menuName, groupName)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
 
     local function updateGroupSize()
-        local totalHeight = -10
-        for _, child in ipairs(group:GetChildren()) do
-            if child:IsA("GuiObject") then
-                totalHeight = totalHeight + child.Size.Y.Offset + layout.Padding.Offset
-            end
-        end
-        group.Size = UDim2.new(0, 170, 0, totalHeight)
+        group.Size = UDim2.new(0, 170, 0, math.max(25, layout.AbsoluteContentSize.Y))
     end
-    
-    group.ChildAdded:Connect(updateGroupSize)
-    
-    updateGroupSize()
+
+    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateGroupSize)
+    task.defer(updateGroupSize)
 
     Groups[groupName] = group
 end
@@ -1123,8 +1134,8 @@ end
 TomtomFH UI Library Documentation
 
 FEATURES:
-- Automatic config saving per game (saves toggle states and input values)
-- Config files stored as: workspace/TomtomFHUI/TomtomFHUI_{PlaceId}.json
+- Automatic config saving (per game by default, or shared through __TomtomFHUIConfigScope)
+- Config files stored as: workspace/TomtomFHUI/TomtomFHUI_{PlaceIdOrScope}.json
 - Settings load automatically on script restart
 - Press Left Ctrl to toggle UI visibility
 

@@ -22,6 +22,10 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScript
 	- Place ID: 101234475812179
 	- Script: [games/101234475812179.lua](https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/games/101234475812179.lua)
 	- https://www.roblox.com/games/101234475812179/
+- **Elemental Dungeons (observed dungeon place)**
+	- Place ID: 10515146389
+	- Script: [games/10515146389.lua](https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/games/10515146389.lua)
+	- Only mobs streamed into the client are visible to its ESP.
 - **Catch And Tame**
 	- Place ID: 96645548064314
 	- Script: [games/96645548064314.lua](https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/games/96645548064314.lua)

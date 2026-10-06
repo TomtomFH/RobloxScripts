@@ -783,6 +783,21 @@ local function findClickDetector(model)
     return model:FindFirstChildWhichIsA("ClickDetector", true)
 end
 
+local function reserveCandidateAttempt(candidate)
+    local model = candidate and candidate.Model
+    if not model or not model.Parent then
+        return false
+    end
+
+    local now = os.clock()
+    if now < (nextPurchaseAttempt[model] or 0) then
+        return false
+    end
+
+    nextPurchaseAttempt[model] = now + AUTOMATION_RETRY_INTERVAL
+    return true
+end
+
 local function activateCandidate(candidate, source)
     if not candidate or not candidate.Model or not candidate.Model.Parent then
         return false, "That button is no longer available."
@@ -801,19 +816,11 @@ local function activateCandidate(candidate, source)
         )
     end
 
-    local now = os.clock()
-    if now < (nextPurchaseAttempt[fresh.Model] or 0) then
-        return false, "Purchase is already being attempted."
-    end
-
     local detector = findClickDetector(fresh.Model)
     if not detector or type(fireclickdetector) ~= "function" then
         return false, "The button's ClickDetector cannot be activated by this executor."
     end
 
-    -- The server can take a while to acknowledge a detector purchase. Retrying
-    -- every rendered frame floods it with duplicate clicks and tanks client FPS.
-    nextPurchaseAttempt[fresh.Model] = now + AUTOMATION_RETRY_INTERVAL
     local success, err = pcall(fireclickdetector, detector, 0)
     if not success then
         return false, tostring(err)
@@ -941,10 +948,18 @@ local function runAutoCategory(category, currencyFilter, enabledStateName)
     local attempted = 0
     local lastMessage = nil
     for _, candidate in ipairs(candidates) do
-        local success, message = activateCandidate(candidate, "Auto")
-        if success then
+        if reserveCandidateAttempt(candidate) then
             attempted += 1
-            lastMessage = message
+            lastMessage = "Auto: " .. candidate.Title
+
+            -- Queue every eligible button before running any detector call. A slow
+            -- detector can then yield independently without delaying the rest.
+            local queuedCandidate = candidate
+            task.defer(function()
+                if scriptRuntime.Active then
+                    activateCandidate(queuedCandidate, "Auto")
+                end
+            end)
         end
     end
 

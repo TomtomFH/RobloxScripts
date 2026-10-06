@@ -91,6 +91,12 @@ local RESET_THRESHOLD_CONFIG = {
         Direction = "Below",
         InputLabel = "Carbon Reset Below Hydrogen (x/s)",
     },
+    Nitrogen = {
+        Default = 1.25,
+        CalcName = "GetHydrogen",
+        Direction = "Below",
+        InputLabel = "Nitrogen Reset Below Hydrogen (x/s)",
+    },
 }
 local PARALLEL_RESET_CURRENCIES = {"Beryllium", "Boron", "Carbon"}
 local parallelResetCurrencyLookup = {

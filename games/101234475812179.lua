@@ -850,14 +850,14 @@ local function findClickDetector(model)
     return model:FindFirstChildWhichIsA("ClickDetector", true)
 end
 
-local function reserveCandidateAttempt(candidate)
+local function reserveCandidateAttempt(candidate, force)
     local model = candidate and candidate.Model
     if not model or not model.Parent then
         return false
     end
 
     local now = os.clock()
-    if now < (nextPurchaseAttempt[model] or 0) then
+    if not force and now < (nextPurchaseAttempt[model] or 0) then
         return false
     end
 
@@ -1036,11 +1036,24 @@ local function runAutoCategory(category, currencyFilter, enabledStateName, bypas
     local attempted = 0
     local lastMessage = nil
     local queuedCandidates = {}
+    local queuedModelLookup = {}
     for _, candidate in ipairs(candidates) do
-        if reserveCandidateAttempt(candidate) then
+        local followsQueuedPredecessor = false
+        for _, predecessor in ipairs(predecessorMap[candidate.Model] or {}) do
+            if queuedModelLookup[predecessor] then
+                followsQueuedPredecessor = true
+                break
+            end
+        end
+
+        -- A child may have a retry cooldown from an earlier optimistic click that
+        -- arrived before its parent. When the parent is part of this ordered batch,
+        -- bypass that stale cooldown and submit the child immediately behind it.
+        if reserveCandidateAttempt(candidate, followsQueuedPredecessor) then
             attempted += 1
             lastMessage = "Auto: " .. candidate.Title
             table.insert(queuedCandidates, candidate)
+            queuedModelLookup[candidate.Model] = true
         end
     end
 

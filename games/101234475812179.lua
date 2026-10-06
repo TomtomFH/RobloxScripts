@@ -240,6 +240,7 @@ local purchaseDecreaseIgnoreUntil = {}
 local autoStatusLabel = nil
 local actionStatusLabel = nil
 local latestResetMetrics = {}
+local latestOxygenLimit = nil
 local statsSynchronized = false
 local statsRevision = 0
 local renderedStatsRevision = -1
@@ -341,6 +342,10 @@ local function synchronizeStats(compressedStats, _, calcValues)
             if value ~= nil then
                 latestResetMetrics[currency] = value
             end
+        end
+
+        if calcValues.GetOxygenLimit ~= nil then
+            latestOxygenLimit = calcValues.GetOxygenLimit
         end
     end
 
@@ -1075,6 +1080,18 @@ local function updateInfoRows()
                     and not isParallelResetSelectable(currency) then
                     resetText ..= "\n<font color=\"#f97066\">Branch locked until the active branch's #7 upgrade is bought</font>"
                 end
+            elseif currency == "Oxygen" then
+                local oxygen = Stats.Elements and Stats.Elements.Oxygen
+                local amount = oxygen and valueOf(oxygen.Value)
+                local fallbackLimit = oxygen and oxygen.Limit and valueOf(oxygen.Limit.Value)
+                local limit = latestOxygenLimit or fallbackLimit
+                if amount ~= nil and limit ~= nil then
+                    resetText = string.format(
+                        "\nOxygen level: %s / %s | Auto level reset at cap",
+                        shortNumber(amount),
+                        shortNumber(limit)
+                    )
+                end
             end
 
             if candidate then
@@ -1123,6 +1140,41 @@ local function getLowestEnabledParallelResetCurrency()
     return lowestCurrency
 end
 
+local function getOxygenLevelResetCandidate()
+    local oxygen = Stats.Elements and Stats.Elements.Oxygen
+    local level = oxygen and oxygen.Level
+    if not oxygen or not level or not level.Unlocked or valueOf(level.Unlocked.Value) ~= true then
+        return nil
+    end
+
+    local features = workspace:FindFirstChild("Features")
+    local oxygenLevel = features and features:FindFirstChild("OxygenLevel")
+    local resetButton = oxygenLevel and oxygenLevel:FindFirstChild("ResetButton")
+    if not resetButton or not resetButton:FindFirstChildWhichIsA("ClickDetector", true) then
+        return nil
+    end
+
+    local amount = valueOf(oxygen.Value)
+    local fallbackLimit = oxygen.Limit and valueOf(oxygen.Limit.Value)
+    local limit = latestOxygenLimit or fallbackLimit
+    if amount == nil or limit == nil then
+        return nil
+    end
+
+    return {
+        Category = "Resets",
+        Model = resetButton,
+        Currency = "OxygenLevel",
+        SourceCurrency = "Oxygen",
+        AutomationCurrency = "Oxygen",
+        CurrencyPath = "Elements.Oxygen",
+        Title = "Oxygen Level Reset",
+        Cost = limit,
+        Amount = amount,
+        Affordable = gammaAtLeast(amount, limit),
+    }
+end
+
 local function getAffordableCandidates(category, currencyFilter, enabledStateName, bypassRequirements)
     local candidates = {}
     local parallelPriority = category == "Resets" and enabledStateName
@@ -1142,10 +1194,21 @@ local function getAffordableCandidates(category, currencyFilter, enabledStateNam
         end
     end
 
+    if category == "Resets" and enabledStateName then
+        local oxygenState = currencyAutoStates.Oxygen
+        if oxygenState and oxygenState[enabledStateName] then
+            local oxygenLevelCandidate = getOxygenLevelResetCandidate()
+            if oxygenLevelCandidate and oxygenLevelCandidate.Affordable
+                and (not currencyFilter or currencyFilter == "Oxygen") then
+                table.insert(candidates, oxygenLevelCandidate)
+            end
+        end
+    end
+
     table.sort(candidates, function(left, right)
         if category == "Resets" then
-            local leftOrder = table.find(CURRENCY_ORDER, left.Model.Name) or -math.huge
-            local rightOrder = table.find(CURRENCY_ORDER, right.Model.Name) or -math.huge
+            local leftOrder = table.find(CURRENCY_ORDER, left.AutomationCurrency or left.Model.Name) or -math.huge
+            local rightOrder = table.find(CURRENCY_ORDER, right.AutomationCurrency or right.Model.Name) or -math.huge
             if leftOrder ~= rightOrder then
                 return leftOrder > rightOrder
             end

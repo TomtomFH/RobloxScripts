@@ -948,6 +948,9 @@ local function getModels(category, currencyFilter)
 
         local leftOrder = table.find(CURRENCY_ORDER, leftCurrency) or math.huge
         local rightOrder = table.find(CURRENCY_ORDER, rightCurrency) or math.huge
+        if category == "Resets" then
+            return leftOrder > rightOrder
+        end
         return leftOrder < rightOrder
     end)
 
@@ -1140,6 +1143,14 @@ local function getAffordableCandidates(category, currencyFilter, enabledStateNam
     end
 
     table.sort(candidates, function(left, right)
+        if category == "Resets" then
+            local leftOrder = table.find(CURRENCY_ORDER, left.Model.Name) or -math.huge
+            local rightOrder = table.find(CURRENCY_ORDER, right.Model.Name) or -math.huge
+            if leftOrder ~= rightOrder then
+                return leftOrder > rightOrder
+            end
+        end
+
         local leftDepth = getPurchaseDepth(left.Model)
         local rightDepth = getPurchaseDepth(right.Model)
         if leftDepth ~= rightDepth then

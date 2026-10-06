@@ -872,20 +872,10 @@ local function activateCandidate(candidate, source)
         return false, "That button is no longer available."
     end
 
-    local fresh = getCandidate(candidate.Model, candidate.Category, candidate.BypassRequirements)
-    if not fresh then
-        return false, "Its requirements are not currently met."
-    end
-    if not fresh.Affordable then
-        return false, string.format(
-            "Need %s %s; you have %s.",
-            shortNumber(fresh.Cost),
-            fresh.Currency,
-            shortNumber(fresh.Amount)
-        )
-    end
-
-    local detector = findClickDetector(fresh.Model)
+    -- The candidate was affordable when the event batch was built. Do not gate its
+    -- independent task on a second client snapshot that another purchase may have
+    -- changed in the meantime; let the server validate the simultaneous click.
+    local detector = findClickDetector(candidate.Model)
     if not detector or type(fireclickdetector) ~= "function" then
         return false, "The button's ClickDetector cannot be activated by this executor."
     end
@@ -895,12 +885,12 @@ local function activateCandidate(candidate, source)
         return false, tostring(err)
     end
 
-    if type(fresh.CurrencyPath) == "string" then
-        purchaseDecreaseIgnoreUntil[fresh.CurrencyPath] = os.clock() + 0.75
+    if type(candidate.CurrencyPath) == "string" then
+        purchaseDecreaseIgnoreUntil[candidate.CurrencyPath] = os.clock() + 0.75
     end
 
     local prefix = source == "Auto" and "Auto: " or ""
-    return true, prefix .. fresh.Title
+    return true, prefix .. candidate.Title
 end
 
 local function updateInfoRows()
@@ -1064,7 +1054,7 @@ local function runAutoCategory(category, currencyFilter, enabledStateName, bypas
         -- batch. No child waits for its predecessor's server confirmation.
         for _, queuedCandidate in ipairs(queuedCandidates) do
             local candidateThread = queuedCandidate
-            task.defer(function()
+            task.spawn(function()
                 if scriptRuntime.Active then
                     activateCandidate(candidateThread, "Auto")
                 end

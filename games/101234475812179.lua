@@ -1,12 +1,59 @@
 -- The Elemental Tree ~ Rewritten
+local runtimeEnvironment = type(getgenv) == "function" and getgenv() or _G
+local RUNTIME_KEY = "__TomtomFHElementalTreeRuntime"
+local previousRuntime = rawget(runtimeEnvironment, RUNTIME_KEY)
+if type(previousRuntime) == "table" and type(previousRuntime.Cleanup) == "function" then
+    pcall(previousRuntime.Cleanup)
+end
+
+local scriptRuntime = {
+    Active = true,
+    Connections = {},
+    CleanupCallbacks = {},
+}
+
+local function cleanupRuntime()
+    if not scriptRuntime.Active then
+        return
+    end
+    scriptRuntime.Active = false
+
+    for index = #scriptRuntime.Connections, 1, -1 do
+        local connection = scriptRuntime.Connections[index]
+        pcall(function()
+            connection:Disconnect()
+        end)
+        scriptRuntime.Connections[index] = nil
+    end
+
+    for index = #scriptRuntime.CleanupCallbacks, 1, -1 do
+        pcall(scriptRuntime.CleanupCallbacks[index])
+        scriptRuntime.CleanupCallbacks[index] = nil
+    end
+
+    if rawget(runtimeEnvironment, RUNTIME_KEY) == scriptRuntime then
+        rawset(runtimeEnvironment, RUNTIME_KEY, nil)
+    end
+end
+
+local function trackConnection(connection)
+    if connection then
+        table.insert(scriptRuntime.Connections, connection)
+    end
+    return connection
+end
+
+scriptRuntime.Cleanup = cleanupRuntime
+rawset(runtimeEnvironment, RUNTIME_KEY, scriptRuntime)
 
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local StarterGui = game:GetService("StarterGui")
+local localPlayer = Players.LocalPlayer
 
 local Stats = require(ReplicatedStorage:WaitForChild("Stats"))
 local GammaNum = require(ReplicatedStorage:WaitForChild("GammaNum"))
@@ -19,6 +66,47 @@ local resetsFolder = workspace:WaitForChild("Resets")
 loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/Lib.lua", true))()
 
 local MENU_NAME = "Elemental Tree"
+local RESET_THRESHOLD_CONFIG = {
+    Hydrogen = {
+        Default = 1.5,
+        CalcName = "GetHydrogen",
+        Direction = "Below",
+        InputLabel = "Hydrogen Reset Below (x/s)",
+    },
+    Beryllium = {
+        Default = 1.25,
+        CalcName = "GetHydrogen",
+        Direction = "Below",
+        InputLabel = "Beryllium Reset Below Hydrogen (x/s)",
+    },
+    Boron = {
+        Default = 1.25,
+        CalcName = "GetHydrogen",
+        Direction = "Below",
+        InputLabel = "Boron Reset Below Hydrogen (x/s)",
+    },
+    Carbon = {
+        Default = 1.25,
+        CalcName = "GetHydrogen",
+        Direction = "Below",
+        InputLabel = "Carbon Reset Below Hydrogen (x/s)",
+    },
+}
+local PARALLEL_RESET_CURRENCIES = {"Beryllium", "Boron", "Carbon"}
+local parallelResetCurrencyLookup = {
+    Beryllium = true,
+    Boron = true,
+    Carbon = true,
+}
+local parallelRootUpgradeLookup = {
+    ["1"] = true,
+    ["2"] = true,
+    ["7"] = true,
+}
+local resetThresholds = {}
+for currency, config in pairs(RESET_THRESHOLD_CONFIG) do
+    resetThresholds[currency] = config.Default
+end
 local CURRENCY_ORDER = {
     "Hydrogen",
     "Helium",
@@ -51,21 +139,120 @@ local predecessorMap = setmetatable({}, {__mode = "k"})
 local nextPurchaseAttempt = setmetatable({}, {__mode = "k"})
 local infoRows = {}
 local autoStates = {
-    Upgrades = false,
     Buyables = false,
-    Resets = false,
+    Obby = false,
 }
+local currencyAutoStates = {}
+local obbyOriginalStates = {}
+local obbyNextTouch = setmetatable({}, {__mode = "k"})
+local obbyReturnCFrame = nil
+local obbyHighestCheckpoint = nil
+local resetCurrencyPaths = {}
+local resetCurrencyPrevious = {}
+local resetCurrencyDecreasing = {}
+local resetAutomationCurrencies = {}
+local purchaseDecreaseIgnoreUntil = {}
 local autoStatusLabel = nil
 local actionStatusLabel = nil
+local latestResetMetrics = {}
 local statsSynchronized = false
 local statsRevision = 0
 local renderedStatsRevision = -1
 
-local function synchronizeStats(compressedStats)
+local function collectChangedPurchaseCurrencies(previousStats, liveStats)
+    local changed = {}
+
+    for _, category in ipairs({"Upgrades", "Buyables"}) do
+        local previousCategory = previousStats[category] or {}
+        local liveCategory = liveStats[category] or {}
+        for currencyName, liveEntries in pairs(liveCategory) do
+            local previousEntries = previousCategory[currencyName] or {}
+            if type(liveEntries) == "table" then
+                for id, liveEntry in pairs(liveEntries) do
+                    if type(liveEntry) == "table" then
+                        local previousEntry = previousEntries[id]
+                        local currencyPath = liveEntry.Currency and liveEntry.Currency.Value
+                        if type(currencyPath) == "string" then
+                            if category == "Upgrades" then
+                                local wasBought = previousEntry and previousEntry.Bought
+                                    and previousEntry.Bought.Value == true
+                                local isBought = liveEntry.Bought and liveEntry.Bought.Value == true
+                                if isBought and not wasBought then
+                                    changed[currencyPath] = true
+                                end
+                            else
+                                local previousLevel = previousEntry and previousEntry.Level
+                                    and previousEntry.Level.Value
+                                local liveLevel = liveEntry.Level and liveEntry.Level.Value
+                                if previousLevel ~= nil and liveLevel ~= nil then
+                                    local compared, increased = pcall(GammaNum.gt, liveLevel, previousLevel)
+                                    if compared and increased then
+                                        changed[currencyPath] = true
+                                    end
+                                end
+
+                                local wasMaxed = previousEntry and previousEntry.Maxed
+                                    and previousEntry.Maxed.Value == true
+                                local isMaxed = liveEntry.Maxed and liveEntry.Maxed.Value == true
+                                if isMaxed and not wasMaxed then
+                                    changed[currencyPath] = true
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return changed
+end
+
+local function updateResetCurrencyTrends(liveStats)
+    local changedPurchaseCurrencies = statsSynchronized
+        and collectChangedPurchaseCurrencies(Stats, liveStats) or {}
+    local now = os.clock()
+
+    for path in pairs(resetCurrencyPaths) do
+        local success, node = pcall(GammaNum.unpackPath, path, liveStats)
+        local amount = success and type(node) == "table" and node.Value or nil
+        if amount ~= nil then
+            local previous = resetCurrencyPrevious[path]
+            if previous ~= nil then
+                local compared, isLower = pcall(GammaNum.lt, amount, previous)
+                local purchaseDrop = changedPurchaseCurrencies[path] == true
+                    or now < (purchaseDecreaseIgnoreUntil[path] or 0)
+                resetCurrencyDecreasing[path] = compared and isLower == true and not purchaseDrop
+            else
+                resetCurrencyDecreasing[path] = false
+            end
+            resetCurrencyPrevious[path] = amount
+        else
+            resetCurrencyDecreasing[path] = false
+        end
+    end
+end
+
+local function synchronizeStats(compressedStats, _, calcValues)
+    if not scriptRuntime.Active then
+        return
+    end
+
     local success, liveStats = pcall(GammaNum.DecompressTable, compressedStats)
     if not success or type(liveStats) ~= "table" or type(liveStats.Elements) ~= "table" then
         return
     end
+
+    if type(calcValues) == "table" then
+        for currency, config in pairs(RESET_THRESHOLD_CONFIG) do
+            local value = calcValues[config.CalcName]
+            if value ~= nil then
+                latestResetMetrics[currency] = value
+            end
+        end
+    end
+
+    updateResetCurrencyTrends(liveStats)
 
     -- Executor ModuleScript requires have a separate cache from the game's LocalScripts.
     -- Keep the executor-side table identity, since purchase Config modules close over it,
@@ -83,17 +270,7 @@ local function synchronizeStats(compressedStats)
     statsRevision += 1
 end
 
-updateUIRemote.OnClientEvent:Connect(synchronizeStats)
-
-local function notify(title, message)
-    pcall(function()
-        StarterGui:SetCore("SendNotification", {
-            Title = title,
-            Text = message,
-            Duration = 4,
-        })
-    end)
-end
+trackConnection(updateUIRemote.OnClientEvent:Connect(synchronizeStats))
 
 local function stripRichText(text)
     text = tostring(text or "")
@@ -158,6 +335,26 @@ local function getCurrencyName(model, category)
     return model.Parent and model.Parent.Name or "Unknown"
 end
 
+local function getCurrencyFromPath(path)
+    if type(path) ~= "string" then
+        return nil
+    end
+    return path:match("^Elements%.([^%.]+)$")
+end
+
+local function getResetAutomationCurrency(model)
+    if not model then
+        return nil
+    end
+    if model.Name == "Helium" then
+        return "Hydrogen"
+    end
+    if model.Name == "Lithium" then
+        return "Helium"
+    end
+    return model.Name
+end
+
 local function getStatEntry(model, category)
     if not statsSynchronized then
         return nil
@@ -187,6 +384,14 @@ local function valueOf(field)
         return field.Value
     end
     return field
+end
+
+local function isParallelResetSelectable(currency)
+    local element = Stats.Elements and Stats.Elements[currency]
+    if not element then
+        return false
+    end
+    return not (element.Locked and element.Locked.Value == true)
 end
 
 local function sourceIsComplete(model)
@@ -241,6 +446,13 @@ local function buildPurchaseGraph()
                         end
                     end
                 end
+                if root == resetsFolder and config and type(config.CurrencyReq) == "string" then
+                    resetCurrencyPaths[config.CurrencyReq] = true
+                    local automationCurrency = getResetAutomationCurrency(owner)
+                    if automationCurrency then
+                        resetAutomationCurrencies[automationCurrency] = true
+                    end
+                end
             end
         end
     end
@@ -268,6 +480,17 @@ local function purchaseRequirementsMet(model)
     if isRootPurchase(model) then
         return true
     end
+
+    local currency = model.Parent and model.Parent.Name
+    if parallelResetCurrencyLookup[currency] and isParallelResetSelectable(currency)
+        and parallelRootUpgradeLookup[model.Name] then
+        local element = Stats.Elements and Stats.Elements[currency]
+        if element and ((element.Prestiged and element.Prestiged.Value == true)
+            or (element.Unlocked and element.Unlocked.Value == true)) then
+            return true
+        end
+    end
+
     return requirementsMet(model)
 end
 
@@ -284,6 +507,11 @@ local function getModelTitle(model, currency)
 end
 
 local function getUpgradeCandidate(model)
+    local currency = model.Parent and model.Parent.Name or "Unknown"
+    if parallelResetCurrencyLookup[currency] and not isParallelResetSelectable(currency) then
+        return nil
+    end
+
     local entry = getStatEntry(model, "Upgrades")
     if not entry or not entry.Bought or entry.Bought.Value == true then
         return nil
@@ -300,11 +528,11 @@ local function getUpgradeCandidate(model)
         return nil
     end
 
-    local currency = model.Parent.Name
     return {
         Category = "Upgrades",
         Model = model,
         Currency = currency,
+        CurrencyPath = currencyField,
         Title = getModelTitle(model, currency),
         Cost = cost,
         Amount = amount,
@@ -323,7 +551,8 @@ local function getBuyableCandidate(model)
 
     local cost = entry.Cost and entry.Cost.Value
 
-    local currencyNode = entry.Currency and getPathNode(entry.Currency.Value)
+    local currencyPath = entry.Currency and entry.Currency.Value
+    local currencyNode = getPathNode(currencyPath)
     local amount = currencyNode and valueOf(currencyNode.Value)
     if cost == nil or amount == nil then
         return nil
@@ -334,6 +563,7 @@ local function getBuyableCandidate(model)
         Category = "Buyables",
         Model = model,
         Currency = currency,
+        CurrencyPath = currencyPath,
         Title = getModelTitle(model, currency),
         Cost = cost,
         Amount = amount,
@@ -344,6 +574,32 @@ end
 local function getResetCandidate(model)
     local config = getConfig(model)
     if not config or type(config.CurrencyReq) ~= "string" or config.ReqToReset == nil then
+        return nil
+    end
+
+    local sourceCurrency = getCurrencyFromPath(config.CurrencyReq)
+    local automationCurrency = getResetAutomationCurrency(model)
+    if parallelResetCurrencyLookup[automationCurrency]
+        and not isParallelResetSelectable(automationCurrency) then
+        return nil
+    end
+
+    local thresholdConfig = automationCurrency and RESET_THRESHOLD_CONFIG[automationCurrency]
+    if thresholdConfig then
+        local metric = latestResetMetrics[automationCurrency]
+        local threshold = resetThresholds[automationCurrency]
+        if metric == nil or threshold == nil then
+            return nil
+        end
+
+        if thresholdConfig.Direction == "Below" then
+            if not gammaLess(metric, threshold) then
+                return nil
+            end
+        elseif not gammaAtLeast(metric, threshold) then
+            return nil
+        end
+    elseif resetCurrencyDecreasing[config.CurrencyReq] ~= true then
         return nil
     end
 
@@ -369,6 +625,9 @@ local function getResetCandidate(model)
         Category = "Resets",
         Model = model,
         Currency = model.Name,
+        SourceCurrency = sourceCurrency,
+        AutomationCurrency = automationCurrency,
+        CurrencyPath = config.CurrencyReq,
         Title = "Reset for " .. model.Name,
         Cost = config.ReqToReset,
         Amount = amount,
@@ -505,15 +764,12 @@ local function activateCandidate(candidate, source)
         return false, tostring(err)
     end
 
+    if type(fresh.CurrencyPath) == "string" then
+        purchaseDecreaseIgnoreUntil[fresh.CurrencyPath] = os.clock() + 0.75
+    end
+
     local prefix = source == "Auto" and "Auto: " or ""
     return true, prefix .. fresh.Title
-end
-
-local function setActionStatus(message, good)
-    if actionStatusLabel then
-        local color = good and "#32d583" or "#f97066"
-        actionStatusLabel.Text = string.format("Status: <font color=\"%s\">%s</font>", color, stripRichText(message))
-    end
 end
 
 local function updateInfoRows()
@@ -523,8 +779,6 @@ local function updateInfoRows()
             if row then
                 row.Candidate = nil
                 row.Label.Text = string.format("<b>%s</b>: Waiting for live server data...", currency)
-                row.ButtonLabel.Text = "Waiting for synchronization"
-                row.ButtonLabel.TextColor3 = Color3.fromRGB(145, 145, 155)
             end
         end
         return
@@ -535,6 +789,22 @@ local function updateInfoRows()
         if row then
             local candidate = getCheapestUpgrade(currency)
             row.Candidate = candidate
+            local resetText = ""
+            local thresholdConfig = RESET_THRESHOLD_CONFIG[currency]
+            if thresholdConfig then
+                local metric = latestResetMetrics[currency]
+                local metricText = metric and shortNumber(metric) or "waiting"
+                local thresholdText = tostring(resetThresholds[currency])
+                resetText = string.format(
+                    "\nHydrogen gain: x%s/s | Auto reset below x%s/s",
+                    metricText,
+                    thresholdText
+                )
+                if parallelResetCurrencyLookup[currency]
+                    and not isParallelResetSelectable(currency) then
+                    resetText ..= "\n<font color=\"#f97066\">Branch locked until the active branch's #7 upgrade is bought</font>"
+                end
+            end
 
             if candidate then
                 local stateText
@@ -552,37 +822,63 @@ local function updateInfoRows()
                     shortNumber(candidate.Amount),
                     stateText
                 )
-                row.ButtonLabel.Text = candidate.Affordable
-                    and ("Buy now: " .. candidate.Title)
-                    or ("Buy when affordable: " .. candidate.Title)
-                row.ButtonLabel.TextColor3 = candidate.Affordable
-                    and Color3.fromRGB(50, 213, 131)
-                    or Color3.fromRGB(255, 255, 255)
+                row.Label.Text ..= resetText
             else
                 local complete = allUpgradesBought(currency)
                 row.Label.Text = complete
                     and string.format("<b>%s</b>: <font color=\"#32d583\">All upgrades bought</font>", currency)
                     or string.format("<b>%s</b>: Locked by an earlier requirement", currency)
-                row.ButtonLabel.Text = complete and "Complete" or "No eligible upgrade yet"
-                row.ButtonLabel.TextColor3 = Color3.fromRGB(145, 145, 155)
+                row.Label.Text ..= resetText
             end
         end
     end
 end
 
-local function getAffordableCandidates(category)
+local function getLowestEnabledParallelResetCurrency()
+    local lowestCurrency = nil
+    local lowestAmount = nil
+
+    for _, currency in ipairs(PARALLEL_RESET_CURRENCIES) do
+        local state = currencyAutoStates[currency]
+        local element = Stats.Elements and Stats.Elements[currency]
+        local amount = element and valueOf(element.Value)
+        if state and state.Resets and isParallelResetSelectable(currency) and amount ~= nil
+            and (lowestAmount == nil or gammaLess(amount, lowestAmount)) then
+            lowestCurrency = currency
+            lowestAmount = amount
+        end
+    end
+
+    return lowestCurrency
+end
+
+local function getAffordableCandidates(category, currencyFilter, enabledStateName)
     local candidates = {}
+    local parallelPriority = category == "Resets" and enabledStateName
+        and getLowestEnabledParallelResetCurrency() or nil
     for _, model in ipairs(getModels(category)) do
         local candidate = getCandidate(model, category)
-        if candidate and candidate.Affordable then
+        local candidateCurrency = candidate and (category == "Resets"
+            and candidate.AutomationCurrency or candidate.Currency)
+        local currencyState = candidateCurrency and currencyAutoStates[candidateCurrency]
+        local hasParallelPriority = not parallelResetCurrencyLookup[candidateCurrency]
+            or not enabledStateName or candidateCurrency == parallelPriority
+        if candidate and candidate.Affordable
+            and (not currencyFilter or candidateCurrency == currencyFilter)
+            and (not enabledStateName or currencyState and currencyState[enabledStateName])
+            and hasParallelPriority then
             table.insert(candidates, candidate)
         end
     end
     return candidates
 end
 
-local function runAutoCategory(category)
-    local candidates = getAffordableCandidates(category)
+local function runAutoCategory(category, currencyFilter, enabledStateName)
+    if not scriptRuntime.Active then
+        return false
+    end
+
+    local candidates = getAffordableCandidates(category, currencyFilter, enabledStateName)
     if #candidates == 0 then
         return false
     end
@@ -598,16 +894,158 @@ local function runAutoCategory(category)
     end
 
     if attempted > 0 and autoStatusLabel then
+        local categoryName = currencyFilter and (currencyFilter .. " " .. category) or category
         autoStatusLabel.Text = string.format(
             "Last batch: <font color=\"#32d583\">%d %s button%s</font> | %s",
             attempted,
-            category,
+            categoryName,
             attempted == 1 and "" or "s",
             stripRichText(lastMessage)
         )
     end
     return attempted > 0
 end
+
+local function getObbyCheckpoints()
+    local other = workspace:FindFirstChild("Other")
+    local infiniteObby = other and other:FindFirstChild("InfiniteObby")
+    return infiniteObby and infiniteObby:FindFirstChild("Checkpoints") or nil
+end
+
+local function rememberAndRemoveCheckpointVisuals(part, state)
+    for _, child in ipairs(part:GetDescendants()) do
+        if (child:IsA("Decal") or child:IsA("Texture")) and not state.HiddenVisualLookup[child] then
+            state.HiddenVisualLookup[child] = true
+            table.insert(state.HiddenVisuals, {
+                Instance = child,
+                Parent = child.Parent,
+            })
+            child.Parent = nil
+        end
+    end
+end
+
+local function applyAutoObbyToCheckpoint(part, root, moveToPlayer)
+    local state = obbyOriginalStates[part]
+    if not state then
+        state = {
+            CanCollide = part.CanCollide,
+            CanQuery = part.CanQuery,
+            Transparency = part.Transparency,
+            CFrame = part.CFrame,
+            HiddenVisuals = {},
+            HiddenVisualLookup = setmetatable({}, {__mode = "k"}),
+        }
+        obbyOriginalStates[part] = state
+    end
+
+    part.CanCollide = false
+    part.CanQuery = true
+    part.Transparency = 1
+    rememberAndRemoveCheckpointVisuals(part, state)
+    if moveToPlayer then
+        part.CFrame = root.CFrame
+    end
+
+    local now = os.clock()
+    if type(firetouchinterest) == "function" and now >= (obbyNextTouch[part] or 0) then
+        obbyNextTouch[part] = now + 0.1
+        pcall(function()
+            firetouchinterest(root, part, 0)
+            firetouchinterest(root, part, 1)
+        end)
+    end
+end
+
+local function runAutoObby()
+    if not scriptRuntime.Active then
+        return
+    end
+
+    local checkpoints = getObbyCheckpoints()
+    local character = localPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not checkpoints or not root then
+        return
+    end
+
+    if not obbyReturnCFrame then
+        obbyReturnCFrame = root.CFrame
+    end
+
+    local highestCheckpoint = nil
+    local highestNumber = -math.huge
+    for _, checkpoint in ipairs(checkpoints:GetChildren()) do
+        local checkpointNumber = checkpoint:IsA("BasePart") and tonumber(checkpoint.Name) or nil
+        if checkpointNumber and checkpointNumber ~= 0 and checkpointNumber > highestNumber then
+            highestNumber = checkpointNumber
+            highestCheckpoint = checkpoint
+        end
+    end
+
+    if highestCheckpoint and highestCheckpoint ~= obbyHighestCheckpoint then
+        obbyHighestCheckpoint = highestCheckpoint
+        root.CFrame = highestCheckpoint.CFrame + Vector3.new(
+            0,
+            highestCheckpoint.Size.Y * 0.5 + root.Size.Y * 0.5 + 0.25,
+            0
+        )
+    elseif not highestCheckpoint then
+        obbyHighestCheckpoint = nil
+    end
+
+    for _, checkpoint in ipairs(checkpoints:GetChildren()) do
+        local checkpointNumber = checkpoint:IsA("BasePart") and tonumber(checkpoint.Name) or nil
+        if checkpointNumber and checkpointNumber ~= 0 then
+            applyAutoObbyToCheckpoint(checkpoint, root, checkpoint ~= highestCheckpoint)
+        end
+    end
+end
+
+local function restoreAutoObby()
+    for part, state in pairs(obbyOriginalStates) do
+        pcall(function()
+            part.CanCollide = state.CanCollide
+            part.CanQuery = state.CanQuery
+            part.Transparency = state.Transparency
+            part.CFrame = state.CFrame
+        end)
+
+        for _, visual in ipairs(state.HiddenVisuals) do
+            local instance = visual.Instance
+            local parent = visual.Parent
+            if instance and instance.Parent == nil and parent and parent.Parent then
+                pcall(function()
+                    instance.Parent = parent
+                end)
+            end
+        end
+    end
+
+    table.clear(obbyOriginalStates)
+    table.clear(obbyNextTouch)
+
+    local returnCFrame = obbyReturnCFrame
+    obbyReturnCFrame = nil
+    obbyHighestCheckpoint = nil
+    if returnCFrame then
+        local character = localPlayer.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if root then
+            root.CFrame = returnCFrame
+        end
+    end
+end
+
+table.insert(scriptRuntime.CleanupCallbacks, function()
+    autoStates.Buyables = false
+    autoStates.Obby = false
+    for _, state in pairs(currencyAutoStates) do
+        state.Upgrades = false
+        state.Resets = false
+    end
+    restoreAutoObby()
+end)
 
 buildPurchaseGraph()
 
@@ -620,58 +1058,87 @@ actionStatusLabel = select(1, CreateValueLabel(
     "Info",
     statsSynchronized and "Status: Live server data synchronized" or "Status: Waiting for live server data"
 ))
-CreateLabel("Info", "Cheapest eligible upgrade for every currency")
+CreateLabel("Info", "Each currency can buy every affordable eligible upgrade independently")
 
 for _, currency in ipairs(CURRENCY_ORDER) do
     local currentCurrency = currency
     local label = select(1, CreateValueLabel("Info", currentCurrency .. ": Loading..."))
-    local button = CreateButton("Info", "Buy next " .. currentCurrency .. " upgrade", function()
-        local row = infoRows[currentCurrency]
-        local candidate = row and getCheapestUpgrade(currentCurrency) or nil
-        if not candidate then
-            local message = allUpgradesBought(currentCurrency)
-                and (currentCurrency .. " is complete.")
-                or (currentCurrency .. " has no eligible upgrade yet.")
-            setActionStatus(message, false)
-            notify("Elemental Tree", message)
-            return
-        end
+    local upgradeToggleLabel = "Auto " .. currentCurrency .. " Upgrades"
+    local resetToggleLabel = "Auto " .. currentCurrency .. " Reset"
+    currencyAutoStates[currentCurrency] = {
+        Upgrades = GetConfigValue("Info", upgradeToggleLabel) == true,
+        Resets = GetConfigValue("Info", resetToggleLabel) == true,
+    }
 
-        local success, message = activateCandidate(candidate, "Manual")
-        setActionStatus(message, success)
-        if not success then
-            notify("Purchase unavailable", message)
+    CreateToggle("Info", upgradeToggleLabel, function(state)
+        currencyAutoStates[currentCurrency].Upgrades = state.Value
+    end, currencyAutoStates[currentCurrency].Upgrades)
+
+    if resetAutomationCurrencies[currentCurrency] then
+        CreateToggle("Info", resetToggleLabel, function(state)
+            currencyAutoStates[currentCurrency].Resets = state.Value
+        end, currencyAutoStates[currentCurrency].Resets)
+    else
+        currencyAutoStates[currentCurrency].Resets = false
+    end
+
+    local thresholdConfig = RESET_THRESHOLD_CONFIG[currentCurrency]
+    if thresholdConfig then
+        local inputLabel = thresholdConfig.InputLabel
+        local thresholdInput = CreateInput(
+            "Info",
+            inputLabel,
+            tostring(resetThresholds[currentCurrency]),
+            "Set",
+            function(textBox)
+                local value = tonumber(textBox.Text)
+                if value and value > 0 and value < math.huge then
+                    resetThresholds[currentCurrency] = value
+                end
+                textBox.Text = tostring(resetThresholds[currentCurrency])
+                SetConfigValue("Info", inputLabel, textBox.Text)
+                updateInfoRows()
+            end
+        )
+
+        local savedThreshold = thresholdInput and tonumber(thresholdInput.Text)
+        if savedThreshold and savedThreshold > 0 and savedThreshold < math.huge then
+            resetThresholds[currentCurrency] = savedThreshold
+        elseif thresholdInput then
+            thresholdInput.Text = tostring(resetThresholds[currentCurrency])
+            SetConfigValue("Info", inputLabel, thresholdInput.Text)
         end
-        task.wait(0.15)
-        updateInfoRows()
-    end)
-    local buttonLabel = button and button:FindFirstChildWhichIsA("TextLabel")
+    end
+
     infoRows[currentCurrency] = {
         Label = label,
-        Button = button,
-        ButtonLabel = buttonLabel,
         Candidate = nil,
     }
 end
 
-CreateLabel("Auto", "Each category buys only buttons whose prerequisites and currency requirements are met")
+CreateLabel("Auto", "Global Buyables plus Auto Obby; currency upgrades and resets are in Info")
 autoStatusLabel = select(1, CreateValueLabel("Auto", "Last batch: None"))
-
-CreateToggle("Auto", "Auto Upgrades", function(state)
-    autoStates.Upgrades = state.Value
-end, false)
 
 CreateToggle("Auto", "Auto Buyables", function(state)
     autoStates.Buyables = state.Value
 end, false)
 
-CreateToggle("Auto", "Auto Resets", function(state)
-    autoStates.Resets = state.Value
+CreateToggle("Auto", "Auto Obby", function(state)
+    autoStates.Obby = state.Value
+    if state.Value then
+        runAutoObby()
+    else
+        restoreAutoObby()
+    end
 end, false)
 
 updateInfoRows()
 
-RunService.RenderStepped:Connect(function()
+trackConnection(RunService.RenderStepped:Connect(function()
+    if not scriptRuntime.Active then
+        return
+    end
+
     if statsSynchronized and actionStatusLabel
         and string.find(actionStatusLabel.Text, "Waiting for live server data", 1, true) then
         actionStatusLabel.Text = "Status: <font color=\"#32d583\">Live server data synchronized</font>"
@@ -682,9 +1149,28 @@ RunService.RenderStepped:Connect(function()
         updateInfoRows()
     end
 
-    for _, category in ipairs({"Upgrades", "Buyables", "Resets"}) do
-        if autoStates[category] then
-            runAutoCategory(category)
+    local anyUpgradeAutomation = false
+    local anyResetAutomation = false
+    for _, currency in ipairs(CURRENCY_ORDER) do
+        local state = currencyAutoStates[currency]
+        if state then
+            anyUpgradeAutomation = anyUpgradeAutomation or state.Upgrades
+            anyResetAutomation = anyResetAutomation or state.Resets
         end
     end
-end)
+
+    if anyUpgradeAutomation then
+        runAutoCategory("Upgrades", nil, "Upgrades")
+    end
+    if anyResetAutomation then
+        runAutoCategory("Resets", nil, "Resets")
+    end
+
+    if autoStates.Buyables then
+        runAutoCategory("Buyables")
+    end
+
+    if autoStates.Obby then
+        runAutoObby()
+    end
+end))

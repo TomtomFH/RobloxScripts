@@ -1320,15 +1320,25 @@ local function runAutomationPass(forceAttempts)
     for _, currency in ipairs(CURRENCY_ORDER) do
         local state = currencyAutoStates[currency]
         if state then
-            if state.Upgrades then
-                attempted = runAutoCategory("Upgrades", currency, nil, true, forceAttempts) or attempted
-            end
             anyResetAutomation = anyResetAutomation or state.Resets
         end
     end
 
+    local resetAttempted = false
     if anyResetAutomation then
-        attempted = runAutoCategory("Resets", nil, "Resets", nil, forceAttempts) or attempted
+        resetAttempted = runAutoCategory("Resets", nil, "Resets", nil, forceAttempts)
+        attempted = resetAttempted or attempted
+    end
+
+    -- Never spend the pre-reset snapshot on upgrades once a reset has been sent.
+    -- The authoritative UpdateUI event starts a fresh pass immediately afterward.
+    if not resetAttempted then
+        for _, currency in ipairs(CURRENCY_ORDER) do
+            local state = currencyAutoStates[currency]
+            if state and state.Upgrades then
+                attempted = runAutoCategory("Upgrades", currency, nil, true, forceAttempts) or attempted
+            end
+        end
     end
 
     if autoStates.Buyables then

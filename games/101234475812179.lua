@@ -57,6 +57,7 @@ local localPlayer = Players.LocalPlayer
 
 local Stats = require(ReplicatedStorage:WaitForChild("Stats"))
 local GammaNum = require(ReplicatedStorage:WaitForChild("GammaNum"))
+local ElementTable = require(ReplicatedStorage:WaitForChild("ElementTable"))
 local updateUIRemote = ReplicatedStorage:WaitForChild("Events"):WaitForChild("Remotes"):WaitForChild("UpdateUI")
 
 local upgradesFolder = workspace:WaitForChild("Upgrades")
@@ -66,6 +67,71 @@ local resetsFolder = workspace:WaitForChild("Resets")
 loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/Lib.lua", true))()
 
 local MENU_NAME = "Elemental Tree"
+local CURRENCY_COLORS = ElementTable.statColor or {}
+local CONTROL_BASE_COLOR = Color3.fromRGB(18, 18, 21)
+
+local function getCurrencyAccent(currency)
+    return CURRENCY_COLORS[currency] or Color3.fromRGB(0, 115, 200)
+end
+
+local function getContrastColor(color)
+    local luminance = color.R * 0.299 + color.G * 0.587 + color.B * 0.114
+    return luminance > 0.62 and Color3.fromRGB(20, 20, 24) or Color3.fromRGB(255, 255, 255)
+end
+
+local function styleCurrencyFrame(frame, accent)
+    if not frame then
+        return
+    end
+
+    frame.BackgroundColor3 = CONTROL_BASE_COLOR:Lerp(accent, 0.18)
+
+    local stroke = frame:FindFirstChild("CurrencyAccentStroke") or Instance.new("UIStroke")
+    stroke.Name = "CurrencyAccentStroke"
+    stroke.Color = accent
+    stroke.Transparency = 0.55
+    stroke.Thickness = 1
+    stroke.Parent = frame
+
+    local bar = frame:FindFirstChild("CurrencyAccentBar") or Instance.new("Frame")
+    bar.Name = "CurrencyAccentBar"
+    bar.BorderSizePixel = 0
+    bar.BackgroundColor3 = accent
+    bar.Size = UDim2.new(0, 4, 1, -12)
+    bar.Position = UDim2.new(0, 5, 0, 6)
+    bar.Parent = frame
+    local corner = bar:FindFirstChildOfClass("UICorner") or Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(1, 0)
+    corner.Parent = bar
+end
+
+local function styleCurrencyToggle(button, accent)
+    styleCurrencyFrame(button, accent)
+    local label = button and button:FindFirstChildOfClass("TextLabel")
+    if label then
+        label.TextColor3 = accent
+    end
+end
+
+local function styleCurrencyInput(textBox, applyButton, frame, accent)
+    styleCurrencyFrame(frame, accent)
+    if frame then
+        for _, child in ipairs(frame:GetChildren()) do
+            if child:IsA("TextLabel") then
+                child.TextColor3 = accent
+            end
+        end
+    end
+    if textBox then
+        textBox.BackgroundColor3 = Color3.fromRGB(30, 30, 35):Lerp(accent, 0.16)
+        textBox.TextColor3 = accent
+    end
+    if applyButton then
+        applyButton.BackgroundColor3 = accent
+        applyButton.TextColor3 = getContrastColor(accent)
+    end
+end
+
 local RESET_THRESHOLD_CONFIG = {
     Hydrogen = {
         Default = 1.5,
@@ -1303,7 +1369,12 @@ CreateLabel("Info", "Each currency can buy every affordable eligible upgrade ind
 
 for _, currency in ipairs(CURRENCY_ORDER) do
     local currentCurrency = currency
-    local label = select(1, CreateValueLabel("Info", currentCurrency .. ": Loading..."))
+    local accent = getCurrencyAccent(currentCurrency)
+    local label, labelFrame = CreateValueLabel("Info", currentCurrency .. ": Loading...")
+    styleCurrencyFrame(labelFrame, accent)
+    if label then
+        label.TextColor3 = accent
+    end
     local upgradeToggleLabel = "Auto " .. currentCurrency .. " Upgrades"
     local resetToggleLabel = "Auto " .. currentCurrency .. " Reset"
     currencyAutoStates[currentCurrency] = {
@@ -1311,16 +1382,18 @@ for _, currency in ipairs(CURRENCY_ORDER) do
         Resets = GetConfigValue("Info", resetToggleLabel) == true,
     }
 
-    CreateToggle("Info", upgradeToggleLabel, function(state)
+    local upgradeButton = CreateToggle("Info", upgradeToggleLabel, function(state)
         currencyAutoStates[currentCurrency].Upgrades = state.Value
         queueAutomationPass(true)
-    end, currencyAutoStates[currentCurrency].Upgrades)
+    end, currencyAutoStates[currentCurrency].Upgrades, accent)
+    styleCurrencyToggle(upgradeButton, accent)
 
     if resetAutomationCurrencies[currentCurrency] then
-        CreateToggle("Info", resetToggleLabel, function(state)
+        local resetButton = CreateToggle("Info", resetToggleLabel, function(state)
             currencyAutoStates[currentCurrency].Resets = state.Value
             queueAutomationPass(true)
-        end, currencyAutoStates[currentCurrency].Resets)
+        end, currencyAutoStates[currentCurrency].Resets, accent)
+        styleCurrencyToggle(resetButton, accent)
     else
         currencyAutoStates[currentCurrency].Resets = false
     end
@@ -1328,7 +1401,7 @@ for _, currency in ipairs(CURRENCY_ORDER) do
     local thresholdConfig = RESET_THRESHOLD_CONFIG[currentCurrency]
     if thresholdConfig then
         local inputLabel = thresholdConfig.InputLabel
-        local thresholdInput = CreateInput(
+        local thresholdInput, thresholdButton, thresholdFrame = CreateInput(
             "Info",
             inputLabel,
             tostring(resetThresholds[currentCurrency]),
@@ -1344,6 +1417,7 @@ for _, currency in ipairs(CURRENCY_ORDER) do
                 queueAutomationPass(true)
             end
         )
+        styleCurrencyInput(thresholdInput, thresholdButton, thresholdFrame, accent)
 
         local savedThreshold = thresholdInput and tonumber(thresholdInput.Text)
         if savedThreshold and savedThreshold > 0 and savedThreshold < math.huge then

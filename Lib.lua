@@ -612,7 +612,7 @@ function CreateTab(menuName, groupName, tabName)
     Tabs[tabName] = tab
 end
 
-function CreateToggle(tabName, toggleText, actionFunction, initialState)
+function CreateToggle(tabName, toggleText, actionFunction, initialState, accentColor)
     local tab = Tabs[tabName]
     if not tab then return end
 
@@ -668,7 +668,8 @@ function CreateToggle(tabName, toggleText, actionFunction, initialState)
     end
 
     local function updateVisuals()
-        local color = state.Value and Color3.fromRGB(0, 115, 200) or Color3.fromRGB(116, 116, 116)
+        local activeColor = typeof(accentColor) == "Color3" and accentColor or Color3.fromRGB(0, 115, 200)
+        local color = state.Value and activeColor or Color3.fromRGB(116, 116, 116)
         local pos = state.Value and UDim2.new(0, 500, 0, 17) or UDim2.new(0, 475, 0, 17)
         TweenService:Create(indicator, TweenInfo.new(0.25), {Position = pos, BackgroundColor3 = color}):Play()
         TweenService:Create(bg, TweenInfo.new(0.25), {BackgroundColor3 = color}):Play()
@@ -692,6 +693,8 @@ function CreateToggle(tabName, toggleText, actionFunction, initialState)
             actionFunction(state, button)
         end)
     end))
+
+    return button, state
 end
 
 function CreateDropdown(tabName, dropdownText, options, actionFunction, initialOption)

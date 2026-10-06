@@ -143,6 +143,7 @@ local autoStates = {
     Obby = false,
 }
 local currencyAutoStates = {}
+scriptRuntime.CurrencyAutoStates = currencyAutoStates
 local obbyOriginalStates = {}
 local obbyNextTouch = setmetatable({}, {__mode = "k"})
 local obbyReturnCFrame = nil
@@ -646,7 +647,7 @@ local function getCandidate(model, category)
     return nil
 end
 
-local function getModels(category)
+local function getModels(category, currencyFilter)
     local root = CATEGORY_ROOTS[category]
     local models = {}
     if not root then
@@ -660,7 +661,8 @@ local function getModels(category)
             end
         end
     else
-        for _, currency in ipairs(CURRENCY_ORDER) do
+        local currencies = currencyFilter and {currencyFilter} or CURRENCY_ORDER
+        for _, currency in ipairs(currencies) do
             local folder = root:FindFirstChild(currency)
             if folder then
                 for _, model in ipairs(folder:GetChildren()) do
@@ -856,7 +858,7 @@ local function getAffordableCandidates(category, currencyFilter, enabledStateNam
     local candidates = {}
     local parallelPriority = category == "Resets" and enabledStateName
         and getLowestEnabledParallelResetCurrency() or nil
-    for _, model in ipairs(getModels(category)) do
+    for _, model in ipairs(getModels(category, currencyFilter)) do
         local candidate = getCandidate(model, category)
         local candidateCurrency = candidate and (category == "Resets"
             and candidate.AutomationCurrency or candidate.Currency)
@@ -1149,19 +1151,20 @@ trackConnection(RunService.RenderStepped:Connect(function()
         updateInfoRows()
     end
 
-    local anyUpgradeAutomation = false
     local anyResetAutomation = false
     for _, currency in ipairs(CURRENCY_ORDER) do
         local state = currencyAutoStates[currency]
         if state then
-            anyUpgradeAutomation = anyUpgradeAutomation or state.Upgrades
+            -- Run each currency independently. Keeping the per-currency toggle out of
+            -- the shared candidate filter prevents reset-priority state from starving
+            -- an otherwise valid upgrade batch.
+            if state.Upgrades then
+                runAutoCategory("Upgrades", currency)
+            end
             anyResetAutomation = anyResetAutomation or state.Resets
         end
     end
 
-    if anyUpgradeAutomation then
-        runAutoCategory("Upgrades", nil, "Upgrades")
-    end
     if anyResetAutomation then
         runAutoCategory("Resets", nil, "Resets")
     end

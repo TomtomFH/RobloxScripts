@@ -2,6 +2,56 @@ local LibName = "TomtomFHUI"
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 
+local libraryEnvironment = type(getgenv) == "function" and getgenv() or _G
+local LIBRARY_RUNTIME_KEY = "__TomtomFHUILibraryRuntime"
+local previousLibraryRuntime = rawget(libraryEnvironment, LIBRARY_RUNTIME_KEY)
+if type(previousLibraryRuntime) == "table" and type(previousLibraryRuntime.Cleanup) == "function" then
+    pcall(previousLibraryRuntime.Cleanup)
+end
+
+local libraryRuntime = {
+    Active = true,
+    Connections = {},
+    UIRoots = {},
+}
+
+local function trackLibraryConnection(connection)
+    if connection then
+        table.insert(libraryRuntime.Connections, connection)
+    end
+    return connection
+end
+
+local function cleanupLibraryRuntime()
+    if not libraryRuntime.Active then
+        return
+    end
+    libraryRuntime.Active = false
+
+    for index = #libraryRuntime.Connections, 1, -1 do
+        local connection = libraryRuntime.Connections[index]
+        pcall(function()
+            connection:Disconnect()
+        end)
+        libraryRuntime.Connections[index] = nil
+    end
+
+    for index = #libraryRuntime.UIRoots, 1, -1 do
+        local root = libraryRuntime.UIRoots[index]
+        pcall(function()
+            root:Destroy()
+        end)
+        libraryRuntime.UIRoots[index] = nil
+    end
+
+    if rawget(libraryEnvironment, LIBRARY_RUNTIME_KEY) == libraryRuntime then
+        rawset(libraryEnvironment, LIBRARY_RUNTIME_KEY, nil)
+    end
+end
+
+libraryRuntime.Cleanup = cleanupLibraryRuntime
+rawset(libraryEnvironment, LIBRARY_RUNTIME_KEY, libraryRuntime)
+
 local function resolveUiParent()
     if type(gethui) == "function" then
         local ok, hui = pcall(gethui)
@@ -258,15 +308,17 @@ function CreateMenu(menuName)
     UI.ResetOnSpawn = false
     UI.OnTopOfCoreBlur = true
     UI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    table.insert(libraryRuntime.UIRoots, UI)
 
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    trackLibraryConnection(UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if not libraryRuntime.Active then return end
         if gameProcessed then return end
     
         if input.KeyCode == Enum.KeyCode.LeftControl then
             isVisible = not isVisible
             UI.Enabled = isVisible
         end
-    end)
+    end))
 
     local Background = Instance.new("CanvasGroup", UI)
     Background.BorderSizePixel = 0
@@ -352,16 +404,16 @@ function CreateMenu(menuName)
         SideBar.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
     end
     
-    SideBar.ChildAdded:Connect(function(child)
+    trackLibraryConnection(SideBar.ChildAdded:Connect(function(child)
         if child:IsA("GuiObject") then
-            child:GetPropertyChangedSignal("Size"):Connect(updateCanvasSize)
+            trackLibraryConnection(child:GetPropertyChangedSignal("Size"):Connect(updateCanvasSize))
         end
         updateCanvasSize()
-    end)
+    end))
     
     for _, child in ipairs(SideBar:GetChildren()) do
         if child:IsA("GuiObject") then
-            child:GetPropertyChangedSignal("Size"):Connect(updateCanvasSize)
+            trackLibraryConnection(child:GetPropertyChangedSignal("Size"):Connect(updateCanvasSize))
         end
     end
     
@@ -405,7 +457,7 @@ function CreateGroup(menuName, groupName)
         group.Size = UDim2.new(0, 170, 0, math.max(25, layout.AbsoluteContentSize.Y))
     end
 
-    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateGroupSize)
+    trackLibraryConnection(layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateGroupSize))
     task.defer(updateGroupSize)
 
     Groups[groupName] = group
@@ -472,16 +524,16 @@ function CreateTab(menuName, groupName, tabName)
         tab.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
     end
     
-    tab.ChildAdded:Connect(function(child)
+    trackLibraryConnection(tab.ChildAdded:Connect(function(child)
         if child:IsA("GuiObject") then
-            child:GetPropertyChangedSignal("Size"):Connect(updateTabCanvasSize)
+            trackLibraryConnection(child:GetPropertyChangedSignal("Size"):Connect(updateTabCanvasSize))
         end
         updateTabCanvasSize()
-    end)
+    end))
     
     for _, child in ipairs(tab:GetChildren()) do
         if child:IsA("GuiObject") then
-            child:GetPropertyChangedSignal("Size"):Connect(updateTabCanvasSize)
+            trackLibraryConnection(child:GetPropertyChangedSignal("Size"):Connect(updateTabCanvasSize))
         end
     end
     
@@ -530,7 +582,7 @@ function CreateTab(menuName, groupName, tabName)
     SetActiveTabHandlers[menuName] = setActiveTab
 
     if not CurrentPageConnections[menuName] then
-        CurrentPageConnections[menuName] = pageLayout:GetPropertyChangedSignal("CurrentPage"):Connect(function()
+        CurrentPageConnections[menuName] = trackLibraryConnection(pageLayout:GetPropertyChangedSignal("CurrentPage"):Connect(function()
             local currentPage = pageLayout.CurrentPage
             local activeHandler = SetActiveTabHandlers[menuName]
             if not currentPage or not activeHandler then return end
@@ -541,13 +593,13 @@ function CreateTab(menuName, groupName, tabName)
                     break
                 end
             end
-        end)
+        end))
     end
 
-    button.MouseButton1Click:Connect(function()
+    trackLibraryConnection(button.MouseButton1Click:Connect(function()
         pageLayout:JumpTo(page)
         setActiveTab(button)
-    end)
+    end))
     
     -- If this is the first tab, make it active by default
     if #TabButtons[menuName] == 1 then
@@ -629,7 +681,7 @@ function CreateToggle(tabName, toggleText, actionFunction, initialState)
         end)
     end
 
-    button.MouseButton1Click:Connect(function()
+    trackLibraryConnection(button.MouseButton1Click:Connect(function()
         state.Value = not state.Value
         updateVisuals()
         
@@ -639,7 +691,7 @@ function CreateToggle(tabName, toggleText, actionFunction, initialState)
         task.spawn(function()
             actionFunction(state, button)
         end)
-    end)    
+    end))
 end
 
 function CreateDropdown(tabName, dropdownText, options, actionFunction, initialOption)
@@ -759,14 +811,14 @@ function CreateDropdown(tabName, dropdownText, options, actionFunction, initialO
 
         Instance.new("UICorner", optionButton).CornerRadius = UDim.new(0, 6)
 
-        optionButton.MouseButton1Click:Connect(function()
+        trackLibraryConnection(optionButton.MouseButton1Click:Connect(function()
             selectOption(optionValue)
-        end)
+        end))
     end
 
-    button.MouseButton1Click:Connect(function()
+    trackLibraryConnection(button.MouseButton1Click:Connect(function()
         setOpen(not isOpen)
-    end)
+    end))
 
     task.spawn(function()
         actionFunction(selectedValue, button)
@@ -818,11 +870,11 @@ function CreateButton(tabName, buttonText, actionFunction)
 	label.Name = buttonText
 	label.Position = UDim2.new(0, 20, 0, 7)
 
-	button.MouseButton1Click:Connect(function()
+	trackLibraryConnection(button.MouseButton1Click:Connect(function()
         task.spawn(function()
             actionFunction()
         end)
-	end)
+	end))
 	
 	return button
 end
@@ -1100,14 +1152,14 @@ function CreateInput(tabName, labelText, defaultText, buttonText, actionFunction
 
     Instance.new("UICorner", button)
 
-    button.MouseButton1Click:Connect(function()
+    trackLibraryConnection(button.MouseButton1Click:Connect(function()
         -- Save to config
         SetConfigValue(tabName, labelText, textBox.Text)
         
         task.spawn(function()
             actionFunction(textBox, button, frame)
         end)
-    end)
+    end))
     
     return textBox, button, frame
 end

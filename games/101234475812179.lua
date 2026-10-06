@@ -137,6 +137,7 @@ local categoryByRoot = {
 local configCache = setmetatable({}, {__mode = "k"})
 local predecessorMap = setmetatable({}, {__mode = "k"})
 local nextPurchaseAttempt = setmetatable({}, {__mode = "k"})
+local modelCache = {}
 local infoRows = {}
 local autoStates = {
     Buyables = false,
@@ -159,6 +160,12 @@ local latestResetMetrics = {}
 local statsSynchronized = false
 local statsRevision = 0
 local renderedStatsRevision = -1
+local automationDirty = true
+local lastAutomationStatsRevision = -1
+local nextAutomationPassAt = 0
+local nextAutomationRetryAt = 0
+local AUTOMATION_MIN_PASS_INTERVAL = 0.25
+local AUTOMATION_RETRY_INTERVAL = 1
 
 local function collectChangedPurchaseCurrencies(previousStats, liveStats)
     local changed = {}
@@ -690,6 +697,13 @@ local function getModels(category, currencyFilter)
         return models
     end
 
+    local cacheKey = currencyFilter or "*"
+    modelCache[category] = modelCache[category] or {}
+    local cached = modelCache[category][cacheKey]
+    if cached then
+        return cached
+    end
+
     if category == "Resets" then
         for _, model in ipairs(root:GetChildren()) do
             if model:FindFirstChild("Config") then
@@ -722,6 +736,7 @@ local function getModels(category, currencyFilter)
         return leftOrder < rightOrder
     end)
 
+    modelCache[category][cacheKey] = models
     return models
 end
 
@@ -796,7 +811,9 @@ local function activateCandidate(candidate, source)
         return false, "The button's ClickDetector cannot be activated by this executor."
     end
 
-    nextPurchaseAttempt[fresh.Model] = now + 0.075
+    -- The server can take a while to acknowledge a detector purchase. Retrying
+    -- every rendered frame floods it with duplicate clicks and tanks client FPS.
+    nextPurchaseAttempt[fresh.Model] = now + AUTOMATION_RETRY_INTERVAL
     local success, err = pcall(fireclickdetector, detector, 0)
     if not success then
         return false, tostring(err)
@@ -1110,11 +1127,13 @@ for _, currency in ipairs(CURRENCY_ORDER) do
 
     CreateToggle("Info", upgradeToggleLabel, function(state)
         currencyAutoStates[currentCurrency].Upgrades = state.Value
+        automationDirty = true
     end, currencyAutoStates[currentCurrency].Upgrades)
 
     if resetAutomationCurrencies[currentCurrency] then
         CreateToggle("Info", resetToggleLabel, function(state)
             currencyAutoStates[currentCurrency].Resets = state.Value
+            automationDirty = true
         end, currencyAutoStates[currentCurrency].Resets)
     else
         currencyAutoStates[currentCurrency].Resets = false
@@ -1159,6 +1178,7 @@ autoStatusLabel = select(1, CreateValueLabel("Auto", "Last batch: None"))
 
 CreateToggle("Auto", "Auto Buyables", function(state)
     autoStates.Buyables = state.Value
+    automationDirty = true
 end, false)
 
 CreateToggle("Auto", "Auto Obby", function(state)
@@ -1187,26 +1207,36 @@ trackConnection(RunService.RenderStepped:Connect(function()
         updateInfoRows()
     end
 
-    local anyResetAutomation = false
-    for _, currency in ipairs(CURRENCY_ORDER) do
-        local state = currencyAutoStates[currency]
-        if state then
-            -- Run each currency independently. Keeping the per-currency toggle out of
-            -- the shared candidate filter prevents reset-priority state from starving
-            -- an otherwise valid upgrade batch.
-            if state.Upgrades then
-                runAutoCategory("Upgrades", currency)
+    local now = os.clock()
+    local statsChanged = lastAutomationStatsRevision ~= statsRevision
+    local retryDue = now >= nextAutomationRetryAt
+    if now >= nextAutomationPassAt and (automationDirty or statsChanged or retryDue) then
+        automationDirty = false
+        lastAutomationStatsRevision = statsRevision
+        nextAutomationPassAt = now + AUTOMATION_MIN_PASS_INTERVAL
+        nextAutomationRetryAt = now + AUTOMATION_RETRY_INTERVAL
+
+        local anyResetAutomation = false
+        for _, currency in ipairs(CURRENCY_ORDER) do
+            local state = currencyAutoStates[currency]
+            if state then
+                -- Run each currency independently. Keeping the per-currency toggle out of
+                -- the shared candidate filter prevents reset-priority state from starving
+                -- an otherwise valid upgrade batch.
+                if state.Upgrades then
+                    runAutoCategory("Upgrades", currency)
+                end
+                anyResetAutomation = anyResetAutomation or state.Resets
             end
-            anyResetAutomation = anyResetAutomation or state.Resets
         end
-    end
 
-    if anyResetAutomation then
-        runAutoCategory("Resets", nil, "Resets")
-    end
+        if anyResetAutomation then
+            runAutoCategory("Resets", nil, "Resets")
+        end
 
-    if autoStates.Buyables then
-        runAutoCategory("Buyables")
+        if autoStates.Buyables then
+            runAutoCategory("Buyables")
+        end
     end
 
     if autoStates.Obby then

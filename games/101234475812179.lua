@@ -137,6 +137,7 @@ local categoryByRoot = {
 local configCache = setmetatable({}, {__mode = "k"})
 local predecessorMap = setmetatable({}, {__mode = "k"})
 local nextPurchaseAttempt = setmetatable({}, {__mode = "k"})
+local purchaseAttemptCurrencyPath = setmetatable({}, {__mode = "k"})
 local modelCache = {}
 local infoRows = {}
 local autoStates = {
@@ -162,9 +163,7 @@ local statsRevision = 0
 local renderedStatsRevision = -1
 local automationDirty = true
 local lastAutomationStatsRevision = -1
-local nextAutomationPassAt = 0
 local nextAutomationRetryAt = 0
-local AUTOMATION_MIN_PASS_INTERVAL = 0.25
 local AUTOMATION_RETRY_INTERVAL = 1
 
 local function collectChangedPurchaseCurrencies(previousStats, liveStats)
@@ -239,6 +238,8 @@ local function updateResetCurrencyTrends(liveStats)
             resetCurrencyDecreasing[path] = false
         end
     end
+
+    return changedPurchaseCurrencies
 end
 
 local function synchronizeStats(compressedStats, _, calcValues)
@@ -260,7 +261,7 @@ local function synchronizeStats(compressedStats, _, calcValues)
         end
     end
 
-    updateResetCurrencyTrends(liveStats)
+    local changedPurchaseCurrencies = updateResetCurrencyTrends(liveStats)
 
     -- Executor ModuleScript requires have a separate cache from the game's LocalScripts.
     -- Keep the executor-side table identity, since purchase Config modules close over it,
@@ -276,6 +277,19 @@ local function synchronizeStats(compressedStats, _, calcValues)
 
     statsSynchronized = true
     statsRevision += 1
+
+    -- A confirmed purchase can unlock every later button in the same chain. Those
+    -- buttons may already have a retry reservation from the optimistic batch, so
+    -- release the reservations now instead of making the new valid state wait a
+    -- full retry interval.
+    if next(changedPurchaseCurrencies) ~= nil then
+        for model in pairs(nextPurchaseAttempt) do
+            if changedPurchaseCurrencies[purchaseAttemptCurrencyPath[model]] then
+                nextPurchaseAttempt[model] = nil
+                purchaseAttemptCurrencyPath[model] = nil
+            end
+        end
+    end
 end
 
 trackConnection(updateUIRemote.OnClientEvent:Connect(synchronizeStats))
@@ -802,6 +816,7 @@ local function reserveCandidateAttempt(candidate)
     end
 
     nextPurchaseAttempt[model] = now + AUTOMATION_RETRY_INTERVAL
+    purchaseAttemptCurrencyPath[model] = candidate.CurrencyPath
     return true
 end
 
@@ -1237,10 +1252,9 @@ trackConnection(RunService.RenderStepped:Connect(function()
     local now = os.clock()
     local statsChanged = lastAutomationStatsRevision ~= statsRevision
     local retryDue = now >= nextAutomationRetryAt
-    if now >= nextAutomationPassAt and (automationDirty or statsChanged or retryDue) then
+    if automationDirty or statsChanged or retryDue then
         automationDirty = false
         lastAutomationStatsRevision = statsRevision
-        nextAutomationPassAt = now + AUTOMATION_MIN_PASS_INTERVAL
         nextAutomationRetryAt = now + AUTOMATION_RETRY_INTERVAL
 
         local anyResetAutomation = false

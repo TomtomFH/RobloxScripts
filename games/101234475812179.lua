@@ -758,9 +758,27 @@ local function getBuyableCandidate(model)
     }
 end
 
+local function resolveResetRequirement(config)
+    local requirement = config and config.ReqToReset
+    if type(requirement) ~= "function" then
+        return requirement
+    end
+
+    local success, resolved = pcall(requirement)
+    if not success then
+        return nil
+    end
+    return resolved
+end
+
 local function getResetCandidate(model)
     local config = getConfig(model)
     if not config or type(config.CurrencyReq) ~= "string" or config.ReqToReset == nil then
+        return nil
+    end
+
+    local requiredAmount = resolveResetRequirement(config)
+    if requiredAmount == nil then
         return nil
     end
 
@@ -819,9 +837,9 @@ local function getResetCandidate(model)
         AutomationCurrency = automationCurrency,
         CurrencyPath = config.CurrencyReq,
         Title = "Reset for " .. model.Name,
-        Cost = config.ReqToReset,
+        Cost = requiredAmount,
         Amount = amount,
-        Affordable = gammaAtLeast(amount, config.ReqToReset),
+        Affordable = gammaAtLeast(amount, requiredAmount),
     }
 end
 

@@ -161,10 +161,10 @@ local latestResetMetrics = {}
 local statsSynchronized = false
 local statsRevision = 0
 local renderedStatsRevision = -1
-local automationDirty = true
-local lastAutomationStatsRevision = -1
-local nextAutomationRetryAt = 0
 local AUTOMATION_RETRY_INTERVAL = 1
+local queueAutomationPass = nil
+local automationPassQueued = false
+local automationRetryScheduled = false
 
 local function collectChangedPurchaseCurrencies(previousStats, liveStats)
     local changed = {}
@@ -289,6 +289,12 @@ local function synchronizeStats(compressedStats, _, calcValues)
                 purchaseAttemptCurrencyPath[model] = nil
             end
         end
+    end
+
+    -- Purchases are driven directly by the authoritative server update instead of
+    -- waiting for a rendered-frame polling pass.
+    if queueAutomationPass then
+        queueAutomationPass()
     end
 end
 
@@ -1003,6 +1009,65 @@ local function runAutoCategory(category, currencyFilter, enabledStateName, bypas
     return attempted > 0
 end
 
+local function scheduleAutomationRetry()
+    if automationRetryScheduled or not scriptRuntime.Active then
+        return
+    end
+
+    automationRetryScheduled = true
+    task.delay(AUTOMATION_RETRY_INTERVAL, function()
+        automationRetryScheduled = false
+        if scriptRuntime.Active and queueAutomationPass then
+            queueAutomationPass()
+        end
+    end)
+end
+
+local function runAutomationPass()
+    if not scriptRuntime.Active or not statsSynchronized then
+        return
+    end
+
+    local attempted = false
+    local anyResetAutomation = false
+    for _, currency in ipairs(CURRENCY_ORDER) do
+        local state = currencyAutoStates[currency]
+        if state then
+            if state.Upgrades then
+                attempted = runAutoCategory("Upgrades", currency, nil, true) or attempted
+            end
+            anyResetAutomation = anyResetAutomation or state.Resets
+        end
+    end
+
+    if anyResetAutomation then
+        attempted = runAutoCategory("Resets", nil, "Resets") or attempted
+    end
+
+    if autoStates.Buyables then
+        attempted = runAutoCategory("Buyables") or attempted
+    end
+
+    if attempted then
+        scheduleAutomationRetry()
+    end
+end
+
+
+queueAutomationPass = function()
+    if automationPassQueued or not scriptRuntime.Active then
+        return
+    end
+
+    automationPassQueued = true
+    task.spawn(function()
+        automationPassQueued = false
+        if scriptRuntime.Active then
+            runAutomationPass()
+        end
+    end)
+end
+
 local function getObbyCheckpoints()
     local other = workspace:FindFirstChild("Other")
     local infiniteObby = other and other:FindFirstChild("InfiniteObby")
@@ -1169,13 +1234,13 @@ for _, currency in ipairs(CURRENCY_ORDER) do
 
     CreateToggle("Info", upgradeToggleLabel, function(state)
         currencyAutoStates[currentCurrency].Upgrades = state.Value
-        automationDirty = true
+        queueAutomationPass()
     end, currencyAutoStates[currentCurrency].Upgrades)
 
     if resetAutomationCurrencies[currentCurrency] then
         CreateToggle("Info", resetToggleLabel, function(state)
             currencyAutoStates[currentCurrency].Resets = state.Value
-            automationDirty = true
+            queueAutomationPass()
         end, currencyAutoStates[currentCurrency].Resets)
     else
         currencyAutoStates[currentCurrency].Resets = false
@@ -1197,6 +1262,7 @@ for _, currency in ipairs(CURRENCY_ORDER) do
                 textBox.Text = tostring(resetThresholds[currentCurrency])
                 SetConfigValue("Info", inputLabel, textBox.Text)
                 updateInfoRows()
+                queueAutomationPass()
             end
         )
 
@@ -1220,7 +1286,7 @@ autoStatusLabel = select(1, CreateValueLabel("Auto", "Last batch: None"))
 
 CreateToggle("Auto", "Auto Buyables", function(state)
     autoStates.Buyables = state.Value
-    automationDirty = true
+    queueAutomationPass()
 end, false)
 
 CreateToggle("Auto", "Auto Obby", function(state)
@@ -1233,6 +1299,7 @@ CreateToggle("Auto", "Auto Obby", function(state)
 end, false)
 
 updateInfoRows()
+queueAutomationPass()
 
 trackConnection(RunService.RenderStepped:Connect(function()
     if not scriptRuntime.Active then
@@ -1247,37 +1314,6 @@ trackConnection(RunService.RenderStepped:Connect(function()
     if renderedStatsRevision ~= statsRevision then
         renderedStatsRevision = statsRevision
         updateInfoRows()
-    end
-
-    local now = os.clock()
-    local statsChanged = lastAutomationStatsRevision ~= statsRevision
-    local retryDue = now >= nextAutomationRetryAt
-    if automationDirty or statsChanged or retryDue then
-        automationDirty = false
-        lastAutomationStatsRevision = statsRevision
-        nextAutomationRetryAt = now + AUTOMATION_RETRY_INTERVAL
-
-        local anyResetAutomation = false
-        for _, currency in ipairs(CURRENCY_ORDER) do
-            local state = currencyAutoStates[currency]
-            if state then
-                -- Run each currency independently. Keeping the per-currency toggle out of
-                -- the shared candidate filter prevents reset-priority state from starving
-                -- an otherwise valid upgrade batch.
-                if state.Upgrades then
-                    runAutoCategory("Upgrades", currency, nil, true)
-                end
-                anyResetAutomation = anyResetAutomation or state.Resets
-            end
-        end
-
-        if anyResetAutomation then
-            runAutoCategory("Resets", nil, "Resets")
-        end
-
-        if autoStates.Buyables then
-            runAutoCategory("Buyables")
-        end
     end
 
     if autoStates.Obby then

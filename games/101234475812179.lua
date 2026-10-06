@@ -404,7 +404,21 @@ local function sourceIsComplete(model)
 
     if category == "Buyables" then
         local entry = getStatEntry(model, category)
-        return entry and entry.Maxed and entry.Maxed.Value == true or false
+        if not entry then
+            return false
+        end
+
+        local config = getConfig(model)
+        if config and config.NextType == 1 then
+            if entry.Bought and entry.Bought.Value == true then
+                return true
+            end
+
+            local level = entry.Level and valueOf(entry.Level.Value)
+            return level ~= nil and gammaAtLeast(level, 1)
+        end
+
+        return entry.Maxed and entry.Maxed.Value == true or false
     end
 
     if category == "Resets" then
@@ -495,6 +509,28 @@ local function purchaseRequirementsMet(model)
     return requirementsMet(model)
 end
 
+local function buyableRequirementsMet(model)
+    local predecessors = predecessorMap[model]
+    if predecessors and #predecessors > 0 then
+        return requirementsMet(model)
+    end
+
+    local currency = model.Parent and model.Parent.Name
+    local element = currency and Stats.Elements and Stats.Elements[currency]
+    if not element then
+        return false
+    end
+
+    if element.Locked and valueOf(element.Locked.Value) == true then
+        return false
+    end
+    if element.Unlocked and valueOf(element.Unlocked.Value) ~= true then
+        return false
+    end
+
+    return true
+end
+
 local function getModelTitle(model, currency)
     local ui = model:FindFirstChild("UI")
     local title = ui and ui:FindFirstChild("Title", true)
@@ -546,7 +582,7 @@ local function getBuyableCandidate(model)
     if not entry or not entry.Maxed or entry.Maxed.Value == true then
         return nil
     end
-    if not purchaseRequirementsMet(model) then
+    if not buyableRequirementsMet(model) then
         return nil
     end
 

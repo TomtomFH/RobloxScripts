@@ -550,9 +550,15 @@ local function getModelTitle(model, currency)
     return string.format("%s #%s", currency, model.Name)
 end
 
-local function getUpgradeCandidate(model)
+local function getUpgradeCandidate(model, bypassRequirements)
     local currency = model.Parent and model.Parent.Name or "Unknown"
     if parallelResetCurrencyLookup[currency] and not isParallelResetSelectable(currency) then
+        return nil
+    end
+
+    local element = Stats.Elements and Stats.Elements[currency]
+    if bypassRequirements and element and element.Unlocked
+        and valueOf(element.Unlocked.Value) ~= true then
         return nil
     end
 
@@ -560,7 +566,7 @@ local function getUpgradeCandidate(model)
     if not entry or not entry.Bought or entry.Bought.Value == true then
         return nil
     end
-    if not purchaseRequirementsMet(model) then
+    if not bypassRequirements and not purchaseRequirementsMet(model) then
         return nil
     end
 
@@ -581,6 +587,7 @@ local function getUpgradeCandidate(model)
         Cost = cost,
         Amount = amount,
         Affordable = gammaAtLeast(amount, cost),
+        BypassRequirements = bypassRequirements == true,
     }
 end
 
@@ -679,9 +686,9 @@ local function getResetCandidate(model)
     }
 end
 
-local function getCandidate(model, category)
+local function getCandidate(model, category, bypassRequirements)
     if category == "Upgrades" then
-        return getUpgradeCandidate(model)
+        return getUpgradeCandidate(model, bypassRequirements)
     elseif category == "Buyables" then
         return getBuyableCandidate(model)
     elseif category == "Resets" then
@@ -803,7 +810,7 @@ local function activateCandidate(candidate, source)
         return false, "That button is no longer available."
     end
 
-    local fresh = getCandidate(candidate.Model, candidate.Category)
+    local fresh = getCandidate(candidate.Model, candidate.Category, candidate.BypassRequirements)
     if not fresh then
         return false, "Its requirements are not currently met."
     end
@@ -914,12 +921,12 @@ local function getLowestEnabledParallelResetCurrency()
     return lowestCurrency
 end
 
-local function getAffordableCandidates(category, currencyFilter, enabledStateName)
+local function getAffordableCandidates(category, currencyFilter, enabledStateName, bypassRequirements)
     local candidates = {}
     local parallelPriority = category == "Resets" and enabledStateName
         and getLowestEnabledParallelResetCurrency() or nil
     for _, model in ipairs(getModels(category, currencyFilter)) do
-        local candidate = getCandidate(model, category)
+        local candidate = getCandidate(model, category, bypassRequirements)
         local candidateCurrency = candidate and (category == "Resets"
             and candidate.AutomationCurrency or candidate.Currency)
         local currencyState = candidateCurrency and currencyAutoStates[candidateCurrency]
@@ -935,12 +942,17 @@ local function getAffordableCandidates(category, currencyFilter, enabledStateNam
     return candidates
 end
 
-local function runAutoCategory(category, currencyFilter, enabledStateName)
+local function runAutoCategory(category, currencyFilter, enabledStateName, bypassRequirements)
     if not scriptRuntime.Active then
         return false
     end
 
-    local candidates = getAffordableCandidates(category, currencyFilter, enabledStateName)
+    local candidates = getAffordableCandidates(
+        category,
+        currencyFilter,
+        enabledStateName,
+        bypassRequirements
+    )
     if #candidates == 0 then
         return false
     end
@@ -1239,7 +1251,7 @@ trackConnection(RunService.RenderStepped:Connect(function()
                 -- the shared candidate filter prevents reset-priority state from starving
                 -- an otherwise valid upgrade batch.
                 if state.Upgrades then
-                    runAutoCategory("Upgrades", currency)
+                    runAutoCategory("Upgrades", currency, nil, true)
                 end
                 anyResetAutomation = anyResetAutomation or state.Resets
             end

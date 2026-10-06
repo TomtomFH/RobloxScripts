@@ -136,6 +136,7 @@ local categoryByRoot = {
 
 local configCache = setmetatable({}, {__mode = "k"})
 local predecessorMap = setmetatable({}, {__mode = "k"})
+local purchaseDepthCache = setmetatable({}, {__mode = "k"})
 local nextPurchaseAttempt = setmetatable({}, {__mode = "k"})
 local purchaseAttemptCurrencyPath = setmetatable({}, {__mode = "k"})
 local modelCache = {}
@@ -495,9 +496,48 @@ local function buildPurchaseGraph()
                         resetAutomationCurrencies[automationCurrency] = true
                     end
                 end
+
+                local purchaseUI = owner:FindFirstChild("UI")
+                if purchaseUI and purchaseUI:IsA("SurfaceGui") then
+                    trackConnection(purchaseUI:GetPropertyChangedSignal("Enabled"):Connect(function()
+                        if purchaseUI.Enabled and scriptRuntime.Active then
+                            -- The physical button becoming enabled is the earliest local
+                            -- indication that a predecessor was accepted by the server.
+                            nextPurchaseAttempt[owner] = nil
+                            purchaseAttemptCurrencyPath[owner] = nil
+                            if queueAutomationPass then
+                                queueAutomationPass()
+                            end
+                        end
+                    end))
+                end
             end
         end
     end
+
+    purchaseDepthCache = setmetatable({}, {__mode = "k"})
+end
+
+local function getPurchaseDepth(model, visiting)
+    local cached = purchaseDepthCache[model]
+    if cached ~= nil then
+        return cached
+    end
+
+    visiting = visiting or {}
+    if visiting[model] then
+        return 0
+    end
+    visiting[model] = true
+
+    local depth = 0
+    for _, predecessor in ipairs(predecessorMap[model] or {}) do
+        depth = math.max(depth, getPurchaseDepth(predecessor, visiting) + 1)
+    end
+
+    visiting[model] = nil
+    purchaseDepthCache[model] = depth
+    return depth
 end
 
 local function requirementsMet(model)
@@ -960,6 +1000,21 @@ local function getAffordableCandidates(category, currencyFilter, enabledStateNam
             table.insert(candidates, candidate)
         end
     end
+
+    table.sort(candidates, function(left, right)
+        local leftDepth = getPurchaseDepth(left.Model)
+        local rightDepth = getPurchaseDepth(right.Model)
+        if leftDepth ~= rightDepth then
+            return leftDepth < rightDepth
+        end
+
+        local leftNumber = tonumber(left.Model.Name)
+        local rightNumber = tonumber(right.Model.Name)
+        if leftNumber and rightNumber and leftNumber ~= rightNumber then
+            return leftNumber < rightNumber
+        end
+        return left.Model.Name < right.Model.Name
+    end)
     return candidates
 end
 
@@ -980,20 +1035,28 @@ local function runAutoCategory(category, currencyFilter, enabledStateName, bypas
 
     local attempted = 0
     local lastMessage = nil
+    local queuedCandidates = {}
     for _, candidate in ipairs(candidates) do
         if reserveCandidateAttempt(candidate) then
             attempted += 1
             lastMessage = "Auto: " .. candidate.Title
-
-            -- Queue every eligible button before running any detector call. A slow
-            -- detector can then yield independently without delaying the rest.
-            local queuedCandidate = candidate
-            task.defer(function()
-                if scriptRuntime.Active then
-                    activateCandidate(queuedCandidate, "Auto")
-                end
-            end)
+            table.insert(queuedCandidates, candidate)
         end
+    end
+
+
+    if #queuedCandidates > 0 then
+        -- Keep independent currencies/categories threaded, but submit a single
+        -- dependency chain in strict order. This lets the server accept #1, #2,
+        -- #3, etc. back-to-back instead of receiving children before parents.
+        task.spawn(function()
+            for _, queuedCandidate in ipairs(queuedCandidates) do
+                if not scriptRuntime.Active then
+                    return
+                end
+                activateCandidate(queuedCandidate, "Auto")
+            end
+        end)
     end
 
     if attempted > 0 and autoStatusLabel then

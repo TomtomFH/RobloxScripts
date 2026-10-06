@@ -170,6 +170,9 @@ local parallelResetCurrencyLookup = {
     Boron = true,
     Carbon = true,
 }
+local currencyRequirementOnlyResetLookup = {
+    Oxygen = true,
+}
 local parallelRootUpgradeLookup = {
     ["1"] = true,
     ["2"] = true,
@@ -763,34 +766,37 @@ local function getResetCandidate(model)
 
     local sourceCurrency = getCurrencyFromPath(config.CurrencyReq)
     local automationCurrency = getResetAutomationCurrency(model)
+    local currencyRequirementOnly = currencyRequirementOnlyResetLookup[automationCurrency] == true
     if parallelResetCurrencyLookup[automationCurrency]
         and not isParallelResetSelectable(automationCurrency) then
         return nil
     end
 
-    local thresholdConfig = automationCurrency and RESET_THRESHOLD_CONFIG[automationCurrency]
-    if thresholdConfig then
-        local metric = latestResetMetrics[automationCurrency]
-        local threshold = resetThresholds[automationCurrency]
-        if metric == nil or threshold == nil then
-            return nil
-        end
-
-        if thresholdConfig.Direction == "Below" then
-            if not gammaLess(metric, threshold) then
+    if not currencyRequirementOnly then
+        local thresholdConfig = automationCurrency and RESET_THRESHOLD_CONFIG[automationCurrency]
+        if thresholdConfig then
+            local metric = latestResetMetrics[automationCurrency]
+            local threshold = resetThresholds[automationCurrency]
+            if metric == nil or threshold == nil then
                 return nil
             end
-        elseif not gammaAtLeast(metric, threshold) then
+
+            if thresholdConfig.Direction == "Below" then
+                if not gammaLess(metric, threshold) then
+                    return nil
+                end
+            elseif not gammaAtLeast(metric, threshold) then
+                return nil
+            end
+        elseif resetCurrencyDecreasing[config.CurrencyReq] ~= true then
             return nil
         end
-    elseif resetCurrencyDecreasing[config.CurrencyReq] ~= true then
-        return nil
-    end
 
-    if type(config.ReqToUnlockLine) == "function" then
-        local success, unlocked = pcall(config.ReqToUnlockLine)
-        if not success or not unlocked then
-            return nil
+        if type(config.ReqToUnlockLine) == "function" then
+            local success, unlocked = pcall(config.ReqToUnlockLine)
+            if not success or not unlocked then
+                return nil
+            end
         end
     end
 

@@ -163,6 +163,12 @@ local RESET_THRESHOLD_CONFIG = {
         Direction = "Below",
         InputLabel = "Nitrogen Reset Below Hydrogen (x/s)",
     },
+    Fluorine = {
+        Default = 1.25,
+        CalcName = "GetHydrogen",
+        Direction = "Below",
+        InputLabel = "Fluorine Reset Below Hydrogen (x/s)",
+    },
 }
 local PARALLEL_RESET_CURRENCIES = {"Beryllium", "Boron", "Carbon"}
 local parallelResetCurrencyLookup = {
@@ -771,6 +777,44 @@ local function resolveResetRequirement(config)
     return resolved
 end
 
+local function resetCanAdvance(model)
+    local config = getConfig(model)
+    if not config or type(config.CurrencyReq) ~= "string" then
+        return false
+    end
+
+    if type(config.ReqToUnlockLine) == "function" then
+        local success, unlocked = pcall(config.ReqToUnlockLine)
+        if not success or not unlocked then
+            return false
+        end
+    end
+
+    local layer = getPathNode(config.LayerCurrency)
+    if config.OneTime and layer and layer.Prestiged and layer.Prestiged.Value == true then
+        return false
+    end
+
+    if type(config.GainFunction) == "function" then
+        local success, gain = pcall(config.GainFunction)
+        if not success or gain == nil then
+            return false
+        end
+
+        if config.CurrencyOperator == "set" and layer then
+            local current = valueOf(layer.Value)
+            if current ~= nil and not gammaLess(current, gain) then
+                return false
+            end
+        end
+    end
+
+    local requiredAmount = resolveResetRequirement(config)
+    local currencyNode = getPathNode(config.CurrencyReq)
+    local amount = currencyNode and valueOf(currencyNode.Value)
+    return requiredAmount ~= nil and amount ~= nil and gammaAtLeast(amount, requiredAmount)
+end
+
 local function getResetCandidate(model)
     local config = getConfig(model)
     if not config or type(config.CurrencyReq) ~= "string" or config.ReqToReset == nil then
@@ -815,6 +859,13 @@ local function getResetCandidate(model)
             if not success or not unlocked then
                 return nil
             end
+        end
+    end
+
+    if automationCurrency == "Fluorine" then
+        local nitrogenReset = resetsFolder:FindFirstChild("Nitrogen")
+        if nitrogenReset and resetCanAdvance(nitrogenReset) then
+            return nil
         end
     end
 

@@ -1252,7 +1252,10 @@ local function getAffordableCandidates(category, currencyFilter, enabledStateNam
         local candidateCurrency = candidate and (category == "Resets"
             and candidate.AutomationCurrency or candidate.Currency)
         local currencyState = candidateCurrency and currencyAutoStates[candidateCurrency]
-        local hasParallelPriority = not parallelResetCurrencyLookup[candidateCurrency]
+        -- The mutually exclusive Beryllium/Boron/Carbon selection only limits
+        -- resets. Their upgrade trees must all remain eligible for automation.
+        local hasParallelPriority = category ~= "Resets"
+            or not parallelResetCurrencyLookup[candidateCurrency]
             or not enabledStateName or candidateCurrency == parallelPriority
         if candidate and candidate.Affordable
             and (not currencyFilter or candidateCurrency == currencyFilter)

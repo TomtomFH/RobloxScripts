@@ -245,10 +245,12 @@ local statsSynchronized = false
 local statsRevision = 0
 local renderedStatsRevision = -1
 local AUTOMATION_RETRY_INTERVAL = 1
+local AUTOMATION_EVENT_TAIL_DELAY = 0.05
 local queueAutomationPass = nil
 local automationPassQueued = false
 local automationForceQueued = false
 local automationRetryScheduled = false
+local automationTailRetryGeneration = 0
 
 local function collectChangedPurchaseCurrencies(previousStats, liveStats)
     local changed = {}
@@ -383,6 +385,18 @@ local function synchronizeStats(compressedStats, _, calcValues)
     -- waiting for a rendered-frame polling pass.
     if queueAutomationPass then
         queueAutomationPass(true)
+
+        -- Simultaneous parent/child clicks can reach the server out of order. Keep
+        -- the normal event-driven pass, then make one debounced forced retry after
+        -- the update burst so the final rejected children do not wait one second.
+        automationTailRetryGeneration += 1
+        local retryGeneration = automationTailRetryGeneration
+        task.delay(AUTOMATION_EVENT_TAIL_DELAY, function()
+            if scriptRuntime.Active and retryGeneration == automationTailRetryGeneration
+                and queueAutomationPass then
+                queueAutomationPass(true)
+            end
+        end)
     end
 end
 

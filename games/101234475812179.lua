@@ -724,6 +724,7 @@ local function getUpgradeCandidate(model, bypassRequirements)
     end
 
     local entry = getStatEntry(model, "Upgrades")
+    local config = getConfig(model)
     if not entry or not entry.Bought or entry.Bought.Value == true then
         return nil
     end
@@ -749,11 +750,13 @@ local function getUpgradeCandidate(model, bypassRequirements)
         Amount = amount,
         Affordable = gammaAtLeast(amount, cost),
         BypassRequirements = bypassRequirements == true,
+        RequirementOnly = config and config.CostType == 0 or false,
     }
 end
 
 local function getBuyableCandidate(model)
     local entry = getStatEntry(model, "Buyables")
+    local config = getConfig(model)
     if not entry or not entry.Maxed or entry.Maxed.Value == true then
         return nil
     end
@@ -780,6 +783,7 @@ local function getBuyableCandidate(model)
         Cost = cost,
         Amount = amount,
         Affordable = gammaAtLeast(amount, cost),
+        RequirementOnly = config and config.CostType == 0 or false,
     }
 end
 
@@ -1201,6 +1205,44 @@ local function getOxygenLevelResetCandidate()
     }
 end
 
+local function purchaseCandidateComesBefore(left, right)
+    if left.RequirementOnly ~= right.RequirementOnly then
+        return left.RequirementOnly == true
+    end
+
+    local leftIsCheaper = gammaLess(left.Cost, right.Cost)
+    local rightIsCheaper = gammaLess(right.Cost, left.Cost)
+    if leftIsCheaper ~= rightIsCheaper then
+        return leftIsCheaper
+    end
+
+    local leftDepth = getPurchaseDepth(left.Model)
+    local rightDepth = getPurchaseDepth(right.Model)
+    if leftDepth ~= rightDepth then
+        return leftDepth < rightDepth
+    end
+
+    local leftNumber = tonumber(left.Model.Name)
+    local rightNumber = tonumber(right.Model.Name)
+    if leftNumber and rightNumber and leftNumber ~= rightNumber then
+        return leftNumber < rightNumber
+    end
+
+    local leftCurrency = left.Currency or ""
+    local rightCurrency = right.Currency or ""
+    if leftCurrency ~= rightCurrency then
+        return leftCurrency < rightCurrency
+    end
+    if left.Category ~= right.Category then
+        return left.Category < right.Category
+    end
+    return left.Model.Name < right.Model.Name
+end
+
+local function sortPurchaseCandidates(candidates)
+    table.sort(candidates, purchaseCandidateComesBefore)
+end
+
 local function getAffordableCandidates(category, currencyFilter, enabledStateName, bypassRequirements)
     local candidates = {}
     local parallelPriority = category == "Resets" and enabledStateName
@@ -1231,42 +1273,38 @@ local function getAffordableCandidates(category, currencyFilter, enabledStateNam
         end
     end
 
-    table.sort(candidates, function(left, right)
-        if category == "Resets" then
+    if category == "Resets" then
+        table.sort(candidates, function(left, right)
             local leftOrder = table.find(CURRENCY_ORDER, left.AutomationCurrency or left.Model.Name) or -math.huge
             local rightOrder = table.find(CURRENCY_ORDER, right.AutomationCurrency or right.Model.Name) or -math.huge
             if leftOrder ~= rightOrder then
                 return leftOrder > rightOrder
             end
-        end
 
-        local leftDepth = getPurchaseDepth(left.Model)
-        local rightDepth = getPurchaseDepth(right.Model)
-        if leftDepth ~= rightDepth then
-            return leftDepth < rightDepth
-        end
+            local leftDepth = getPurchaseDepth(left.Model)
+            local rightDepth = getPurchaseDepth(right.Model)
+            if leftDepth ~= rightDepth then
+                return leftDepth < rightDepth
+            end
 
-        local leftNumber = tonumber(left.Model.Name)
-        local rightNumber = tonumber(right.Model.Name)
-        if leftNumber and rightNumber and leftNumber ~= rightNumber then
-            return leftNumber < rightNumber
-        end
-        return left.Model.Name < right.Model.Name
-    end)
+            local leftNumber = tonumber(left.Model.Name)
+            local rightNumber = tonumber(right.Model.Name)
+            if leftNumber and rightNumber and leftNumber ~= rightNumber then
+                return leftNumber < rightNumber
+            end
+            return left.Model.Name < right.Model.Name
+        end)
+    else
+        sortPurchaseCandidates(candidates)
+    end
     return candidates
 end
 
-local function runAutoCategory(category, currencyFilter, enabledStateName, bypassRequirements, forceAttempts)
+local function runCandidateBatch(candidates, categoryName, forceAttempts)
     if not scriptRuntime.Active then
         return false
     end
 
-    local candidates = getAffordableCandidates(
-        category,
-        currencyFilter,
-        enabledStateName,
-        bypassRequirements
-    )
     if #candidates == 0 then
         return false
     end
@@ -1297,8 +1335,8 @@ local function runAutoCategory(category, currencyFilter, enabledStateName, bypas
 
 
     if #queuedCandidates > 0 then
-        -- Every affordable button gets its own coroutine in the same scheduler
-        -- batch. No child waits for its predecessor's server confirmation.
+        -- Schedule every button independently in priority order. Nothing waits for
+        -- purchase confirmation, so the full affordable batch is still concurrent.
         for _, queuedCandidate in ipairs(queuedCandidates) do
             local candidateThread = queuedCandidate
             task.spawn(function()
@@ -1310,7 +1348,6 @@ local function runAutoCategory(category, currencyFilter, enabledStateName, bypas
     end
 
     if attempted > 0 and autoStatusLabel then
-        local categoryName = currencyFilter and (currencyFilter .. " " .. category) or category
         autoStatusLabel.Text = string.format(
             "Last batch: <font color=\"#32d583\">%d %s button%s</font> | %s",
             attempted,
@@ -1320,6 +1357,17 @@ local function runAutoCategory(category, currencyFilter, enabledStateName, bypas
         )
     end
     return attempted > 0
+end
+
+local function runAutoCategory(category, currencyFilter, enabledStateName, bypassRequirements, forceAttempts)
+    local candidates = getAffordableCandidates(
+        category,
+        currencyFilter,
+        enabledStateName,
+        bypassRequirements
+    )
+    local categoryName = currencyFilter and (currencyFilter .. " " .. category) or category
+    return runCandidateBatch(candidates, categoryName, forceAttempts)
 end
 
 local function scheduleAutomationRetry()
@@ -1343,10 +1391,12 @@ local function runAutomationPass(forceAttempts)
 
     local attempted = false
     local anyResetAutomation = false
+    local anyUpgradeAutomation = false
     for _, currency in ipairs(CURRENCY_ORDER) do
         local state = currencyAutoStates[currency]
         if state then
             anyResetAutomation = anyResetAutomation or state.Resets
+            anyUpgradeAutomation = anyUpgradeAutomation or state.Upgrades
         end
     end
 
@@ -1359,15 +1409,25 @@ local function runAutomationPass(forceAttempts)
     -- Never spend the pre-reset snapshot on upgrades once a reset has been sent.
     -- The authoritative UpdateUI event starts a fresh pass immediately afterward.
     if not resetAttempted then
-        for _, currency in ipairs(CURRENCY_ORDER) do
-            local state = currencyAutoStates[currency]
-            if state and state.Upgrades then
-                attempted = runAutoCategory("Upgrades", currency, nil, true, forceAttempts) or attempted
+        local purchaseCandidates = {}
+        if anyUpgradeAutomation then
+            for _, candidate in ipairs(getAffordableCandidates("Upgrades", nil, "Upgrades", true)) do
+                table.insert(purchaseCandidates, candidate)
             end
         end
-    end
+        if autoStates.Buyables then
+            for _, candidate in ipairs(getAffordableCandidates("Buyables", nil, nil, nil)) do
+                table.insert(purchaseCandidates, candidate)
+            end
+        end
 
-    if autoStates.Buyables then
+        -- Requirement-only buttons are free, so request all of them before any
+        -- spending purchase. The rest are sent from the lowest real cost upward.
+        sortPurchaseCandidates(purchaseCandidates)
+        attempted = runCandidateBatch(purchaseCandidates, "Purchases", forceAttempts) or attempted
+    elseif autoStates.Buyables then
+        -- Resets only suppress currency upgrades. Preserve the independent global
+        -- buyables behavior while a reset is being processed.
         attempted = runAutoCategory("Buyables", nil, nil, nil, forceAttempts) or attempted
     end
 

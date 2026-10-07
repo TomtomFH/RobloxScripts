@@ -893,6 +893,18 @@ local function getResetCandidate(model)
         return nil
     end
 
+    if config.CurrencyOperator == "set" then
+        if not layer or type(config.GainFunction) ~= "function" then
+            return nil
+        end
+
+        local success, gain = pcall(config.GainFunction)
+        local current = valueOf(layer.Value)
+        if not success or gain == nil or current == nil or not gammaLess(current, gain) then
+            return nil
+        end
+    end
+
     local currencyNode = getPathNode(config.CurrencyReq)
     local amount = currencyNode and valueOf(currencyNode.Value)
     if amount == nil then

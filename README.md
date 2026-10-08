@@ -18,6 +18,12 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/TomtomFH/RobloxScript
 
 ## Supported Games
 
+- **Restaurant Tycoon 3**
+	- Place ID: 119048529960596
+	- Script: [games/119048529960596.lua](https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/games/119048529960596.lua)
+	- Boost helper lists unboosted owned dishes, checks ingredient stock and affordability, buys missing ingredients, and boosts ready dishes.
+	- Includes food-stand topping and combo unlocks, automatic best-menu presets, staff controls, table cleanup, order taking, customer seating, and live restaurant/session statistics.
+	- https://www.roblox.com/games/119048529960596/
 - **The Elemental Tree ~ Rewritten**
 	- Place ID: 101234475812179
 	- Script: [games/101234475812179.lua](https://raw.githubusercontent.com/TomtomFH/RobloxScripts/refs/heads/main/games/101234475812179.lua)

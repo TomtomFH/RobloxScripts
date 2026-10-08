@@ -1,8 +1,14 @@
 local LibName = "TomtomFHUI"
 local Players = game:GetService("Players")
-local CoreGui = game:GetService("CoreGui")
 
 local libraryEnvironment = type(getgenv) == "function" and getgenv() or _G
+local forcePlayerGui = rawget(libraryEnvironment, "__TomtomFHUIForcePlayerGui") == true
+local CoreGui
+if not forcePlayerGui then
+    pcall(function()
+        CoreGui = game:GetService("CoreGui")
+    end)
+end
 local LIBRARY_RUNTIME_KEY = "__TomtomFHUILibraryRuntime"
 local previousLibraryRuntime = rawget(libraryEnvironment, LIBRARY_RUNTIME_KEY)
 if type(previousLibraryRuntime) == "table" and type(previousLibraryRuntime.Cleanup) == "function" then
@@ -53,6 +59,10 @@ libraryRuntime.Cleanup = cleanupLibraryRuntime
 rawset(libraryEnvironment, LIBRARY_RUNTIME_KEY, libraryRuntime)
 
 local function resolveUiParent()
+    if forcePlayerGui then
+        return Players.LocalPlayer:WaitForChild("PlayerGui")
+    end
+
     if type(gethui) == "function" then
         local ok, hui = pcall(gethui)
         if ok and hui then
@@ -88,8 +98,10 @@ local function cleanupExistingUi()
     end
 
     scanParent(Players.LocalPlayer:FindFirstChild("PlayerGui"))
-    scanParent(CoreGui)
-    if type(gethui) == "function" then
+    if not forcePlayerGui then
+        scanParent(CoreGui)
+    end
+    if not forcePlayerGui and type(gethui) == "function" then
         local ok, hui = pcall(gethui)
         if ok then
             scanParent(hui)
@@ -306,7 +318,6 @@ function CreateMenu(menuName)
     UI.DisplayOrder = 999999
     UI.IgnoreGuiInset = true
     UI.ResetOnSpawn = false
-    UI.OnTopOfCoreBlur = true
     UI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     table.insert(libraryRuntime.UIRoots, UI)
 
@@ -316,6 +327,17 @@ function CreateMenu(menuName)
     
         if input.KeyCode == Enum.KeyCode.LeftControl then
             isVisible = not isVisible
+            UI.Enabled = isVisible
+        end
+    end))
+
+    -- Some games temporarily change every ScreenGui while entering or leaving
+    -- an activity. The library's hotkey state remains authoritative in both
+    -- directions: an open menu stays open and an explicitly hidden one stays
+    -- hidden.
+    trackLibraryConnection(UI:GetPropertyChangedSignal("Enabled"):Connect(function()
+        if not libraryRuntime.Active then return end
+        if UI.Enabled ~= isVisible then
             UI.Enabled = isVisible
         end
     end))
@@ -966,6 +988,10 @@ end
 
 function GetUiRoot()
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+
+    if forcePlayerGui then
+        return playerGui:FindFirstChild(LibName) or playerGui:WaitForChild(LibName)
+    end
 
     if type(gethui) == "function" then
         local ok, hui = pcall(gethui)

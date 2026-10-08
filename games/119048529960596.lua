@@ -2022,6 +2022,28 @@ local MANAGED_MENU_COURSE_NAMES = {
 }
 local SINGLE_MENU_LIMITS = { Starter = 1, Main = 1, Dessert = 1 }
 local EXPANDED_MENU_LIMITS = { Starter = 10, Main = 20, Dessert = 10 }
+local EXPANDED_MENU_INPUT_LABELS = {
+    Starter = "Expanded Starter Dishes",
+    Main = "Expanded Main Dishes",
+    Dessert = "Expanded Dessert Dishes",
+}
+
+local function normalizeExpandedMenuLimit(value, fallback)
+    local number = tonumber(value)
+    if not number then
+        return fallback
+    end
+    return math.clamp(math.floor(number), 0, 100)
+end
+
+local function getExpandedPresetDescription()
+    return string.format(
+        "%d/%d/%d preset",
+        EXPANDED_MENU_LIMITS.Starter,
+        EXPANDED_MENU_LIMITS.Main,
+        EXPANDED_MENU_LIMITS.Dessert
+    )
+end
 
 local function getCurrentMenuSet()
     local result = {}
@@ -2097,7 +2119,13 @@ local function updateMenuSummary(bestByCourse)
         local selected = bestByCourse[course] or {}
         local best = selected[1]
         local label = menuCourseLabels[course]
-        if best then
+        if expandedMenuPreset and EXPANDED_MENU_LIMITS[course] == 0 then
+            targetState[course] = selected
+            if label then
+                label.Text = course .. ": disabled in expanded preset"
+                label.TextColor3 = COLORS.Muted
+            end
+        elseif best then
             targetState[course] = selected
             if label then
                 if expandedMenuPreset then
@@ -2188,7 +2216,7 @@ local function manageBestMenu()
     if #removals == 0 and #kidsRemovals == 0 and #specialRemovals == 0 and #additions == 0 then
         setMenuStatus(
             expandedMenuPreset
-                and "Menu is optimized for the 10/20/10 preset"
+                and ("Menu is optimized for the " .. getExpandedPresetDescription())
                 or "Menu is optimized: one best starter, main, and dessert",
             COLORS.Green
         )
@@ -3300,7 +3328,22 @@ for _, course in ipairs(MANAGED_MENU_COURSES) do
         course .. ": Checking owned dishes..."
     ))
 end
-CreateToggle(MENU_TAB_NAME, "Use Expanded Preset (10/20/10)", function(state)
+
+for _, course in ipairs(MANAGED_MENU_COURSES) do
+    local savedLimit = GetConfigValue(MENU_TAB_NAME, EXPANDED_MENU_INPUT_LABELS[course])
+    EXPANDED_MENU_LIMITS[course] = normalizeExpandedMenuLimit(
+        savedLimit,
+        EXPANDED_MENU_LIMITS[course]
+    )
+end
+
+local expandedPresetInitial = GetConfigValue(MENU_TAB_NAME, "Use Expanded Preset")
+if expandedPresetInitial == nil then
+    expandedPresetInitial = GetConfigValue(MENU_TAB_NAME, "Use Expanded Preset (10/20/10)")
+end
+expandedMenuPreset = expandedPresetInitial == true
+
+CreateToggle(MENU_TAB_NAME, "Use Expanded Preset", function(state)
     expandedMenuPreset = state.Value
     scriptRuntime.State.ExpandedMenuPreset = expandedMenuPreset
     updateMenuSummary()
@@ -3308,7 +3351,35 @@ CreateToggle(MENU_TAB_NAME, "Use Expanded Preset (10/20/10)", function(state)
         setMenuStatus("Applying the selected menu preset...", COLORS.Blue)
         queueMenuManagement(0)
     end
-end, false, COLORS.Blue)
+end, expandedMenuPreset, COLORS.Blue)
+
+for _, course in ipairs(MANAGED_MENU_COURSES) do
+    local courseName = course
+    local label = EXPANDED_MENU_INPUT_LABELS[courseName]
+    local textBox = select(1, CreateInput(
+        MENU_TAB_NAME,
+        label,
+        tostring(EXPANDED_MENU_LIMITS[courseName]),
+        "Set",
+        function(input)
+            local limit = normalizeExpandedMenuLimit(input.Text, EXPANDED_MENU_LIMITS[courseName])
+            EXPANDED_MENU_LIMITS[courseName] = limit
+            input.Text = tostring(limit)
+            SetConfigValue(MENU_TAB_NAME, label, input.Text)
+            scriptRuntime.State.ExpandedMenuLimits = table.clone(EXPANDED_MENU_LIMITS)
+            updateMenuSummary()
+            if autoMenuEnabled and expandedMenuPreset then
+                setMenuStatus("Applying the " .. getExpandedPresetDescription() .. "...", COLORS.Blue)
+                queueMenuManagement(0)
+            end
+        end
+    ))
+    if textBox then
+        textBox.Text = tostring(EXPANDED_MENU_LIMITS[courseName])
+        SetConfigValue(MENU_TAB_NAME, label, textBox.Text)
+    end
+end
+
 CreateToggle(MENU_TAB_NAME, "Auto Manage Best Menu", function(state)
     autoMenuEnabled = state.Value
     scriptRuntime.State.AutoMenuEnabled = autoMenuEnabled
@@ -3321,6 +3392,7 @@ CreateToggle(MENU_TAB_NAME, "Auto Manage Best Menu", function(state)
 end, false, COLORS.Green)
 scriptRuntime.State.AutoMenuEnabled = autoMenuEnabled
 scriptRuntime.State.ExpandedMenuPreset = expandedMenuPreset
+scriptRuntime.State.ExpandedMenuLimits = table.clone(EXPANDED_MENU_LIMITS)
 updateMenuSummary()
 
 CreateToggle(AUTO_TAB_NAME, "Auto Collect Table Cash", function(state)

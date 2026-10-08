@@ -1058,6 +1058,7 @@ do
 local CookReplication = require(source.Enums.Cook.CookReplication)
 local WorkerReplication = require(source.Enums.Restaurant.Workers.WorkerReplication)
 local Workers = require(playerSource.Systems.Restaurant.Workers)
+local RestaurantTasks = require(playerSource.Systems.Restaurant.Tasks)
 local ControlsUtility = require(source.Utility.Input.ControlsUtility)
 local CookUtility = require(source.Utility.Cook.CookUtility)
 local CookSystem = require(playerSource.Systems.Cook)
@@ -1084,6 +1085,17 @@ local nativeCookMethods = {
     InteractionUpdated = CookSystem.OnInteractionUpdated,
 }
 local cookOverrides = {}
+
+local function clearRestaurantTask()
+    pcall(function()
+        RestaurantTasks:FinishTask()
+    end)
+    pcall(function()
+        RestaurantTasks:ResetTask()
+    end)
+    RestaurantTasks.Enabled = true
+    RestaurantTasks.Debounce = false
+end
 
 cookOverrides.LockCharacterToModel = function(self, worker, kitchenModel)
     if autoCook and worker == localPlayer then
@@ -1128,6 +1140,7 @@ end
 pcall(function()
     if CookSystem:PlayerIsCooking() then
         CookSystem:RequestCancelCooking()
+        clearRestaurantTask()
     end
 end)
 
@@ -1186,6 +1199,9 @@ local function releasePlayerFromCooking(forceMouseUnlock)
     pcall(function()
         CookingCamera:Unlock()
     end)
+    if forceMouseUnlock then
+        clearRestaurantTask()
+    end
     for _, actionName in ipairs({
         "MultiClick",
         "DirectionalPress",

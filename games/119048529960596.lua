@@ -77,42 +77,28 @@ pcall(function()
     UserInputService.MouseIconEnabled = true
 end)
 
-local function getShiftLockActive()
-    local ok, active = pcall(function()
-        local playerModule = require(localPlayer.PlayerScripts:WaitForChild("PlayerModule"))
-        local cameras = playerModule:GetCameras()
-        if type(cameras.GetIsMouseLocked) == "function" then
-            return cameras:GetIsMouseLocked()
-        end
-        local controller = cameras.activeMouseLockController
-            or (type(cameras.GetMouseLockController) == "function" and cameras:GetMouseLockController())
-        if controller and type(controller.GetIsMouseLocked) == "function" then
-            return controller:GetIsMouseLocked()
-        end
-    end)
-    return ok and active
-end
-
 local shiftReconcileId = 0
-local function queueShiftLockReconcile()
+local function queueShiftLockRelease(wasLocked)
+    if not wasLocked then
+        return
+    end
     shiftReconcileId += 1
     local reconcileId = shiftReconcileId
-    local function reconcile()
+    local function release()
         if not scriptRuntime.Active or reconcileId ~= shiftReconcileId then
             return
         end
-        if getShiftLockActive() == false then
-            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-            UserInputService.MouseIconEnabled = true
-        end
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        UserInputService.MouseIconEnabled = true
     end
-    task.delay(0.05, reconcile)
-    task.delay(0.2, reconcile)
+    task.defer(release)
+    task.delay(0.05, release)
+    task.delay(0.2, release)
 end
 
 trackConnection(UserInputService.InputBegan:Connect(function(input)
     if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
-        queueShiftLockReconcile()
+        queueShiftLockRelease(UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter)
     end
 end))
 
@@ -832,9 +818,11 @@ local autoServe = false
 local servingBusy = false
 local grabInFlight = setmetatable({}, { __mode = "k" })
 local retryCounts = setmetatable({}, { __mode = "k" })
+local boundFoodFolders = setmetatable({}, { __mode = "k" })
 local serveRetryQueued = false
 local scanReadyFood
 local processHeldFood
+local bindFoodFolder
 
 local function getServingTycoon()
     local tycoon = findTycoon()
@@ -950,6 +938,7 @@ scanReadyFood = function()
     if not tycoon then
         return
     end
+    bindFoodFolder(tycoon.Objects.Food)
     if servingBusy then
         return
     end
@@ -967,6 +956,21 @@ scanReadyFood = function()
             break
         end
     end
+end
+
+bindFoodFolder = function(foodFolder)
+    if not foodFolder or boundFoodFolders[foodFolder] then
+        return
+    end
+    boundFoodFolders[foodFolder] = true
+    trackConnection(foodFolder.ChildAdded:Connect(function(foodModel)
+        if not foodModel:IsA("Model") then
+            return
+        end
+        task.defer(attemptReadyFoodGrab, foodModel)
+        task.delay(0.05, attemptReadyFoodGrab, foodModel)
+        task.delay(0.2, attemptReadyFoodGrab, foodModel)
+    end))
 end
 
 processHeldFood = function()
@@ -1038,6 +1042,22 @@ if GrabFoodSystem.GrabbedFoodUpdated and type(GrabFoodSystem.GrabbedFoodUpdated.
     end))
 end
 
+-- Collection tags and GrabEnded are not emitted for every route that creates
+-- or updates a ready dish. This small fallback catches those missed changes
+-- without scanning the full workspace or waiting on a previous delivery.
+task.spawn(function()
+    while scriptRuntime.Active do
+        task.wait(0.25)
+        if autoServe then
+            if #getHeldFood() > 0 then
+                processHeldFood()
+            else
+                scanReadyFood()
+            end
+        end
+    end
+end)
+
 function autoRestaurantTasks:SetAutoServe(enabled)
     autoServe = enabled == true
     scriptRuntime.State.AutoServe = autoServe
@@ -1070,6 +1090,7 @@ table.insert(scriptRuntime.CleanupCallbacks, function()
     serveRetryQueued = false
     table.clear(grabInFlight)
     table.clear(retryCounts)
+    table.clear(boundFoodFolders)
 end)
 end
 

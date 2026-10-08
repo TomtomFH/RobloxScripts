@@ -70,14 +70,51 @@ local playerGui = localPlayer:WaitForChild("PlayerGui")
 local playerSource = localPlayer:WaitForChild("PlayerScripts"):WaitForChild("Source")
 
 -- Older Auto Serve/Auto Cook builds could leave Roblox in center-locked mouse
--- mode during cleanup. Normalize it once when the replacement runtime starts.
+-- mode during cleanup. Normalize it once without changing the player's global
+-- shift-lock preference.
 pcall(function()
-    if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
-        UserSettings():GetService("UserGameSettings").ControlMode = Enum.ControlMode.Classic
-    end
     UserInputService.MouseBehavior = Enum.MouseBehavior.Default
     UserInputService.MouseIconEnabled = true
 end)
+
+local function getShiftLockActive()
+    local ok, active = pcall(function()
+        local playerModule = require(localPlayer.PlayerScripts:WaitForChild("PlayerModule"))
+        local cameras = playerModule:GetCameras()
+        if type(cameras.GetIsMouseLocked) == "function" then
+            return cameras:GetIsMouseLocked()
+        end
+        local controller = cameras.activeMouseLockController
+            or (type(cameras.GetMouseLockController) == "function" and cameras:GetMouseLockController())
+        if controller and type(controller.GetIsMouseLocked) == "function" then
+            return controller:GetIsMouseLocked()
+        end
+    end)
+    return ok and active
+end
+
+local shiftReconcileId = 0
+local function queueShiftLockReconcile()
+    shiftReconcileId += 1
+    local reconcileId = shiftReconcileId
+    local function reconcile()
+        if not scriptRuntime.Active or reconcileId ~= shiftReconcileId then
+            return
+        end
+        if getShiftLockActive() == false then
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+            UserInputService.MouseIconEnabled = true
+        end
+    end
+    task.delay(0.05, reconcile)
+    task.delay(0.2, reconcile)
+end
+
+trackConnection(UserInputService.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
+        queueShiftLockReconcile()
+    end
+end))
 
 local source = ReplicatedStorage:WaitForChild("Source")
 local FoodData = require(source.Data.Food)

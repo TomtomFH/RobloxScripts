@@ -64,9 +64,20 @@ end
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
+local UserInputService = game:GetService("UserInputService")
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 local playerSource = localPlayer:WaitForChild("PlayerScripts"):WaitForChild("Source")
+
+-- Older Auto Serve/Auto Cook builds could leave Roblox in center-locked mouse
+-- mode during cleanup. Normalize it once when the replacement runtime starts.
+pcall(function()
+    if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
+        UserSettings():GetService("UserGameSettings").ControlMode = Enum.ControlMode.Classic
+    end
+    UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+    UserInputService.MouseIconEnabled = true
+end)
 
 local source = ReplicatedStorage:WaitForChild("Source")
 local FoodData = require(source.Data.Food)
@@ -780,29 +791,13 @@ end
 do
 local GrabFoodSystem = require(playerSource.Systems.Restaurant.GrabFood)
 local ServeFoodTask = require(playerSource.Modules.Tasks.ServeFood)
-local UserInputService = game:GetService("UserInputService")
 local autoServe = false
 local servingBusy = false
 local grabInFlight = setmetatable({}, { __mode = "k" })
 local retryCounts = setmetatable({}, { __mode = "k" })
 local serveRetryQueued = false
-local mouseBehaviorBeforeServe
 local scanReadyFood
 local processHeldFood
-
-local function restoreServeMouse()
-    if mouseBehaviorBeforeServe then
-        UserInputService.MouseBehavior = mouseBehaviorBeforeServe
-    end
-end
-
-local function queueServeMouseRestore()
-    restoreServeMouse()
-    task.defer(restoreServeMouse)
-    task.delay(0.05, restoreServeMouse)
-    task.delay(0.2, restoreServeMouse)
-    task.delay(0.6, restoreServeMouse)
-end
 
 local function getServingTycoon()
     local tycoon = findTycoon()
@@ -890,7 +885,6 @@ local function attemptReadyFoodGrab(foodModel)
         local ok = pcall(function()
             GrabFoodSystem:AttemptGrab(tycoon, foodModel)
         end)
-        queueServeMouseRestore()
         grabInFlight[foodModel] = nil
 
         if not scriptRuntime.Active or not autoServe then
@@ -954,7 +948,6 @@ processHeldFood = function()
 
     if serveOneHeldFood(tycoon) then
         servingBusy = true
-        queueServeMouseRestore()
         task.delay(0.35, function()
             if not scriptRuntime.Active then
                 return
@@ -993,7 +986,6 @@ end))
 trackConnection(events.Restaurant.GrabEnded.OnClientEvent:Connect(function(foodModel)
     if autoServe then
         servingBusy = false
-        queueServeMouseRestore()
         task.defer(processHeldFood)
         task.defer(scanReadyFood)
     end
@@ -1010,17 +1002,10 @@ if GrabFoodSystem.GrabbedFoodUpdated and type(GrabFoodSystem.GrabbedFoodUpdated.
 end
 
 function autoRestaurantTasks:SetAutoServe(enabled)
-    if enabled and not autoServe then
-        mouseBehaviorBeforeServe = UserInputService.MouseBehavior
-    end
     autoServe = enabled == true
     scriptRuntime.State.AutoServe = autoServe
     servingBusy = false
     serveRetryQueued = false
-    if not autoServe and mouseBehaviorBeforeServe then
-        UserInputService.MouseBehavior = mouseBehaviorBeforeServe
-        mouseBehaviorBeforeServe = nil
-    end
     table.clear(grabInFlight)
     table.clear(retryCounts)
     if autoServe then
@@ -1048,9 +1033,6 @@ table.insert(scriptRuntime.CleanupCallbacks, function()
     serveRetryQueued = false
     table.clear(grabInFlight)
     table.clear(retryCounts)
-    if mouseBehaviorBeforeServe then
-        UserInputService.MouseBehavior = mouseBehaviorBeforeServe
-    end
 end)
 end
 
